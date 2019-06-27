@@ -59,7 +59,9 @@ setup(
         'pyyaml>=5.1',
         'schema',
         'plams@git+https://github.com/SCM-NV/PLAMS@release',
-        'qmflows@git+https://github.com/SCM-NV/qmflows@master'
+        'qmflows@git+https://github.com/SCM-NV/qmflows@master',
+        'data-CAT@git+https://github.com/nlesc-nano/data-CAT@master',
+        'CAT@git+https://github.com/nlesc-nano/CAT@master'
     ],
     setup_requires=[
         'pytest-runner',

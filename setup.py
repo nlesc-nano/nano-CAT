@@ -60,7 +60,6 @@ setup(
         'schema',
         'plams@git+https://github.com/SCM-NV/PLAMS@release',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
-        'data-CAT@git+https://github.com/nlesc-nano/data-CAT@master',
         'CAT@git+https://github.com/nlesc-nano/CAT@master'
     ],
     setup_requires=[
@@ -76,6 +75,6 @@ setup(
     ],
     extras_require={
         'test': ['pytest', 'pytest-cov', 'pytest-mock', 'nbsphinx', 'pycodestyle'],
-        'doc': ['sphinx', 'sphinx_rtd_theme', 'nbsphinx']
+        'doc': ['sphinx', 'sphinx_rtd_theme', 'sphinx-autodoc-typehints']
     }
 )

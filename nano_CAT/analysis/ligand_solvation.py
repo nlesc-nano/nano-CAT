@@ -72,8 +72,8 @@ def init_solv(ligand_df: PropertiesDataFrame,
     # Run COSMO-RS
     idx = ligand_df[['E_solv', 'gamma']].isna().all(axis='columns')
     if idx.any():
-        start_crs_jobs(ligand_df)
-        ligand_df[JOB_SETTINGS_CRS] = get_job_settings()
+        start_crs_jobs(ligand_df, idx, solvent_list)
+        ligand_df[JOB_SETTINGS_CRS] = get_job_settings(ligand_df)
     else:
         return None  # No new molecules here; move along
 

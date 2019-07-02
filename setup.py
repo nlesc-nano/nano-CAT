@@ -59,7 +59,8 @@ setup(
         'pyyaml>=5.1',
         'schema',
         'plams@git+https://github.com/SCM-NV/PLAMS@release',
-        'qmflows@git+https://github.com/SCM-NV/qmflows@master'
+        'qmflows@git+https://github.com/SCM-NV/qmflows@master',
+        'CAT@git+https://github.com/nlesc-nano/CAT@master'
     ],
     setup_requires=[
         'pytest-runner',
@@ -74,6 +75,6 @@ setup(
     ],
     extras_require={
         'test': ['pytest', 'pytest-cov', 'pytest-mock', 'nbsphinx', 'pycodestyle'],
-        'doc': ['sphinx', 'sphinx_rtd_theme', 'nbsphinx']
+        'doc': ['sphinx', 'sphinx_rtd_theme', 'sphinx-autodoc-typehints']
     }
 )

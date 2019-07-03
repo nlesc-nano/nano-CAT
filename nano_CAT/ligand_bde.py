@@ -51,7 +51,7 @@ def init_bde(qd_df: PropertiesDataFrame) -> None:
 
     """
     # Unpack arguments
-    path = qd_df.properties.optional.database.dirname
+    db_path = qd_df.properties.optional.database.dirname
     overwrite = DATA_CAT and 'qd' in qd_df.properties.optional.database.overwrite
     read = DATA_CAT and 'qd' in qd_df.properties.optional.database.read
     job2 = qd_df.properties.optional.qd.dissociate.job2
@@ -59,7 +59,7 @@ def init_bde(qd_df: PropertiesDataFrame) -> None:
 
     # Check if the calculation has been done already
     if not overwrite and read:
-        data = Database(path)
+        data = Database(db_path)
         with data.open_csv_qd(data.csv_qd, write=False) as db:
             key_ar = np.array(['BDE label', 'BDE dE', 'BDE dG', 'BDE ddG'])
             bool_ar = np.isin(key_ar, db.columns.levels[0])
@@ -235,12 +235,12 @@ def _qd_to_db(qd_df: PropertiesDataFrame,
               idx: pd.Series,
               with_dg: bool = True) -> None:
     # Unpack arguments
-    path = qd_df.properties.optional.database.dirname
+    db_path = qd_df.properties.optional.database.dirname
     overwrite = DATA_CAT and 'qd' in qd_df.properties.optional.database.overwrite
     j1 = qd_df.properties.optional.qd.dissociate.job1
     s1 = qd_df.properties.optional.qd.dissociate.s1
 
-    data = Database(path)
+    data = Database(db_path)
 
     qd_df.sort_index(axis='columns', inplace=True)
     kwarg = {'database': 'QD', 'overwrite': overwrite}

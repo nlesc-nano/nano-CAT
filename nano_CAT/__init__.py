@@ -2,13 +2,13 @@
 
 from .__version__ import __version__
 
-from .analysis import (
-    init_asa,
-    CRSJob, CRSResults,
-    init_bde,
-    get_thermo, get_entropy,
-    init_solv
-)
+from .asa import init_asa
+
+from .crs import (CRSJob, CRSResults)
+
+from .ligand_bde import init_bde
+
+from .ligand_solvation import init_solv
 
 __version__ = __version__
 __author__ = 'Bas van Beek'
@@ -16,7 +16,6 @@ __email__ = 'b.f.van.beek@vu.nl'
 
 __all__ = [
     'init_asa',
-    'CRSJob', 'CRSResults',
     'init_bde',
     'get_thermo', 'get_entropy',
     'init_solv'

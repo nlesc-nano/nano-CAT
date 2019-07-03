@@ -6,9 +6,9 @@ from setuptools import setup
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-# To update the package version number, edit CAT/__version__.py
+# To update the package version number, edit nano_CAT/__version__.py
 version = {}
-with open(os.path.join(here, 'CAT', '__version__.py')) as f:
+with open(os.path.join(here, 'nano_CAT', '__version__.py')) as f:
     exec(f.read(), version)
 
 with open('README.rst') as readme_file:
@@ -25,7 +25,7 @@ setup(
     packages=[
         'nano_CAT'
     ],
-    package_dir={'nano': 'nano-CAT'},
+    package_dir={'nano_CAT': 'nano_CAT'},
     package_data={
         'nano_CAT': []
     },

@@ -1,4 +1,38 @@
-"""A module designed for calculating solvation energies."""
+"""
+nanoCAT.ligand_solvation
+========================
+
+A module designed for calculating solvation energies.
+
+Index
+-----
+.. currentmodule:: nanoCAT.ligand_solvation
+.. autosummary::
+    init_solv
+    start_crs_jobs
+    update_columns
+    get_solvent_list
+    get_job_settings
+    _ligand_to_db
+    get_surface_charge
+    get_solv
+    get_surface_charge_adf
+    get_coskf
+
+API
+---
+.. autofunction:: nanoCAT.ligand_solvation.init_asa
+.. autofunction:: nanoCAT.ligand_solvation.start_crs_jobs
+.. autofunction:: nanoCAT.ligand_solvation.update_columns
+.. autofunction:: nanoCAT.ligand_solvation.get_solvent_list
+.. autofunction:: nanoCAT.ligand_solvation.get_job_settings
+.. autofunction:: nanoCAT.ligand_solvation._ligand_to_db
+.. autofunction:: nanoCAT.ligand_solvation.get_surface_charge
+.. autofunction:: nanoCAT.ligand_solvation.get_solv
+.. autofunction:: nanoCAT.ligand_solvation.get_surface_charge_adf
+.. autofunction:: nanoCAT.ligand_solvation.get_coskf
+
+"""
 
 import os
 import shutil
@@ -22,7 +56,7 @@ from CAT.properties_dataframe import PropertiesDataFrame
 from .crs import CRSJob
 
 try:
-    from data_CAT import Database
+    from dataCAT import Database
     DATA_CAT = True
 except ImportError:
     DATA_CAT = False

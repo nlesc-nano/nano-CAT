@@ -1,4 +1,22 @@
-"""A module designed for running COSMO-RS Jobs."""
+"""
+nanoCAT.crs
+===========
+
+A module designed for running COSMO-RS Jobs.
+
+Index
+-----
+.. currentmodule:: nanoCAT.crs
+.. autosummary::
+    CRSResults
+    CRSJob
+
+API
+---
+.. autoclass:: nanoCAT.crs.CRSResults
+.. autoclass:: nanoCAT.crs.CRSJob
+
+"""
 
 import numpy as np
 

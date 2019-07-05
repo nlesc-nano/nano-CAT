@@ -1,4 +1,22 @@
-"""A module related to performing activation strain analyses."""
+"""
+nanoCAT.asa
+===========
+
+A module related to performing activation strain analyses.
+
+Index
+-----
+.. currentmodule:: nanoCAT.asa
+.. autosummary::
+    init_asa
+    get_asa_energy
+
+API
+---
+.. autofunction:: nanoCAT.asa.init_asa
+.. autofunction:: nanoCAT.asa.get_asa_energy
+
+"""
 
 import numpy as np
 import pandas as pd
@@ -11,7 +29,7 @@ from rdkit.Chem import AllChem
 
 from CAT.properties_dataframe import PropertiesDataFrame
 try:
-    from data_CAT import Database
+    from dataCAT import Database
     DATA_CAT = True
 except ImportError:
     DATA_CAT = False

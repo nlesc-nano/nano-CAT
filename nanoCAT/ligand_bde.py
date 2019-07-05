@@ -1,4 +1,50 @@
-"""A module designed for the calculation of Bond Dissociation Energies (BDE)."""
+"""
+nanoCAT.ligand_bde
+==================
+
+A module designed for the calculation of Bond Dissociation Energies (BDE).
+
+Index
+-----
+.. currentmodule:: nanoCAT.ligand_bde
+.. autosummary::
+    init_bde
+    _bde_w_dg
+    _bde_wo_dg
+    _qd_to_db
+    get_recipe
+    get_bde_dE
+    get_bde_ddG
+    get_xy2
+    dissociate_ligand
+    dissociate_ligand2
+    remove_ligands
+    filter_lig_core
+    filter_lig_core2
+    filter_core
+    get_topology
+    get_lig_core_combinations
+
+API
+---
+.. autofunction:: nanoCAT.ligand_bde.init_bde
+.. autofunction:: nanoCAT.ligand_bde._bde_w_dg
+.. autofunction:: nanoCAT.ligand_bde._bde_wo_dg
+.. autofunction:: nanoCAT.ligand_bde._qd_to_db
+.. autofunction:: nanoCAT.ligand_bde.get_recipe
+.. autofunction:: nanoCAT.ligand_bde.get_bde_dE
+.. autofunction:: nanoCAT.ligand_bde.get_bde_ddG
+.. autofunction:: nanoCAT.ligand_bde.get_xy2
+.. autofunction:: nanoCAT.ligand_bde.dissociate_ligand
+.. autofunction:: nanoCAT.ligand_bde.dissociate_ligand2
+.. autofunction:: nanoCAT.ligand_bde.remove_ligands
+.. autofunction:: nanoCAT.ligand_bde.filter_lig_core
+.. autofunction:: nanoCAT.ligand_bde.filter_lig_core2
+.. autofunction:: nanoCAT.ligand_bde.filter_core
+.. autofunction:: nanoCAT.ligand_bde.get_topology
+.. autofunction:: nanoCAT.ligand_bde.get_lig_core_combinations
+
+"""
 
 from itertools import chain, combinations, product
 from typing import (Callable, Optional, Iterable, Tuple, Sequence, Dict, List)
@@ -22,7 +68,7 @@ from CAT.attachment.ligand_attach import rot_mol_angle
 from CAT.properties_dataframe import PropertiesDataFrame
 
 try:
-    from data_CAT import Database
+    from dataCAT import Database
     DATA_CAT = True
 except ImportError:
     DATA_CAT = False
@@ -51,7 +97,7 @@ def init_bde(qd_df: PropertiesDataFrame) -> None:
 
     """
     # Unpack arguments
-    path = qd_df.properties.optional.database.dirname
+    db_path = qd_df.properties.optional.database.dirname
     overwrite = DATA_CAT and 'qd' in qd_df.properties.optional.database.overwrite
     read = DATA_CAT and 'qd' in qd_df.properties.optional.database.read
     job2 = qd_df.properties.optional.qd.dissociate.job2
@@ -59,7 +105,7 @@ def init_bde(qd_df: PropertiesDataFrame) -> None:
 
     # Check if the calculation has been done already
     if not overwrite and read:
-        data = Database(path)
+        data = Database(db_path)
         with data.open_csv_qd(data.csv_qd, write=False) as db:
             key_ar = np.array(['BDE label', 'BDE dE', 'BDE dG', 'BDE ddG'])
             bool_ar = np.isin(key_ar, db.columns.levels[0])
@@ -235,12 +281,12 @@ def _qd_to_db(qd_df: PropertiesDataFrame,
               idx: pd.Series,
               with_dg: bool = True) -> None:
     # Unpack arguments
-    path = qd_df.properties.optional.database.dirname
+    db_path = qd_df.properties.optional.database.dirname
     overwrite = DATA_CAT and 'qd' in qd_df.properties.optional.database.overwrite
     j1 = qd_df.properties.optional.qd.dissociate.job1
     s1 = qd_df.properties.optional.qd.dissociate.s1
 
-    data = Database(path)
+    data = Database(db_path)
 
     qd_df.sort_index(axis='columns', inplace=True)
     kwarg = {'database': 'QD', 'overwrite': overwrite}

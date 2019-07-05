@@ -8,7 +8,7 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 # To update the package version number, edit nano_CAT/__version__.py
 version = {}
-with open(os.path.join(here, 'nano_CAT', '__version__.py')) as f:
+with open(os.path.join(here, 'nanoCAT', '__version__.py')) as f:
     exec(f.read(), version)
 
 with open('README.rst') as readme_file:
@@ -23,11 +23,11 @@ setup(
     author_email='b.f.van.beek@vu.nl',
     url='https://github.com/nlesc-nano/nano-CAT',
     packages=[
-        'nano_CAT'
+        'nanoCAT'
     ],
-    package_dir={'nano_CAT': 'nano_CAT'},
+    package_dir={'nanoCAT': 'nanoCAT'},
     package_data={
-        'nano_CAT': []
+        'nanoCAT': []
     },
     entry_points={},
     include_package_data=True,

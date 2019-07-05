@@ -1,4 +1,10 @@
-"""A collection of tools for the analysis of nanocrystals."""
+"""
+Nano-CAT
+========
+
+A collection of tools for the analysis of nanocrystals.
+
+"""
 
 from .__version__ import __version__
 
@@ -17,6 +23,6 @@ __email__ = 'b.f.van.beek@vu.nl'
 __all__ = [
     'init_asa',
     'init_bde',
-    'get_thermo', 'get_entropy',
-    'init_solv'
+    'init_solv',
+    'CRSJob', 'CRSResults'
 ]

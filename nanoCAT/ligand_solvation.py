@@ -51,7 +51,7 @@ from scm.plams.interfaces.adfsuite.adf import ADFJob
 import qmflows
 
 from CAT.utils import (get_time, type_to_string, get_template)
-from CAT.properties_dataframe import PropertiesDataFrame
+from CAT.settings_dataframe import SettingsDataFrame
 
 from .crs import CRSJob
 
@@ -70,7 +70,7 @@ SETTINGS1 = ('settings', 'solv 1')
 SETTINGS2 = ('settings', 'solv 2')
 
 
-def init_solv(ligand_df: PropertiesDataFrame,
+def init_solv(ligand_df: SettingsDataFrame,
               solvent_list: Optional[Sequence[str]] = None) -> None:
     """Initialize the ligand solvation energy calculation.
 
@@ -79,7 +79,7 @@ def init_solv(ligand_df: PropertiesDataFrame,
 
     Parameters
     ----------
-    ligand_df : |CAT.PropertiesDataFrame|_
+    ligand_df : |CAT.SettingsDataFrame|_
         A dataframe of ligands.
 
     solvent_list : |list|_ [|str|_]
@@ -118,7 +118,7 @@ def init_solv(ligand_df: PropertiesDataFrame,
     return None
 
 
-def start_crs_jobs(ligand_df: PropertiesDataFrame,
+def start_crs_jobs(ligand_df: SettingsDataFrame,
                    idx: pd.Series,
                    solvent_list: Iterable[str]) -> None:
     """Loop over all molecules in ``ligand_df.loc[idx]`` and perform COSMO-RS calculations."""
@@ -143,7 +143,7 @@ def start_crs_jobs(ligand_df: PropertiesDataFrame,
     finish()
 
 
-def update_columns(ligand_df: PropertiesDataFrame,
+def update_columns(ligand_df: SettingsDataFrame,
                    solvent_list: Iterable[str]) -> List[Tuple[str, str]]:
     """Add all COSMO-RS related columns to **ligand_df**."""
     clm_tups = [i.rsplit('.', 1)[0].rsplit('/', 1)[-1] for i in solvent_list]
@@ -163,7 +163,7 @@ def get_solvent_list(solvent_list: Optional[Sequence[str]]) -> Sequence[str]:
     return solvent_list
 
 
-def get_job_settings(ligand_df: PropertiesDataFrame) -> List[str]:
+def get_job_settings(ligand_df: SettingsDataFrame) -> List[str]:
     """Create a nested list of input files for each molecule in **ligand_df**."""
     job_settings = []
     for mol in ligand_df[MOL]:
@@ -174,7 +174,7 @@ def get_job_settings(ligand_df: PropertiesDataFrame) -> List[str]:
     return job_settings
 
 
-def _ligand_to_db(ligand_df: PropertiesDataFrame,
+def _ligand_to_db(ligand_df: SettingsDataFrame,
                   idx: pd.Series,
                   columns: Sequence) -> None:
     """Export all COSMO-RS results to the database."""

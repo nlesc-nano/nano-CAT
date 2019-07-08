@@ -27,7 +27,7 @@ import scm.plams.interfaces.molecule.rdkit as molkit
 import rdkit
 from rdkit.Chem import AllChem
 
-from CAT.properties_dataframe import PropertiesDataFrame
+from CAT.settings_dataframe import SettingsDataFrame
 try:
     from dataCAT import Database
     DATA_CAT = True
@@ -44,14 +44,14 @@ ASA_E = ('ASA', 'E')
 SETTINGS1 = ('settings', 'ASA 1')
 
 
-def init_asa(qd_df: PropertiesDataFrame) -> None:
+def init_asa(qd_df: SettingsDataFrame) -> None:
     """Initialize the activation-strain analyses (ASA).
 
     The ASA (RDKit UFF level) is conducted on the ligands in the absence of the core.
 
     Parameters
     ----------
-    |CAT.PropertiesDataFrame|_
+    |CAT.SettingsDataFrame|_
         A dataframe of quantum dots.
 
     """

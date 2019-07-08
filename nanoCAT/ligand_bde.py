@@ -65,7 +65,7 @@ from CAT.jobs import (job_single_point, job_geometry_opt, job_freq)
 from CAT.utils import (get_time, type_to_string)
 from CAT.mol_utils import (to_atnum, merge_mol)
 from CAT.attachment.ligand_attach import rot_mol_angle
-from CAT.properties_dataframe import PropertiesDataFrame
+from CAT.settings_dataframe import SettingsDataFrame
 
 try:
     from dataCAT import Database
@@ -82,7 +82,7 @@ SETTINGS1 = ('settings', 'BDE 1')
 SETTINGS2 = ('settings', 'BDE 2')
 
 
-def init_bde(qd_df: PropertiesDataFrame) -> None:
+def init_bde(qd_df: SettingsDataFrame) -> None:
     """ Initialize the bond dissociation energy calculation; involves 4 distinct steps.
 
     * Take :math:`n` ligands (X) and another atom from the core (Y, *e.g.* Cd) and create YX*n*.
@@ -92,7 +92,7 @@ def init_bde(qd_df: PropertiesDataFrame) -> None:
 
     Parameters
     ----------
-    qd_df : |CAT.PropertiesDataFrame|_
+    qd_df : |CAT.SettingsDataFrame|_
         A dataframe of quantum dots.
 
     """
@@ -123,12 +123,12 @@ def init_bde(qd_df: PropertiesDataFrame) -> None:
         _bde_wo_dg(qd_df)
 
 
-def _bde_w_dg(qd_df: PropertiesDataFrame) -> None:
+def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     """Calculate the BDEs with thermochemical corrections.
 
     Parameters
     ----------
-    qd_df : |CAT.PropertiesDataFrame|_
+    qd_df : |CAT.SettingsDataFrame|_
         A dataframe of quantum dots.
 
     """
@@ -203,12 +203,12 @@ def _bde_w_dg(qd_df: PropertiesDataFrame) -> None:
             _qd_to_db(qd_df, has_na, with_dg=True)
 
 
-def _bde_wo_dg(qd_df: PropertiesDataFrame) -> None:
+def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     """ Calculate the BDEs without thermochemical corrections.
 
     Parameters
     ----------
-    qd_df : |CAT.PropertiesDataFrame|_
+    qd_df : |CAT.SettingsDataFrame|_
         A dataframe of quantum dots.
 
     """
@@ -277,7 +277,7 @@ def _bde_wo_dg(qd_df: PropertiesDataFrame) -> None:
             _qd_to_db(qd_df, has_na, with_dg=False)
 
 
-def _qd_to_db(qd_df: PropertiesDataFrame,
+def _qd_to_db(qd_df: SettingsDataFrame,
               idx: pd.Series,
               with_dg: bool = True) -> None:
     # Unpack arguments

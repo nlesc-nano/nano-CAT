@@ -133,15 +133,15 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
 
     """
     # Unpack arguments
-    properties = qd_df.properties
-    job1 = properties.optional.qd.dissociate.job1
-    job2 = properties.optional.qd.dissociate.job2
-    s1 = properties.optional.qd.dissociate.s1
-    s2 = properties.optional.qd.dissociate.s2
-    ion = properties.optional.qd.dissociate.core_atom
-    lig_count = properties.optional.qd.dissociate.lig_count
-    core_index = properties.optional.qd.dissociate.core_index
-    write = DATA_CAT and 'qd' in properties.optional.database.write
+    settings = qd_df.properties.optional
+    job1 = settings.qd.dissociate.job1
+    job2 = settings.qd.dissociate.job2
+    s1 = settings.qd.dissociate.s1
+    s2 = settings.qd.dissociate.s2
+    ion = settings.qd.dissociate.core_atom
+    lig_count = settings.qd.dissociate.lig_count
+    core_index = settings.qd.dissociate.core_index
+    write = DATA_CAT and 'qd' in settings.database.write
 
     # Identify previously calculated results
     try:
@@ -155,9 +155,9 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
         # Create XYn and all XYn-dissociated quantum dots
         xyn = get_xy2(mol, ion, lig_count)
         if not core_index:
-            mol_wo_xyn = dissociate_ligand(mol, properties)
+            mol_wo_xyn = dissociate_ligand(mol, settings)
         else:
-            mol_wo_xyn = dissociate_ligand2(mol, properties)
+            mol_wo_xyn = dissociate_ligand2(mol, settings)
 
         # Construct new columns for **qd_df**
         labels = [m.properties.df_index for m in mol_wo_xyn]
@@ -486,7 +486,7 @@ def get_xy2(mol: Molecule,
 
 
 def dissociate_ligand(mol: Molecule,
-                      arg: Settings) -> List[Molecule]:
+                      settings: Settings) -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -494,7 +494,7 @@ def dissociate_ligand(mol: Molecule,
     mol : |plams.Molecule|_
         A PLAMS molecule.
 
-    arg: |plams.Settings|_
+    settings : |plams.Settings|_
         A settings object containing all (optional) arguments.
 
     Returns
@@ -504,11 +504,11 @@ def dissociate_ligand(mol: Molecule,
 
     """
     # Unpack arguments
-    atnum = arg.optional.qd.dissociate.core_atom
-    l_count = arg.optional.qd.dissociate.lig_count
-    cc_dist = arg.optional.qd.dissociate.core_core_dist
-    lc_dist = arg.optional.qd.dissociate.lig_core_dist
-    top_dict = arg.optional.qd.dissociate.topology
+    atnum = settings.qd.dissociate.core_atom
+    l_count = settings.qd.dissociate.lig_count
+    cc_dist = settings.qd.dissociate.core_core_dist
+    lc_dist = settings.qd.dissociate.lig_core_dist
+    top_dict = settings.qd.dissociate.topology
 
     # Convert **mol** to an XYZ array
     mol.set_atoms_id()
@@ -544,7 +544,7 @@ def dissociate_ligand(mol: Molecule,
 
 
 def dissociate_ligand2(mol: Molecule,
-                       arg: Settings) -> List[Molecule]:
+                       settings: Settings) -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -552,7 +552,7 @@ def dissociate_ligand2(mol: Molecule,
     mol : |plams.Molecule|_
         A PLAMS molecule.
 
-    arg: |plams.Settings|_
+    settings : |plams.Settings|_
         A settings object containing all (optional) arguments.
 
     Returns
@@ -562,10 +562,10 @@ def dissociate_ligand2(mol: Molecule,
 
     """
     # Unpack arguments
-    l_count = arg.optional.qd.dissociate.lig_count
-    cc_dist = arg.optional.qd.dissociate.core_core_dist
-    idx_c_old = np.array(arg.optional.qd.dissociate.core_index) - 1
-    top_dict = arg.optional.qd.dissociate.topology
+    l_count = settings.qd.dissociate.lig_count
+    cc_dist = settings.qd.dissociate.core_core_dist
+    idx_c_old = np.array(settings.qd.dissociate.core_index) - 1
+    top_dict = settings.qd.dissociate.topology
 
     # Convert **mol** to an XYZ array
     mol.set_atoms_id()

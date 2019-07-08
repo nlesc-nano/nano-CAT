@@ -56,9 +56,10 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
 
     """
     # Unpack arguments
-    overwrite = DATA_CAT and 'qd' in qd_df.properties.optional.database.overwrite
-    write = DATA_CAT and 'qd' in qd_df.properties.optional.database.write
-    data = Database(qd_df.properties.optional.database.dirname)
+    settings = qd_df.settings.optional
+    overwrite = DATA_CAT and 'qd' in settings.database.overwrite
+    write = DATA_CAT and 'qd' in settings.database.write
+    data = Database(settings.database.dirname)
 
     # Prepare columns
     columns = [ASA_INT, ASA_STRAIN, ASA_E]

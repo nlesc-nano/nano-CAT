@@ -59,7 +59,7 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     settings = qd_df.settings.optional
     overwrite = DATA_CAT and 'qd' in settings.database.overwrite
     write = DATA_CAT and 'qd' in settings.database.write
-    data = Database(settings.database.dirname)
+    data = Database(settings.database.dirname, **settings.database.mongodb)
 
     # Prepare columns
     columns = [ASA_INT, ASA_STRAIN, ASA_E]

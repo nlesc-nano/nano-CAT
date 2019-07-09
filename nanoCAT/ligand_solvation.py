@@ -92,7 +92,7 @@ def init_solv(ligand_df: SettingsDataFrame,
     overwrite = DATA_CAT and 'ligand' in settings.database.overwrite
     read = DATA_CAT and 'ligand' in settings.database.read
     write = DATA_CAT and 'ligand' in settings.database.write
-    data = Database(path=settings.database.dirname)
+    data = Database(path=settings.database.dirname, **settings.database.mongodb)
 
     # Prepare the job settings and solvent list
     solvent_list = get_solvent_list(solvent_list)

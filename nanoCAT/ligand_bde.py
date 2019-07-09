@@ -97,15 +97,16 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
 
     """
     # Unpack arguments
-    db_path = qd_df.properties.optional.database.dirname
-    overwrite = DATA_CAT and 'qd' in qd_df.properties.optional.database.overwrite
-    read = DATA_CAT and 'qd' in qd_df.properties.optional.database.read
-    job2 = qd_df.properties.optional.qd.dissociate.job2
-    s2 = qd_df.properties.optional.qd.dissociate.s2
+    settings = qd_df.settings.optional
+    db_path = settings.database.dirname
+    overwrite = DATA_CAT and 'qd' in settings.database.overwrite
+    read = DATA_CAT and 'qd' in settings.database.read
+    job2 = settings.qd.dissociate.job2
+    s2 = settings.qd.dissociate.s2
 
     # Check if the calculation has been done already
     if not overwrite and read:
-        data = Database(db_path)
+        data = Database(db_path, **settings.database.mongodb)
         with data.open_csv_qd(data.csv_qd, write=False) as db:
             key_ar = np.array(['BDE label', 'BDE dE', 'BDE dG', 'BDE ddG'])
             bool_ar = np.isin(key_ar, db.columns.levels[0])
@@ -133,7 +134,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
 
     """
     # Unpack arguments
-    settings = qd_df.properties.optional
+    settings = qd_df.settings.optional
     job1 = settings.qd.dissociate.job1
     job2 = settings.qd.dissociate.job2
     s1 = settings.qd.dissociate.s1
@@ -213,13 +214,13 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
 
     """
     # Unpack arguments
-    properties = qd_df.properties
-    job1 = properties.optional.qd.dissociate.job1
-    s1 = properties.optional.qd.dissociate.s1
-    ion = properties.optional.qd.dissociate.core_atom
-    lig_count = properties.optional.qd.dissociate.lig_count
-    core_index = properties.optional.qd.dissociate.core_index
-    write = DATA_CAT and 'qd' in properties.optional.database.write
+    settings = qd_df.settings.optional
+    job1 = settings.qd.dissociate.job1
+    s1 = settings.qd.dissociate.s1
+    ion = settings.qd.dissociate.core_atom
+    lig_count = settings.qd.dissociate.lig_count
+    core_index = settings.qd.dissociate.core_index
+    write = DATA_CAT and 'qd' in settings.database.write
 
     # Identify previously calculated results
     try:
@@ -281,18 +282,19 @@ def _qd_to_db(qd_df: SettingsDataFrame,
               idx: pd.Series,
               with_dg: bool = True) -> None:
     # Unpack arguments
-    db_path = qd_df.properties.optional.database.dirname
-    overwrite = DATA_CAT and 'qd' in qd_df.properties.optional.database.overwrite
-    j1 = qd_df.properties.optional.qd.dissociate.job1
-    s1 = qd_df.properties.optional.qd.dissociate.s1
+    settings = qd_df.settings.optional
+    db_path = settings.database.dirname
+    overwrite = DATA_CAT and 'qd' in settings.database.overwrite
+    j1 = settings.qd.dissociate.job1
+    s1 = settings.qd.dissociate.s1
 
-    data = Database(db_path)
+    data = Database(db_path, **settings.database.mongodb)
 
     qd_df.sort_index(axis='columns', inplace=True)
     kwarg = {'database': 'QD', 'overwrite': overwrite}
     if with_dg:
-        j2 = qd_df.properties.optional.qd.dissociate.job2
-        s2 = qd_df.properties.optional.qd.dissociate.s2
+        j2 = settings.qd.dissociate.job2
+        s2 = settings.qd.dissociate.s2
         kwarg['job_recipe'] = get_recipe(j1, s1, j2, s2)
         kwarg['columns'] = [JOB_SETTINGS_BDE, SETTINGS1, SETTINGS2]
         column_tup = ('BDE label', 'BDE dE', 'BDE ddG', 'BDE dG')

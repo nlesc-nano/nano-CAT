@@ -15,7 +15,7 @@ with open('README.rst') as readme_file:
     readme = readme_file.read()
 
 setup(
-    name='nano-CAT',
+    name='Nano-CAT',
     version=version['__version__'],
     description='A collection of tools for the analysis of nanocrystals.',
     long_description=readme + '\n\n',
@@ -26,10 +26,6 @@ setup(
         'nanoCAT'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
-    package_data={
-        'nanoCAT': []
-    },
-    entry_points={},
     include_package_data=True,
     license='GNU Lesser General Public License v3 or later',
     zip_safe=False,
@@ -52,6 +48,7 @@ setup(
         'Programming Language :: Python :: 3.7',
     ],
     test_suite='tests',
+    python_requires='>=3.7',
     install_requires=[
         'numpy',
         'scipy',
@@ -61,10 +58,7 @@ setup(
         'CAT@git+https://github.com/nlesc-nano/CAT@master'
     ],
     setup_requires=[
-        'pytest-runner',
-        'sphinx',
-        'sphinx_rtd_theme',
-        'recommonmark'
+        'pytest-runner'
     ],
     tests_require=[
         'pytest',
@@ -72,7 +66,7 @@ setup(
         'pycodestyle',
     ],
     extras_require={
-        'test': ['pytest', 'pytest-cov', 'pytest-mock', 'nbsphinx', 'pycodestyle'],
+        'test': ['pytest', 'pytest-cov', 'pytest-mock', 'pycodestyle'],
         'doc': ['sphinx', 'sphinx_rtd_theme', 'sphinx-autodoc-typehints']
     }
 )

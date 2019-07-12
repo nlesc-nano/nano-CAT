@@ -13,8 +13,8 @@ Index
 
 API
 ---
-.. autoclass:: nanoCAT.crs.CRSResults
-.. autoclass:: nanoCAT.crs.CRSJob
+.. autoclass:: CRSResults
+.. autoclass:: CRSJob
 
 """
 

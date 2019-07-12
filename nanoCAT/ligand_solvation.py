@@ -51,7 +51,7 @@ from scm.plams.interfaces.adfsuite.adf import ADFJob
 import qmflows
 
 from CAT.utils import (get_time, type_to_string, get_template)
-from CAT.properties_dataframe import PropertiesDataFrame
+from CAT.settings_dataframe import SettingsDataFrame
 
 from .crs import CRSJob
 
@@ -70,7 +70,7 @@ SETTINGS1 = ('settings', 'solv 1')
 SETTINGS2 = ('settings', 'solv 2')
 
 
-def init_solv(ligand_df: PropertiesDataFrame,
+def init_solv(ligand_df: SettingsDataFrame,
               solvent_list: Optional[Sequence[str]] = None) -> None:
     """Initialize the ligand solvation energy calculation.
 
@@ -79,7 +79,7 @@ def init_solv(ligand_df: PropertiesDataFrame,
 
     Parameters
     ----------
-    ligand_df : |CAT.PropertiesDataFrame|_
+    ligand_df : |CAT.SettingsDataFrame|_
         A dataframe of ligands.
 
     solvent_list : |list|_ [|str|_]
@@ -88,10 +88,11 @@ def init_solv(ligand_df: PropertiesDataFrame,
 
     """
     # Unpack arguments
-    overwrite = DATA_CAT and 'ligand' in ligand_df.properties.optional.database.overwrite
-    read = DATA_CAT and 'ligand' in ligand_df.properties.optional.database.read
-    write = DATA_CAT and 'ligand' in ligand_df.properties.optional.database.write
-    data = Database(path=ligand_df.properties.optional.database.dirname)
+    settings = ligand_df.settings.optional
+    overwrite = DATA_CAT and 'ligand' in settings.database.overwrite
+    read = DATA_CAT and 'ligand' in settings.database.read
+    write = DATA_CAT and 'ligand' in settings.database.write
+    data = Database(path=settings.database.dirname, **settings.database.mongodb)
 
     # Prepare the job settings and solvent list
     solvent_list = get_solvent_list(solvent_list)
@@ -118,16 +119,17 @@ def init_solv(ligand_df: PropertiesDataFrame,
     return None
 
 
-def start_crs_jobs(ligand_df: PropertiesDataFrame,
+def start_crs_jobs(ligand_df: SettingsDataFrame,
                    idx: pd.Series,
                    solvent_list: Iterable[str]) -> None:
     """Loop over all molecules in ``ligand_df.loc[idx]`` and perform COSMO-RS calculations."""
     # Unpack arguments
-    path = ligand_df.properties.optional.ligand.dirname
-    j1 = ligand_df.properties.optional.ligand.crs.job1
-    j2 = ligand_df.properties.optional.ligand.crs.job2
-    s1 = ligand_df.properties.optional.ligand.crs.s1
-    s2 = ligand_df.properties.optional.ligand.crs.s2
+    settings = ligand_df.settings.optional
+    path = settings.ligand.dirname
+    j1 = settings.ligand.crs.job1
+    j2 = settings.ligand.crs.job2
+    s1 = settings.ligand.crs.s1
+    s2 = settings.ligand.crs.s2
 
     # Start the main loop
     init(path=path, folder='ligand_solvation')
@@ -143,7 +145,7 @@ def start_crs_jobs(ligand_df: PropertiesDataFrame,
     finish()
 
 
-def update_columns(ligand_df: PropertiesDataFrame,
+def update_columns(ligand_df: SettingsDataFrame,
                    solvent_list: Iterable[str]) -> List[Tuple[str, str]]:
     """Add all COSMO-RS related columns to **ligand_df**."""
     clm_tups = [i.rsplit('.', 1)[0].rsplit('/', 1)[-1] for i in solvent_list]
@@ -163,7 +165,7 @@ def get_solvent_list(solvent_list: Optional[Sequence[str]]) -> Sequence[str]:
     return solvent_list
 
 
-def get_job_settings(ligand_df: PropertiesDataFrame) -> List[str]:
+def get_job_settings(ligand_df: SettingsDataFrame) -> List[str]:
     """Create a nested list of input files for each molecule in **ligand_df**."""
     job_settings = []
     for mol in ligand_df[MOL]:
@@ -174,16 +176,17 @@ def get_job_settings(ligand_df: PropertiesDataFrame) -> List[str]:
     return job_settings
 
 
-def _ligand_to_db(ligand_df: PropertiesDataFrame,
+def _ligand_to_db(ligand_df: SettingsDataFrame,
                   idx: pd.Series,
                   columns: Sequence) -> None:
     """Export all COSMO-RS results to the database."""
-    data = Database(path=ligand_df.properties.optional.database.dirname)
-    overwrite = DATA_CAT and 'ligand' in ligand_df.properties.optional.database.overwrite
-    j1 = ligand_df.properties.optional.ligand.crs.job1
-    j2 = ligand_df.properties.optional.ligand.crs.job2
-    s1 = ligand_df.properties.optional.ligand.crs.s1
-    s2 = ligand_df.properties.optional.ligand.crs.s2
+    settings = ligand_df.settings.optional
+    data = Database(path=settings.database.dirname)
+    overwrite = DATA_CAT and 'ligand' in settings.database.overwrite
+    j1 = settings.ligand.crs.job1
+    j2 = settings.ligand.crs.job2
+    s1 = settings.ligand.crs.s1
+    s2 = settings.ligand.crs.s2
 
     value1 = qmflows.singlepoint['specific'][type_to_string(j1)].copy()
     value1.update(s1)
@@ -259,6 +262,9 @@ def get_solv(mol: Molecule,
 
     s : |plams.Settings|_
         The settings for **job**.
+
+    keep_files : bool
+        Whether or not files should be deleted after the calculations are done.
 
     Returns
     -------

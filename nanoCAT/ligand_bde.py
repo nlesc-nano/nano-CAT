@@ -27,22 +27,22 @@ Index
 
 API
 ---
-.. autofunction:: nanoCAT.ligand_bde.init_bde
-.. autofunction:: nanoCAT.ligand_bde._bde_w_dg
-.. autofunction:: nanoCAT.ligand_bde._bde_wo_dg
-.. autofunction:: nanoCAT.ligand_bde._qd_to_db
-.. autofunction:: nanoCAT.ligand_bde.get_recipe
-.. autofunction:: nanoCAT.ligand_bde.get_bde_dE
-.. autofunction:: nanoCAT.ligand_bde.get_bde_ddG
-.. autofunction:: nanoCAT.ligand_bde.get_xy2
-.. autofunction:: nanoCAT.ligand_bde.dissociate_ligand
-.. autofunction:: nanoCAT.ligand_bde.dissociate_ligand2
-.. autofunction:: nanoCAT.ligand_bde.remove_ligands
-.. autofunction:: nanoCAT.ligand_bde.filter_lig_core
-.. autofunction:: nanoCAT.ligand_bde.filter_lig_core2
-.. autofunction:: nanoCAT.ligand_bde.filter_core
-.. autofunction:: nanoCAT.ligand_bde.get_topology
-.. autofunction:: nanoCAT.ligand_bde.get_lig_core_combinations
+.. autofunction:: init_bde
+.. autofunction:: _bde_w_dg
+.. autofunction:: _bde_wo_dg
+.. autofunction:: _qd_to_db
+.. autofunction:: get_recipe
+.. autofunction:: get_bde_dE
+.. autofunction:: get_bde_ddG
+.. autofunction:: get_xy2
+.. autofunction:: dissociate_ligand
+.. autofunction:: dissociate_ligand2
+.. autofunction:: remove_ligands
+.. autofunction:: filter_lig_core
+.. autofunction:: filter_lig_core2
+.. autofunction:: filter_core
+.. autofunction:: get_topology
+.. autofunction:: get_lig_core_combinations
 
 """
 

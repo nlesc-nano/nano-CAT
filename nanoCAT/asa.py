@@ -13,8 +13,8 @@ Index
 
 API
 ---
-.. autofunction:: nanoCAT.asa.init_asa
-.. autofunction:: nanoCAT.asa.get_asa_energy
+.. autofunction:: init_asa
+.. autofunction:: get_asa_energy
 
 """
 

@@ -21,16 +21,16 @@ Index
 
 API
 ---
-.. autofunction:: nanoCAT.ligand_solvation.init_asa
-.. autofunction:: nanoCAT.ligand_solvation.start_crs_jobs
-.. autofunction:: nanoCAT.ligand_solvation.update_columns
-.. autofunction:: nanoCAT.ligand_solvation.get_solvent_list
-.. autofunction:: nanoCAT.ligand_solvation.get_job_settings
-.. autofunction:: nanoCAT.ligand_solvation._ligand_to_db
-.. autofunction:: nanoCAT.ligand_solvation.get_surface_charge
-.. autofunction:: nanoCAT.ligand_solvation.get_solv
-.. autofunction:: nanoCAT.ligand_solvation.get_surface_charge_adf
-.. autofunction:: nanoCAT.ligand_solvation.get_coskf
+.. autofunction:: init_asa
+.. autofunction:: start_crs_jobs
+.. autofunction:: update_columns
+.. autofunction:: get_solvent_list
+.. autofunction:: get_job_settings
+.. autofunction:: _ligand_to_db
+.. autofunction:: get_surface_charge
+.. autofunction:: get_solv
+.. autofunction:: get_surface_charge_adf
+.. autofunction:: get_coskf
 
 """
 

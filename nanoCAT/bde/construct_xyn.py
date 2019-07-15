@@ -129,6 +129,8 @@ def get_xyn(mol_ref: Molecule,
     X_idx = 1 + XYn.atoms.index(X)
     start = idx + (len(ion) if isinstance(ion, Molecule) else 1)
     XYn.properties.indices = [X_idx] + [start + i*len(lig) for i in range(lig_count)]
+
+    # Delete bonds between X and Yn; they served their purpose during :func:`_preoptimize`
     for bond in range(lig_count):
         XYn.delete_bond(XYn.bonds[-1])
 

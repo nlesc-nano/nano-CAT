@@ -380,4 +380,4 @@ def get_lig_core_combinations(xy: np.ndarray,
             dict_[res_list[0][core].id].append([at.id for at in res_list[lig]])
         except KeyError:
             dict_[res_list[0][core].id] = [[at.id for at in res_list[lig]]]
-    return {k: combinations(v, lig_count)) for k, v in dict_.items()}
+    return {k: combinations(v, lig_count) for k, v in dict_.items()}

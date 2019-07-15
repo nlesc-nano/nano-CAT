@@ -12,7 +12,7 @@ from .asa import init_asa
 
 from .crs import (CRSJob, CRSResults)
 
-from .ligand_bde import init_bde
+from .bde import init_bde
 
 from .ligand_solvation import init_solv
 

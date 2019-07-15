@@ -210,7 +210,7 @@ def remove_ligands(mol: Molecule,
             mol_tmp = mol.copy()
 
             mol_tmp.properties = Settings()
-            mol_tmp.properties.core_topology = str(mol[core].properties.topology) + '_' + str(core)
+            mol_tmp.properties.core_topology = f'{str(mol[core].properties.topology)}_{core}'
             mol_tmp.properties.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber
                                                      for i in lig])
             mol_tmp.properties.df_index = mol_tmp.properties.core_topology
@@ -380,4 +380,4 @@ def get_lig_core_combinations(xy: np.ndarray,
             dict_[res_list[0][core].id].append([at.id for at in res_list[lig]])
         except KeyError:
             dict_[res_list[0][core].id] = [[at.id for at in res_list[lig]]]
-    return {k: combinations(v, lig_count) for k, v in dict_.items()}
+    return {k: combinations(v, lig_count)) for k, v in dict_.items()}

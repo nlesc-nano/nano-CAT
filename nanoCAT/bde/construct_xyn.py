@@ -128,7 +128,9 @@ def get_xyn(mol_ref: Molecule,
     # Update the constrains; constrain only the anchor atoms
     X_idx = 1 + XYn.atoms.index(X)
     start = idx + (len(ion) if isinstance(ion, Molecule) else 1)
-    XYn.properties.indices = [X_idx] + [start + i*len(lig) for i in range(lig_count)],
+    XYn.properties.indices = [X_idx] + [start + i*len(lig) for i in range(lig_count)]
+    for bond in range(lig_count):
+        XYn.delete_bond(XYn.bonds[-1])
 
     return XYn
 
@@ -303,6 +305,7 @@ def get_perpendicular_vec(vec: np.ndarray) -> np.ndarray:
     """
     one = np.ones_like(vec)
     _vec = np.asarray(vec)
+
     v1 = one / np.linalg.norm(one)
     v2 = _vec / np.linalg.norm(_vec)
     return v1 - v1@v2 * v2

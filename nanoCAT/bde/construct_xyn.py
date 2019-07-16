@@ -102,7 +102,7 @@ def get_xyn(mol_ref: Molecule,
     # Return a the ligand without an ion
     if ion is None:
         lig.properties.update({
-            'name': 'XYn',
+            'name': mol_ref.properties.name,
             'path': mol_ref.properties.path,
             'indices': [idx],
             'job_path': []
@@ -115,7 +115,7 @@ def get_xyn(mol_ref: Molecule,
     # Update the properties of X and XYn
     X.properties.charge = 0 - sum([at.properties.charge for at in XYn if at.properties.charge])
     XYn.properties.update({
-        'name': 'XYn',
+        'name': mol_ref.properties.name,
         'path': mol_ref.properties.path,
         'indices': (list(range(1, 1 + len(ion))) if isinstance(ion, Molecule) else [1]),
         'job_path': []
@@ -199,12 +199,11 @@ def _construct_xyn(ion: Union[str, int, Molecule],
 
 def _preoptimize(mol: Molecule):
     """Perform a constrained geometry optimization of **mol** with AMS UFF."""
-    init(path=mol.properties.path, folder='XYn_preopt')
     s = get_template('qd.yaml')['UFF']
     s.input.ams.constraints.atom = mol.properties.indices
     s.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
-    mol.job_geometry_opt(AMSJob, s)
-    finish()
+    name = f'E_XYn_preopt.{mol.properties.name}'
+    mol.job_geometry_opt(AMSJob, s, name=name)
 
 
 def _parse_ion(ion: Union[Molecule, str, int]):

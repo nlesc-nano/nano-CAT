@@ -28,13 +28,16 @@ API
 
 """
 
-from itertools import product
+from os import listdir
+from shutil import rmtree
 from typing import (Callable, Optional, Iterable)
+from os.path import (join, isfile)
+from itertools import product
 
 import numpy as np
 import pandas as pd
 
-from scm.plams import AMSJob
+from scm.plams import AMSJob, JobManager
 from scm.plams.mol.molecule import Molecule
 from scm.plams.core.functions import (init, finish, config)
 from scm.plams.core.settings import Settings
@@ -117,6 +120,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
+    path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     job2 = settings.qd.dissociate.job2
     s1 = settings.qd.dissociate.s1
@@ -134,7 +138,9 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     except KeyError:
         has_na = pd.Series(True, index=qd_df.index)
 
-    for idx, mol in qd_df[MOL][has_na].iteritems():
+    df_slice = qd_df.loc[has_na, MOL]
+    init(path=path, folder='BDE')
+    for idx, mol in df_slice.iteritems():
         # Create XYn and all XYn-dissociated quantum dots
         xyn = get_xyn(mol, lig_count, ion)
         if not core_index:
@@ -159,8 +165,6 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
         ddG_slice = idx, list(product(['BDE ddG'], sub_idx))
 
         # Run the BDE calculations
-        init(path=mol.properties.path, folder='BDE')
-        config.default_jobmanager.settings.hashing = None
         mol.properties.job_path = []
         qd_df.loc[label_slice] = labels
         qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job=job1, s=s1)
@@ -168,7 +172,8 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
-        finish()
+        print()
+    finish()
 
     qd_df['BDE dG'] = qd_df['BDE dE'] + qd_df['BDE ddG']
 
@@ -197,6 +202,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
+    path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     s1 = settings.qd.dissociate.s1
     ion = settings.qd.dissociate.core_atom
@@ -212,7 +218,9 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     except KeyError:
         has_na = pd.Series(True, index=qd_df.index)
 
-    for idx, mol in qd_df[MOL][has_na].iteritems():
+    df_slice = qd_df.loc[has_na, MOL]
+    restart_init(path=path, folder='BDE')
+    for idx, mol in df_slice.iteritems():
         # Create XYn and all XYn-dissociated quantum dots
         xyn = get_xyn(mol, lig_count, ion)
         if not core_index:
@@ -222,7 +230,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
 
         # Construct new columns for **qd_df**
         labels = [m.properties.df_index for m in mol_wo_xyn]
-        sub_idx = np.arange(len(labels)).astype(str, copy=False)
+        sub_idx = np.arange(len(labels)).astype(str)
         try:
             n = qd_df['BDE label'].shape[1]
         except KeyError:
@@ -236,15 +244,13 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
         dE_slice = idx, list(product(['BDE dE'], sub_idx))
 
         # Run the BDE calculations
-        init(path=mol.properties.path, folder='BDE')
-        config.default_jobmanager.settings.hashing = None
         mol.properties.job_path = []
         qd_df.loc[label_slice] = labels
         qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job=job1, s=s1)
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
-        finish()
+    finish()
 
     job_settings = []
     for mol in qd_df[MOL]:
@@ -313,31 +319,33 @@ def get_bde_dE(tot: Molecule,
                job: Callable,
                s: Settings) -> np.ndarray:
     """Calculate the bond dissociation energy: dE = dE(mopac) + (dG(uff) - dE(uff))."""
+    name = 'E_{}.' + tot.properties.name
+
     # Optimize XYn
     if job == AMSJob:
         s_cp = s.copy()
         s_cp.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
-        lig.job_geometry_opt(job, s_cp, name='BDE_geometry_optimization')
+        lig.job_geometry_opt(job, s_cp, name=name.format('XYn_opt'))
     else:
         lig.job_geometry_opt(job, s, name='BDE_geometry_optimization')
 
     E_lig = lig.properties.energy.E
     if E_lig is np.nan:
-        print(get_time() + 'WARNING: The BDE XYn geometry optimization failed, skipping further \
-              jobs')
+        print(get_time() + 'WARNING: The BDE XYn geometry optimization failed, skipping further '
+              'jobs')
         return np.full(len(core), np.nan)
 
     # Perform a single point on the full quantum dot
-    tot.job_single_point(job, s, name='BDE_single_point')
+    tot.job_single_point(job, s, name=name.format('QD_sp'))
     E_tot = tot.properties.energy.E
     if E_tot is np.nan:
-        print(get_time() + 'WARNING: The BDE quantum dot single point failed, \
-              skipping further jobs')
+        print(get_time() + 'WARNING: The BDE quantum dot single point failed, '
+              'skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Perform a single point on the quantum dot(s) - XYn
     for mol in core:
-        mol.job_single_point(job, s, name='BDE_single_point')
+        mol.job_single_point(job, s, name=name.format('QD-XYn_sp'))
     E_core = np.array([mol.properties.energy.E for mol in core])
 
     # Calculate and return dE
@@ -351,30 +359,38 @@ def get_bde_ddG(tot: Molecule,
                 job: Callable,
                 s: Settings) -> np.ndarray:
     """Calculate the bond dissociation energy: dE = dE(mopac) + (dG(uff) - dE(uff))."""
+    name = 'G_{}.' + tot.properties.name
+
     # Optimize XYn
     s.input.ams.Constraints.Atom = lig.properties.indices
-    lig.job_freq(job, s, name='BDE_frequency_analysis')
+    lig.job_freq(job, s, name=name.format('XYn_freq'))
+
+    # Extract energies
     G_lig = lig.properties.energy.G
     E_lig = lig.properties.energy.E
     if np.nan in (E_lig, G_lig):
-        print(get_time() + 'WARNING: The BDE XYn geometry optimization + freq analysis failed, \
-              skipping further jobs')
+        print(get_time() + 'WARNING: The BDE XYn geometry optimization + freq analysis failed, '
+              'skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Optimize the full quantum dot
     s.input.ams.Constraints.Atom = tot.properties.indices
-    tot.job_freq(job, s, name='BDE_frequency_analysis')
+    tot.job_freq(job, s, name=name.format('QD_freq'))
+
+    # Extract energies
     G_tot = tot.properties.energy.G
     E_tot = tot.properties.energy.E
     if np.nan in (E_tot, G_tot):
-        print(get_time() + 'WARNING: The BDE quantum dot geometry optimization + freq analysis \
-              failed, skipping further jobs')
+        print(get_time() + 'WARNING: The BDE quantum dot geometry optimization + freq analysis '
+              'failed, skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Optimize the quantum dot(s) - XYn
     for mol in core:
         s.input.ams.Constraints.Atom = mol.properties.indices
-        mol.job_freq(job, s, name='BDE_frequency_analysis')
+        mol.job_freq(job, s, name=name.format('QD-XYn_freq'))
+
+    # Extract energies
     G_core = np.array([mol.properties.energy.G for mol in core])
     E_core = np.array([mol.properties.energy.E for mol in core])
 
@@ -383,3 +399,71 @@ def get_bde_ddG(tot: Molecule,
     dE = (E_lig + E_core) - E_tot
     ddG = dG - dE
     return ddG
+
+
+def restart_init(path: str,
+                 folder: str,
+                 hashing: Optional[str] = 'input') -> None:
+    """A wrapper around the plams.init_ function; used for importing one or more previous jobs.
+
+    :func:`init_cat` will load all pickled .dill files into the :class:`JobManager` instance
+    initiated by :func:`init`.
+
+    .. _plams.init: https://www.scm.com/doc/plams/components/functions.html#scm.plams.core.functions.init
+
+    Paramaters
+    ----------
+    path : str
+        The path to the PLAMS workdir.
+
+    folder : str
+        The name of the PLAMS workdir.
+
+    hashing : str
+        The type of hashing used by the PLAMS :class:`JobManager`.
+        Accepted values are: ``"input"``, ``"runscript"``, ``"input+runscript"`` and ``None``.
+
+    """  # noqa
+    attr_dict = {
+        'path': path,
+        'foldername': folder,
+        'workdir': join(path, folder),
+        'logfile': join(path, folder, 'logfile'),
+        'input': join(path, folder, 'input')
+    }
+
+    # Create a job manager
+    settings = Settings({'counter_len': 3, 'hashing': hashing, 'remove_empty_directories': True})
+    manager = JobManager(settings)
+    for k, v in attr_dict.items():
+        setattr(manager, k, v)
+
+    # Change the default job manager
+    init()
+    rmtree(config.default_jobmanager.workdir)
+    config.default_jobmanager = manager
+
+    # Update the default job manager with previous Jobs
+    for folder in listdir(manager.workdir):
+        dill_file = join(manager.workdir, folder, folder + '.dill')
+        if not isfile(dill_file):  # Not a .dill file; move along
+            continue
+
+        # Update JobManager.hashes
+        job = manager.load_job(dill_file)
+
+        # Update JobManager.jobs
+        manager.jobs.append(job)
+
+        # Grab the job name
+        name, num = folder.rsplit('.', 1)
+        try:
+            int(num)
+        except ValueError:  # Jobname is not appended with a number
+            name = folder
+
+        # Update JobManager.names
+        try:
+            manager.names[name] += 1
+        except KeyError:
+            manager.names[name] = 1

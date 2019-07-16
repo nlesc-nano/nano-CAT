@@ -38,6 +38,8 @@ from scipy.spatial.distance import cdist
 
 from scm.plams import (Molecule, Atom, Settings)
 
+from .guess_core_dist import guess_core_core_dist
+
 __all__ = ['dissociate_ligand']
 
 
@@ -65,6 +67,10 @@ def dissociate_ligand(mol: Molecule,
     cc_dist = settings.qd.dissociate.core_core_dist
     lc_dist = settings.qd.dissociate.lig_core_dist
     top_dict = settings.qd.dissociate.topology
+
+    # Parameter not provided, just guess it
+    if not cc_dist:
+        cc_dist = guess_core_core_dist(mol, atnum)
 
     # Convert **mol** to an XYZ array
     mol.set_atoms_id()

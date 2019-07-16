@@ -1,4 +1,22 @@
-"""A module for calculating radial distribution functions."""
+"""
+nanoCAT.bde.guess_core_dist
+===========================
+
+A module for estimating ideal values for ``["optional"]["qd"]["bde"]["core_core_dist"]`` .
+
+Index
+-----
+.. currentmodule:: nanoCAT.bde.guess_core_dist
+.. autosummary::
+    guess_core_core_dist
+    get_rdf
+
+API
+---
+.. autofunction:: guess_core_core_dist
+.. autofunction:: get_rdf
+
+"""
 
 from typing import Union
 
@@ -67,8 +85,9 @@ def guess_core_core_dist(mol: Molecule,
     scipy.signal.savgol_filter_: Apply a Savitzky-Golay filter to an array.
 
     """  # noqa
-    # Create a disance matrix
     atnum = to_atnum(atom)
+
+    # Create a disance matrix
     ar = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))
     if not ar.any():
         raise MoleculeError(f"No atoms with atomic number/symbol '{atom}' in 'mol'")

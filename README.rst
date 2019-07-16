@@ -32,18 +32,14 @@ Dependencies installation
 
 Using the conda environment the following packages should be installed:
 
-.. code:: bash
-
-    conda install -y --name CAT --channel conda-forge rdkit
+- rdkit_: ``conda install -y --name CAT --channel conda-forge rdkit``
 
 
 Package installation
 --------------------
 Finally, install **Nano-CAT** using pip:
 
-.. code:: bash
-
-    pip install git+https://github.com/nlesc-nano/nano-CAT@master --upgrade
+- **Nano-CAT**: ``pip install git+https://github.com/nlesc-nano/nano-CAT@master --upgrade``
 
 Now you are ready to use **Nano-CAT**.
 

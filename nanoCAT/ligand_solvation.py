@@ -35,7 +35,7 @@ API
 """
 
 import os
-import shutil
+from shutil import rmtree
 from itertools import product
 from os.path import (join, dirname)
 from typing import (Optional, Sequence, Callable, Container, Tuple, List, Iterable)
@@ -50,7 +50,8 @@ from scm.plams.interfaces.adfsuite.adf import ADFJob
 
 import qmflows
 
-from CAT.utils import (get_time, type_to_string, get_template)
+from CAT.utils import (get_time, type_to_string, get_template, restart_init)
+from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
 
 from .crs import CRSJob
@@ -125,6 +126,7 @@ def start_crs_jobs(ligand_df: SettingsDataFrame,
     """Loop over all molecules in ``ligand_df.loc[idx]`` and perform COSMO-RS calculations."""
     # Unpack arguments
     settings = ligand_df.settings.optional
+    keep_files = settings.ligand.crs.keep_files
     path = settings.ligand.dirname
     j1 = settings.ligand.crs.job1
     j2 = settings.ligand.crs.job2
@@ -132,8 +134,9 @@ def start_crs_jobs(ligand_df: SettingsDataFrame,
     s2 = settings.ligand.crs.s2
 
     # Start the main loop
-    init(path=path, folder='ligand_solvation')
+    restart_init(path=path, folder='ligand_solvation')
     for i, mol in ligand_df[MOL][idx].iteritems():
+        mol.round_coords()
         mol.properties.job_path = []
 
         # Calculate the COSMO surface
@@ -143,6 +146,9 @@ def start_crs_jobs(ligand_df: SettingsDataFrame,
         e_and_gamma = get_solv(mol, solvent_list, coskf, job=j2, s=s2)
         ligand_df.loc[i, 'E_solv'], ligand_df.loc[i, 'gamma'] = e_and_gamma
     finish()
+
+    if not keep_files:
+        rmtree(join(path, 'ligand_solvation'))
 
 
 def update_columns(ligand_df: SettingsDataFrame,
@@ -307,9 +313,9 @@ def get_solv(mol: Molecule,
     # Delete all mopac and cosmo-rs files if keep_files=False
     if not keep_files:
         mopac = dirname(s.input.Compound._h)
-        shutil.rmtree(mopac)
+        rmtree(mopac)
         for job in jobs:
-            shutil.rmtree(job.path)
+            rmtree(job.path)
 
     if 'job_path' not in mol.properties:
         mol.properties.job_path = []

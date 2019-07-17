@@ -34,7 +34,7 @@ from scm.plams.tools.geometry import axis_rotation_matrix
 
 from CAT.jobs import job_geometry_opt
 from CAT.utils import get_template
-from CAT.mol_utils import to_atnum
+from CAT.mol_utils import (to_atnum, round_coords)
 
 __all__ = ['get_xyn']
 
@@ -124,6 +124,7 @@ def get_xyn(mol_ref: Molecule,
     # Perform a constrained UFF optimization on XYn with X frozen
     if opt:
         _preoptimize(XYn)
+    XYn.round_coords()
 
     # Update the constrains; constrain only the anchor atoms
     X_idx = 1 + XYn.atoms.index(X)
@@ -202,8 +203,7 @@ def _preoptimize(mol: Molecule):
     s = get_template('qd.yaml')['UFF']
     s.input.ams.constraints.atom = mol.properties.indices
     s.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
-    name = f'E_XYn_preopt.{mol.properties.name}'
-    mol.job_geometry_opt(AMSJob, s, name=name)
+    mol.job_geometry_opt(AMSJob, s, name='E_XYn_preopt')
 
 
 def _parse_ion(ion: Union[Molecule, str, int]):

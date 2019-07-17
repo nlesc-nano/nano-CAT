@@ -28,7 +28,9 @@ API
 
 """
 
+from shutil import rmtree
 from typing import (Callable, Optional, Iterable)
+from os.path import join
 from itertools import product
 
 import numpy as np
@@ -118,6 +120,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
+    keep_files = settings.qd.keep_files
     path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     job2 = settings.qd.dissociate.job2
@@ -173,6 +176,8 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
             mol.properties.job_path += m.properties.pop('job_path')
         print()
     finish()
+    if not keep_files:
+        rmtree(join(path, 'BDE'))
 
     qd_df['BDE dG'] = qd_df['BDE dE'] + qd_df['BDE ddG']
 
@@ -201,6 +206,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
+    keep_files = settings.qd.keep_files
     path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     s1 = settings.qd.dissociate.s1
@@ -252,6 +258,8 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
     finish()
+    if not keep_files:
+        rmtree(join(path, 'BDE'))
 
     job_settings = []
     for mol in qd_df[MOL]:

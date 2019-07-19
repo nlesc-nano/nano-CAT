@@ -29,9 +29,10 @@ from typing import (Tuple, Union)
 
 import numpy as np
 
-from scm.plams import (MoleculeError, Molecule, Atom, AMSJob, init, finish)
+from scm.plams import (MoleculeError, Molecule, Atom, AMSJob)
 from scm.plams.tools.geometry import axis_rotation_matrix
 
+from CAT.logger import logger
 from CAT.jobs import job_geometry_opt
 from CAT.utils import get_template
 from CAT.mol_utils import (to_atnum, round_coords)
@@ -239,7 +240,9 @@ def _parse_ion(ion: Union[Molecule, str, int]):
             ret = XYn.copy()
             return ret, ret[i]
 
-        raise MoleculeError("No atoms were found in 'ion' with a non-zero charge")
+        err = "No atoms were found in 'ion' with a non-zero charge"
+        logger.critical('MoleculeError: ' + "No atoms were found in 'ion' with a non-zero charge")
+        raise MoleculeError(err)
 
     else:
         # Ion is an atomic number or symbol
@@ -272,7 +275,10 @@ def _get_anchor(mol: Molecule) -> Tuple[int, Atom]:
     for i, at in enumerate(mol.atoms, 1):
         if at.properties.anchor:
             return i, at
-    raise MoleculeError("No atom with the Atom.properties.anchor found")
+
+    err = "No atom with the Atom.properties.anchor found"
+    logger.critical('MoleculeError: ' + err)
+    raise MoleculeError(err)
 
 
 def _get_ligand(mol: Molecule) -> Molecule:

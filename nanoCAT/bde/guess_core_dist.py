@@ -26,6 +26,7 @@ from scipy.signal import savgol_filter
 
 from scm.plams import Molecule, MoleculeError
 
+from CAT.logger import logger
 from CAT.mol_utils import to_atnum
 
 
@@ -90,7 +91,9 @@ def guess_core_core_dist(mol: Molecule,
     # Create a disance matrix
     ar = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))
     if not ar.any():
-        raise MoleculeError(f"No atoms with atomic number/symbol '{atom}' in 'mol'")
+        err = f"No atoms with atomic number/symbol '{atom}' in 'mol'"
+        logger.critical('MoleculeError: ' + err)
+        raise MoleculeError(err)
     dist = cdist(ar, ar)
 
     # Create and smooth the RDF
@@ -111,7 +114,9 @@ def guess_core_core_dist(mol: Molecule,
         idx = (0 - j) / (k - j)
         return dr * (idx_max + i + idx)
 
-    raise ValueError("No minimum found in the (smoothed) radial distribution function of 'mol'")
+    err = "No minimum found in the (smoothed) radial distribution function of 'mol'"
+    logger.critical('ValueError: ' + err)
+    raise ValueError(err)
 
 
 def get_rdf(dist: np.ndarray,

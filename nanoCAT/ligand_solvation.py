@@ -45,12 +45,13 @@ import pandas as pd
 
 from scm.plams import (Settings, Molecule, Results)
 from scm.plams.core.jobrunner import JobRunner
-from scm.plams.core.functions import (init, finish)
+from scm.plams.core.functions import finish
 from scm.plams.interfaces.adfsuite.adf import ADFJob
 
 import qmflows
 
-from CAT.utils import (get_time, type_to_string, get_template, restart_init)
+from CAT.logger import logger
+from CAT.utils import (type_to_string, get_template, restart_init)
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
 
@@ -305,8 +306,7 @@ def get_solv(mol: Molecule,
             E_solv.append(result.get_energy())
             Gamma.append(result.get_activity_coefficient())
         except ValueError:
-            print(get_time() + 'WARNING: Failed to retrieve COSMO-RS results of ' +
-                  results.job.name)
+            logger.error(f'Failed to retrieve COSMO-RS results of {results.job.name}')
             E_solv.append(np.nan)
             Gamma.append(np.nan)
 
@@ -384,5 +384,5 @@ def get_coskf(results: Results,
         for ext in extensions:
             if ext in file:
                 return results[file]
-    print(get_time() + 'WARNING: Failed to retrieve COSMO surface charges of ' + results.job.name)
+    logger.error(f'Failed to retrieve COSMO surface charges of {results.job.name}')
     return None

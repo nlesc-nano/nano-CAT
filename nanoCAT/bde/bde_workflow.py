@@ -43,8 +43,9 @@ from scm.plams.core.settings import Settings
 
 import qmflows
 
+from CAT.logger import logger
 from CAT.jobs import (job_single_point, job_geometry_opt, job_freq)
-from CAT.utils import (get_time, type_to_string, restart_init)
+from CAT.utils import (type_to_string, restart_init)
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
 
@@ -174,7 +175,6 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
-        print()
     finish()
     if not keep_files:
         rmtree(join(path, 'BDE'))
@@ -338,16 +338,14 @@ def get_bde_dE(tot: Molecule,
 
     E_lig = lig.properties.energy.E
     if E_lig is np.nan:
-        print(get_time() + 'WARNING: The BDE XYn geometry optimization failed, skipping further '
-              'jobs')
+        logger.error('The BDE XYn geometry optimization failed, skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Perform a single point on the full quantum dot
     tot.job_single_point(job, s, name='E_QD_sp')
     E_tot = tot.properties.energy.E
     if E_tot is np.nan:
-        print(get_time() + 'WARNING: The BDE quantum dot single point failed, '
-              'skipping further jobs')
+        logger.error('The BDE quantum dot single point failed, skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Perform a single point on the quantum dot(s) - XYn
@@ -374,8 +372,8 @@ def get_bde_ddG(tot: Molecule,
     G_lig = lig.properties.energy.G
     E_lig = lig.properties.energy.E
     if np.nan in (E_lig, G_lig):
-        print(get_time() + 'WARNING: The BDE XYn geometry optimization + freq analysis failed, '
-              'skipping further jobs')
+        logger.error('The BDE XYn geometry optimization + freq analysis failed, '
+                     'skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Optimize the full quantum dot
@@ -386,8 +384,8 @@ def get_bde_ddG(tot: Molecule,
     G_tot = tot.properties.energy.G
     E_tot = tot.properties.energy.E
     if np.nan in (E_tot, G_tot):
-        print(get_time() + 'WARNING: The BDE quantum dot geometry optimization + freq analysis '
-              'failed, skipping further jobs')
+        logger.error('The BDE quantum dot geometry optimization + freq analysis '
+                     'failed, skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Optimize the quantum dot(s) - XYn

@@ -50,12 +50,14 @@ from scm.plams.interfaces.adfsuite.adf import ADFJob
 
 import qmflows
 
-from CAT.logger import logger
+import CAT
+from CAT.jobs import (job_single_point, _get_name)
 from CAT.utils import (type_to_string, get_template, restart_init)
+from CAT.logger import logger
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
 
-from .crs import CRSJob
+from .crs import CRSJob, CRSResults
 
 try:
     from dataCAT import Database
@@ -104,14 +106,18 @@ def init_solv(ligand_df: SettingsDataFrame,
 
     # Check if the calculation has been done already
     if not overwrite and read:
+        logger.info('Pulling ligand solvation energies and activity coefficients from the database')
         data.from_csv(ligand_df, database='ligand', get_mol=False)
 
     # Run COSMO-RS
     idx = ligand_df[['E_solv', 'gamma']].isna().all(axis='columns')
     if idx.any():
+        logger.info('Starting ligand solvation calculations')
         start_crs_jobs(ligand_df, idx, solvent_list)
         ligand_df[JOB_SETTINGS_CRS] = get_job_settings(ligand_df)
+        logger.info('Finishing ligand solvation calculations\n')
     else:
+        logger.info('No new ligands found for ligand solvation calculations\n')
         return None  # No new molecules here; move along
 
     # Update the database
@@ -162,10 +168,10 @@ def update_columns(ligand_df: SettingsDataFrame,
     return columns
 
 
-def get_solvent_list(solvent_list: Optional[Sequence[str]]) -> Sequence[str]:
+def get_solvent_list(solvent_list: Optional[Sequence[str]] = None) -> Sequence[str]:
     """Construct the list of solvents."""
     if solvent_list is None:
-        coskf_path = join(join(dirname(dirname(__file__)), 'data'), 'coskf')
+        coskf_path = join(CAT.__path__[0], 'data', 'coskf')
         solvent_list = [join(coskf_path, solv) for solv in os.listdir(coskf_path) if
                         solv not in ('__init__.py', 'README.rst')]
     solvent_list.sort()
@@ -240,8 +246,16 @@ def get_surface_charge(mol: Molecule,
 
     s.runscript.post = '$ADFBIN/cosmo2kf "mopac.cos" "mopac.coskf"'
     results = mol.job_single_point(job, s, ret_results=True)
-    results.wait()
     return get_coskf(results)
+
+
+def _crs_run(job: CRSJob,
+             name: str) -> CRSResults:
+    """Call the :meth:`CRSJob.run` on **job**, returning a :class:`CRSResults` instance."""
+    _name = _get_name(job.name)
+    logger.info(f'{job.__class__.__name__}: {name} activity coefficient calculation '
+                f'({_name}) has started')
+    return job.run(jobrunner=JobRunner(parallel=True))
 
 
 def get_solv(mol: Molecule,
@@ -288,25 +302,29 @@ def get_solv(mol: Molecule,
     s.ignore_molecule = True
     s_list = []
     for solv in solvent_list:
-        s_tmp = s.copy()
-        s_tmp.name = solv.rsplit('.', 1)[0].rsplit('/', 1)[-1]
-        s_tmp.input.compound._h = solv
-        s_list.append(s_tmp)
+        _s = s.copy()
+        _s.name = solv.rsplit('.', 1)[0].rsplit(os.sep, 1)[-1]
+        _s.input.compound._h = solv
+        s_list.append(_s)
 
     # Run the job
-    jobs = [CRSJob(settings=s, name=s.name) for s in s_list]
-    results = [j.run(jobrunner=JobRunner(parallel=True)) for j in jobs]
+    mol_name = mol.properties.name
+    job_list = [CRSJob(settings=s, name=s.name) for s in s_list]
+    results_list = [_crs_run(job, mol_name) for job in job_list]
 
     # Extract solvation energies and activity coefficients
     E_solv = []
     Gamma = []
-    for result in results:
-        result.wait()
+    for results in results_list:
+        results.wait()
         try:
-            E_solv.append(result.get_energy())
-            Gamma.append(result.get_activity_coefficient())
+            E_solv.append(results.get_energy())
+            Gamma.append(results.get_activity_coefficient())
+            logger.info(f'{results.job.__class__.__name__}: {mol_name} activity coefficient '
+                        f'calculation ({results.job.name}) is successful')
         except ValueError:
-            logger.error(f'Failed to retrieve COSMO-RS results of {results.job.name}')
+            logger.error(f'{results.job.__class__.__name__}: {mol_name} activity coefficient '
+                         f'calculation ({results.job.name}) has failed')
             E_solv.append(np.nan)
             Gamma.append(np.nan)
 
@@ -314,12 +332,12 @@ def get_solv(mol: Molecule,
     if not keep_files:
         mopac = dirname(s.input.Compound._h)
         rmtree(mopac)
-        for job in jobs:
+        for job in job_list:
             rmtree(job.path)
 
     if 'job_path' not in mol.properties:
         mol.properties.job_path = []
-    mol.properties.job_path += [join(j.path, j.name + '.in') for j in jobs]
+    mol.properties.job_path += [join(job.path, job.name + '.in') for job in job_list]
 
     # Return the solvation energies and activity coefficients as dict
     return E_solv, Gamma
@@ -364,7 +382,7 @@ def get_surface_charge_adf(mol: Molecule,
 
 
 def get_coskf(results: Results,
-              extensions: Container[str] = ['.coskf', '.t21']) -> Optional[str]:
+              extensions: Container[str] = ('.coskf', '.t21')) -> Optional[str]:
     """Return the file in **results** containing the COSMO surface.
 
     Parameters

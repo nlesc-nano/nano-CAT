@@ -29,7 +29,7 @@ from typing import (Tuple, Union)
 
 import numpy as np
 
-from scm.plams import (MoleculeError, Molecule, Atom, AMSJob, init, finish)
+from scm.plams import (MoleculeError, Molecule, Atom, AMSJob)
 from scm.plams.tools.geometry import axis_rotation_matrix
 
 from CAT.jobs import job_geometry_opt
@@ -272,6 +272,7 @@ def _get_anchor(mol: Molecule) -> Tuple[int, Atom]:
     for i, at in enumerate(mol.atoms, 1):
         if at.properties.anchor:
             return i, at
+
     raise MoleculeError("No atom with the Atom.properties.anchor found")
 
 

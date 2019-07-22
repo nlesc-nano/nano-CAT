@@ -27,6 +27,7 @@ import scm.plams.interfaces.molecule.rdkit as molkit
 import rdkit
 from rdkit.Chem import AllChem
 
+from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
 try:
     from dataCAT import Database
@@ -60,6 +61,7 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     overwrite = DATA_CAT and 'qd' in settings.database.overwrite
     write = DATA_CAT and 'qd' in settings.database.write
     data = Database(settings.database.dirname, **settings.database.mongodb)
+    logger.info('Starting ligand activation strain analysis')
 
     # Prepare columns
     columns = [ASA_INT, ASA_STRAIN, ASA_E]
@@ -68,6 +70,7 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
 
     # Fill columns
     qd_df['ASA'] = get_asa_energy(qd_df[MOL])
+    logger.info('Finishing ligand activation strain analysis')
 
     # Calculate E_int, E_strain and E
     if write:
@@ -100,6 +103,9 @@ def get_asa_energy(mol_series: pd.Series) -> np.ndarray:
     ret = np.zeros((len(mol_series), 4))
 
     for i, mol in enumerate(mol_series):
+        logger.info(f'UFFGetMoleculeForceField: {mol.properties.name} activation strain '
+                    'analysis has started')
+
         mol_cp = mol.copy()
         rd_uff = AllChem.UFFGetMoleculeForceField
 
@@ -123,6 +129,9 @@ def get_asa_energy(mol_series: pd.Series) -> np.ndarray:
 
         # Update ret with the new activation strain terms
         ret[i] = E_no_frag, E_frag, E_opt, len(mol_frag)
+
+        logger.info(f'UFFGetMoleculeForceField: {mol.properties.name} activation strain '
+                    'analysis is successful')
 
     # Post-process and return
     ret[:, 0] -= ret[:, 1]

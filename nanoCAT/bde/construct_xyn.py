@@ -123,6 +123,7 @@ def get_xyn(mol_ref: Molecule,
 
     # Perform a constrained UFF optimization on XYn with X frozen
     if opt:
+        XYn.round_coords()
         _preoptimize(XYn)
     XYn.round_coords()
 
@@ -132,7 +133,7 @@ def get_xyn(mol_ref: Molecule,
     XYn.properties.indices = [X_idx] + [start + i*len(lig) for i in range(lig_count)]
 
     # Delete bonds between X and Yn; they served their purpose during :func:`_preoptimize`
-    for bond in range(lig_count):
+    for _ in range(lig_count):
         XYn.delete_bond(XYn.bonds[-1])
 
     return XYn

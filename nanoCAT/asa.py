@@ -29,11 +29,6 @@ from rdkit.Chem import AllChem
 
 from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
-try:
-    from dataCAT import Database
-    DATA_CAT = True
-except ImportError:
-    DATA_CAT = False
 
 __all__ = ['init_asa']
 
@@ -58,9 +53,9 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
-    overwrite = DATA_CAT and 'qd' in settings.database.overwrite
-    write = DATA_CAT and 'qd' in settings.database.write
-    data = Database(settings.database.dirname, **settings.database.mongodb)
+    db = settings.database.db
+    overwrite = db and 'qd' in settings.database.overwrite
+    write = db and 'qd' in settings.database.write
     logger.info('Starting ligand activation strain analysis')
 
     # Prepare columns
@@ -76,11 +71,11 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     if write:
         recipe = Settings()
         recipe['ASA 1'] = {'key': 'RDKit_' + rdkit.__version__, 'value': 'UFF'}
-        data.update_csv(qd_df,
-                        columns=[SETTINGS1]+columns,
-                        job_recipe=recipe,
-                        database='QD',
-                        overwrite=overwrite)
+        db.update_csv(qd_df,
+                      columns=[SETTINGS1]+columns,
+                      job_recipe=recipe,
+                      database='QD',
+                      overwrite=overwrite)
 
 
 def get_asa_energy(mol_series: pd.Series) -> np.ndarray:

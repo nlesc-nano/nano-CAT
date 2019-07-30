@@ -1,12 +1,12 @@
 .. image:: https://img.shields.io/badge/python-3.6-blue.svg
    :target: https://www.python.org
-   
+
 .. image:: https://img.shields.io/badge/python-3.7-blue.svg
    :target: https://www.python.org
 
 
 ##############
-Nano-CAT 0.1.3
+Nano-CAT 0.1.4
 ##############
 
 **Nano-CAT** is a collection of tools for the analysis of nanocrystals,

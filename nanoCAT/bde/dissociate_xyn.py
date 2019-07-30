@@ -37,6 +37,7 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 from scm.plams import (Molecule, Atom, Settings)
+import scm.plams.interfaces.molecule.rdkit as molkit
 
 from .guess_core_dist import guess_core_core_dist
 
@@ -179,10 +180,10 @@ def filter_lig_core2(xyz_array: np.ndarray,
         An array of all core atoms (X).
 
     max_dist : float
-        The maximum distance for considering XYn pairs.
+        The maximum distance for considering :math:`XY_{n}` pairs.
 
     lig_count : int
-        The number of ligand (*n*) in XYn.
+        The number of ligand (*n*) in :math:`XY_{n}`.
 
     Returns
     -------
@@ -214,19 +215,19 @@ def remove_ligands(mol: Molecule,
     for core in combinations_dict:
         for lig in combinations_dict[core]:
             mol_tmp = mol.copy()
+            prop = mol_tmp.properties = Settings()
 
-            mol_tmp.properties = Settings()
-            mol_tmp.properties.core_topology = f'{str(mol[core].properties.topology)}_{core}'
-            mol_tmp.properties.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber
-                                                     for i in lig])
-            mol_tmp.properties.df_index = mol_tmp.properties.core_topology
-            mol_tmp.properties.df_index += ' '.join(str(i) for i in mol_tmp.properties.lig_residue)
+            prop.indices = indices
+            prop.job_path = []
+            prop.df_index = mol_tmp.properties.core_topology
+            prop.df_index += ' '.join(str(i) for i in mol_tmp.properties.lig_residue)
+            prop.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber for i in lig])
+            prop.core_topology = f'{str(mol[core].properties.topology)}_{core}'
 
             delete_idx = sorted([core] + list(chain.from_iterable(lig)), reverse=True)
             for i in delete_idx:
                 mol_tmp.delete_atom(mol_tmp[i])
-            mol_tmp.properties.indices = indices
-            mol_tmp.properties.job_path = []
+
             ret.append(mol_tmp)
     return ret
 
@@ -336,10 +337,10 @@ def filter_lig_core(xyz_array: np.ndarray,
         An array of all core atoms (X).
 
     max_dist : float
-        The maximum distance for considering XYn pairs.
+        The maximum distance for considering :math:`XY_{n}` pairs.
 
     lig_count : int
-        The number of ligand (*n*) in XYn.
+        The number of ligand (*n*) in :math:`XY_{n}`.
 
     Returns
     -------
@@ -366,13 +367,13 @@ def get_lig_core_combinations(xy: np.ndarray,
     Parameters
     ----------
     xy : :math:`m*2` |np.ndarray|_ [|np.int64|_]
-        An array with the indices of all *m* core/ligand pairs.
+        An array with the indices of all :math:`m` core/ligand pairs.
 
     res_list : |list|_ [|tuple|_ [|plams.Atom|_]]
         A list of PLAMS atoms, each nested tuple representing all atoms within a given residue.
 
     lig_count : int
-        The number of ligand (*n*) in XYn.
+        The number of ligand (*n*) in :math:`XY_{n}`.
 
     Returns
     -------
@@ -387,3 +388,21 @@ def get_lig_core_combinations(xy: np.ndarray,
         except KeyError:
             dict_[res_list[0][core].id] = [[at.id for at in res_list[lig]]]
     return {k: combinations(v, lig_count) for k, v in dict_.items()}
+
+
+def find_polyatomic_ions(mol: Molecule,
+                         ion: Molecule) -> None:
+    """Placeholder."""
+    rdmol = molkit.to_rdmol(mol)
+    rdmol_ion = molkit.to_rdmol(ion)
+
+    _matches = np.array(rdmol.GetSubstructMatches(rdmol_ion, useChirality=True))
+    _matches += 1
+    matches = _matches.tolist()
+
+    for idx_list in matches:
+        at_list = [mol[i] for i in idx_list]
+        for at in at_list:
+            if at.properties.charge:
+                at.properties.poly_ion = at_list
+                break

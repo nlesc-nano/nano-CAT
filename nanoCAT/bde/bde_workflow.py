@@ -52,12 +52,6 @@ from CAT.settings_dataframe import SettingsDataFrame
 from .construct_xyn import get_xyn
 from .dissociate_xyn import (dissociate_ligand, dissociate_ligand2)
 
-try:
-    from dataCAT import Database
-    DATA_CAT = True
-except ImportError:
-    DATA_CAT = False
-
 __all__ = ['init_bde']
 
 # Aliases for pd.MultiIndex columns
@@ -84,22 +78,21 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
-    db_path = settings.database.dirname
-    overwrite = DATA_CAT and 'qd' in settings.database.overwrite
-    read = DATA_CAT and 'qd' in settings.database.read
+    db = settings.database.db
+    overwrite = db and 'qd' in settings.database.overwrite
+    read = db and 'qd' in settings.database.read
     job2 = settings.qd.dissociate.job2
     s2 = settings.qd.dissociate.s2
 
     # Check if the calculation has been done already
     if not overwrite and read:
         logger.info('Pulling ligand dissociation energies from the database')
-        data = Database(db_path, **settings.database.mongodb)
-        with data.OpenCsvQd(data.csv_qd, write=False) as db:
+        with db.OpenCsvQd(db.csv_qd, write=False) as db:
             key_ar = np.array(['BDE label', 'BDE dE', 'BDE dG', 'BDE ddG'])
             bool_ar = np.isin(key_ar, db.columns.levels[0])
             for i in db[key_ar[bool_ar]]:
                 qd_df[i] = np.nan
-            data.from_csv(qd_df, database='QD', get_mol=False)
+            db.from_csv(qd_df, database='QD', get_mol=False)
         qd_df.dropna(axis='columns', how='all', inplace=True)
 
     # Calculate the BDEs with thermochemical corrections
@@ -131,7 +124,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     ion = settings.qd.dissociate.core_atom
     lig_count = settings.qd.dissociate.lig_count
     core_index = settings.qd.dissociate.core_index
-    write = DATA_CAT and 'qd' in settings.database.write
+    write = settings.database.db and 'qd' in settings.database.write
 
     # Identify previously calculated results
     try:
@@ -217,7 +210,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     ion = settings.qd.dissociate.core_atom
     lig_count = settings.qd.dissociate.lig_count
     core_index = settings.qd.dissociate.core_index
-    write = DATA_CAT and 'qd' in settings.database.write
+    write = settings.database.db and 'qd' in settings.database.write
 
     # Identify previously calculated results
     try:
@@ -287,12 +280,10 @@ def _qd_to_db(qd_df: SettingsDataFrame,
               with_dg: bool = True) -> None:
     # Unpack arguments
     settings = qd_df.settings.optional
-    db_path = settings.database.dirname
-    overwrite = DATA_CAT and 'qd' in settings.database.overwrite
+    db = settings.database.db
+    overwrite = db and 'qd' in settings.database.overwrite
     j1 = settings.qd.dissociate.job1
     s1 = settings.qd.dissociate.s1
-
-    data = Database(db_path, **settings.database.mongodb)
 
     qd_df.sort_index(axis='columns', inplace=True)
     kwarg = {'database': 'QD', 'overwrite': overwrite}
@@ -308,7 +299,7 @@ def _qd_to_db(qd_df: SettingsDataFrame,
         column_tup = ('BDE label', 'BDE dE')
     kwarg['columns'] += [(i, j) for i, j in qd_df.columns if i in column_tup]
 
-    data.update_csv(qd_df[idx], **kwarg)
+    db.update_csv(qd_df[idx], **kwarg)
 
 
 def get_recipe(job1: Callable,

@@ -10,9 +10,9 @@ crs
 ---
 A module designed for running COSMO-RS Jobs.
 
-ligand_bde
-----------
-A module designed for the calculation of Bond Dissociation Energies (BDE).
+bde
+---
+Modules designed for the calculation of Bond Dissociation Energies (BDE).
 
 ligand_solvation
 ----------------

@@ -13,6 +13,12 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 .. _Database: https://cat.readthedocs.io/en/latest/7_database.html#class-api
 
 
+0.1.3
+*****
+
+* Lowered Python version requirement from >=3.7 to >=3.6.
+
+
 0.1.2
 *****
 

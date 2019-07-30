@@ -2,7 +2,7 @@
    :target: https://www.python.org
 
 ##############
-Nano-CAT 0.1.2
+Nano-CAT 0.1.3
 ##############
 
 **Nano-CAT** is a collection of tools for the analysis of nanocrystals,

@@ -9,6 +9,12 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 0.1.2
 *****
 
+* Lowered Python version requirement from >=3.7 to >=3.6.
+
+
+0.1.2
+*****
+
 * Introduced a proper logger (see https://github.com/nlesc-nano/CAT/issues/46 and
   https://github.com/nlesc-nano/CAT/pull/47).
 

@@ -87,10 +87,10 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
     # Check if the calculation has been done already
     if not overwrite and read:
         logger.info('Pulling ligand dissociation energies from the database')
-        with db.OpenCsvQd(db.csv_qd, write=False) as db:
+        with db.csv_qd.open(write=False) as db_df:
             key_ar = np.array(['BDE label', 'BDE dE', 'BDE dG', 'BDE ddG'])
-            bool_ar = np.isin(key_ar, db.columns.levels[0])
-            for i in db[key_ar[bool_ar]]:
+            bool_ar = np.isin(key_ar, db_df.columns.levels[0])
+            for i in db_df[key_ar[bool_ar]]:
                 qd_df[i] = np.nan
             db.from_csv(qd_df, database='QD', get_mol=False)
         qd_df.dropna(axis='columns', how='all', inplace=True)

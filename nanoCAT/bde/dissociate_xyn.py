@@ -137,18 +137,22 @@ def dissociate_ligand2(mol: Molecule,
 
     # Create a dictionary with core indices as keys and all combinations of 2 ligands as values
     res_list = gather_residues(mol)
-    xy = filter_lig_core2(xyz_array, idx_l, idx_c_old, l_count)
+    anchor_idx = get_anchor_idx(mol)
+    xy = filter_lig_core2(xyz_array, anchor_idx, idx_c_old, l_count)
     combinations_dict = get_combinations(xy, res_list, l_count)
 
     # Create and return new molecules
-    anchor_idx = get_anchor_idx(mol)
-    indices = [at.id for at in res_list[0][:-l_count]] + anchor_idx[:-l_count]
+    _anchor_idx = (1 + anchor_idx).tolist()
+    indices = [at.id for at in res_list[0][:-l_count]] + _anchor_idx[:-l_count]
     return remove_ligands(mol, combinations_dict, indices)
 
 
-def get_anchor_idx(mol: Molecule) -> List[int]:
+def get_anchor_idx(mol: Molecule) -> np.ndarray:
     """Create a list of (1-based) indices of all ligand anchor atoms."""
-    return [i for i in mol.properties.indices if mol[i].properties.pdb_info.ResidueName == 'LIG']
+    list_ = [i for i in mol.properties.indices if mol[i].properties.pdb_info.ResidueName == 'LIG']
+    ret = np.array(list_)
+    ret -= 1
+    return ret
 
 
 def gather_residues(mol: Molecule) -> List[List[Atom]]:
@@ -156,7 +160,8 @@ def gather_residues(mol: Molecule) -> List[List[Atom]]:
     res_count = mol[-1].properties.pdb_info.ResidueNumber - 1
     ret = [[]] * res_count
     for at in mol:
-        res_list[at.properties.pdb_info.ResidueNumber - 1].append(at)
+        i = at.properties.pdb_info.ResidueNumber - 1
+        ret[i].append(at)
     return ret
 
 

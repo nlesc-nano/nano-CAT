@@ -23,7 +23,8 @@ setup(
     author_email='b.f.van.beek@vu.nl',
     url='https://github.com/nlesc-nano/nano-CAT',
     packages=[
-        'nanoCAT'
+        'nanoCAT',
+        'nanoCAT.bde'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
     include_package_data=True,

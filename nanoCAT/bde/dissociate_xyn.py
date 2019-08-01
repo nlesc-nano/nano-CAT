@@ -37,7 +37,6 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 from scm.plams import (Molecule, Atom, Settings)
-import scm.plams.interfaces.molecule.rdkit as molkit
 
 from .guess_core_dist import guess_core_core_dist
 
@@ -210,11 +209,31 @@ def filter_lig_core2(xyz_array: np.ndarray,
     return xy
 
 
+def get_fragment(mol: Molecule, atom: Atom) -> List[int]:
+    ret = []
+    atom._visited = True
+
+    def dfs(at: Atom) -> None:
+        for bond in at.bonds:
+            at_new = bond.other_end(at)
+            if hasattr(at_new, '_visited'):
+                continue
+            ret.append(at_new.id)
+            at_new._visited = True
+            dfs(at_new)
+
+    dfs(atom)
+    for at in mol:
+        del at._visited
+    return ret
+
+
 def remove_ligands(mol: Molecule,
                    combinations_dict: dict,
                    indices: Sequence[int]) -> List[Molecule]:
     """ """
     ret = []
+    mol.set_atoms_id()
     for core in combinations_dict:
         for lig in combinations_dict[core]:
             mol_tmp = mol.copy()
@@ -227,11 +246,18 @@ def remove_ligands(mol: Molecule,
             prop.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber for i in lig])
             prop.core_topology = f'{str(mol[core].properties.topology)}_{core}'
 
-            delete_idx = sorted([core] + list(chain.from_iterable(lig)), reverse=True)
+            core_at = mol_tmp[core]
+            delete_idx = list(chain.from_iterable(lig))
+            delete_idx += core
+            if core_at.bonds:
+                delete_idx += get_fragment(mol_tmp, core_at)
+            delete_idx.sort(reverse=True)
+
             for i in delete_idx:
                 mol_tmp.delete_atom(mol_tmp[i])
 
             ret.append(mol_tmp)
+    mol.unset_atoms_id()
     return ret
 
 
@@ -391,21 +417,3 @@ def get_combinations(xy: np.ndarray,
         except KeyError:
             dict_[res_list[0][core].id] = [[at.id for at in res_list[lig]]]
     return {k: combinations(v, lig_count) for k, v in dict_.items()}
-
-
-def find_polyatomic_ions(mol: Molecule,
-                         ion: Molecule) -> None:
-    """Placeholder."""
-    rdmol = molkit.to_rdmol(mol)
-    rdmol_ion = molkit.to_rdmol(ion)
-
-    _matches = np.array(rdmol.GetSubstructMatches(rdmol_ion, useChirality=True))
-    _matches += 1
-    matches = _matches.tolist()
-
-    for idx_list in matches:
-        at_list = [mol[i] for i in idx_list]
-        for at in at_list:
-            if at.properties.charge:
-                at.properties.poly_ion = at_list
-                break

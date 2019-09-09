@@ -1,4 +1,4 @@
-sphinx>=2.o
+sphinx>=2.0
 sphinx_rtd_theme
 sphinx-autodoc-typehints
 numpy

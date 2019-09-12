@@ -42,7 +42,7 @@ setup(
         'scientific-workflows'
     ],
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Chemistry',
         'License :: OSI Approved :: GNU Lesser General Public License',
@@ -56,7 +56,7 @@ setup(
         'numpy',
         'scipy',
         'pandas',
-        'plams@git+https://github.com/SCM-NV/PLAMS@release',
+        'plams@git+https://github.com/SCM-NV/PLAMS@Minor-changes',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
         'CAT@git+https://github.com/nlesc-nano/CAT@master'
     ],

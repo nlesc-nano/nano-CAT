@@ -52,13 +52,12 @@ def get_bonds(mol: Molecule) -> np.ndarray:
         return ret
 
     # Sort horizontally
-    for i, (j, k) in enumerate(ret):
-        if j > k:
-            ret[i] = (k, j)
+    idx1 = np.argsort(ret, axis=1)
+    ret[:] = np.take_along_axis(ret, idx1, axis=1)
 
     # Sort and return vertically
-    idx = np.argsort(ret, axis=0)[:, 0]
-    return ret[idx]
+    idx2 = np.argsort(ret, axis=0)[:, 0]
+    return ret[idx2]
 
 
 def get_angles(mol: Molecule) -> np.ndarray:
@@ -88,17 +87,17 @@ def get_angles(mol: Molecule) -> np.ndarray:
                 angle.append((at1.id, at2.id, at3.id))
 
     ret = np.array(angle, dtype=int, ndmin=2)
+    mol.unset_atoms_id()
     if not angle:  # If no angles are found
         return ret
 
     # Sort horizontally
-    for i, (j, k, m) in enumerate(ret):
-        if j > m:
-            ret[i] = (m, k, j)
+    idx1 = np.argsort(ret[:, [0, -1]], axis=1)
+    ret[:, 0], ret[:, -1] = np.take_along_axis(ret[:, [0, -1]], idx1, axis=1).T
 
     # Sort and return vertically
-    idx = np.argsort(ret, axis=0)[:, 0]
-    return ret[idx]
+    idx2 = np.argsort(ret, axis=0)[:, 0]
+    return ret[idx2]
 
 
 def get_dihedrals(mol: Molecule) -> np.ndarray:
@@ -134,17 +133,17 @@ def get_dihedrals(mol: Molecule) -> np.ndarray:
                     dihed.append((at1.id, at2.id, at3.id, at4.id))
 
     ret = np.array(dihed, dtype=int, ndmin=2)
+    mol.unset_atoms_id()
     if not dihed:  # If no dihedrals are found
         return ret
 
     # Sort horizontally
-    for i, (j, k, m, n) in enumerate(ret):
-        if j > n:
-            ret[i] = (n, m, k, j)
+    idx1 = np.argsort(ret[:, [0, -1]], axis=1)
+    ret[:, 0], ret[:, -1] = np.take_along_axis(ret[:, [0, -1]], idx1, axis=1).T
 
     # Sort and return vertically
-    idx = np.argsort(ret, axis=0)[:, 0]
-    return ret[idx]
+    idx2 = np.argsort(ret, axis=0)[:, 0]
+    return ret[idx2]
 
 
 def get_impropers(mol: Molecule) -> np.ndarray:
@@ -169,18 +168,17 @@ def get_impropers(mol: Molecule) -> np.ndarray:
         if len(order) != 3:
             continue
 
-        if 2.0 in order or 1.5 in order:
+        if order in (2.0, 1.5):
             at2, at3, at4 = [bond.other_end(at1) for bond in at1.bonds]
             impropers.append((at1.id, at2.id, at3.id, at4.id))
 
     ret = np.array(impropers, dtype=int, ndmin=2)
+    mol.unset_atoms_id()
     if not impropers:  # If no impropers are found
         return ret
 
     # Sort along the rows of columns 2, 3 & 4 based on atomic mass in descending order
-    mass = np.array([[mol[j].mass for j in i] for i in ret[:, 1:]])
+    mass = np.array([[mol[int(j)].mass for j in i] for i in ret[:, 1:]])
     idx = np.argsort(mass, axis=1)[:, ::-1]
-    for i, j in enumerate(idx):
-        ret[i, 1:] = ret[i, 1:][j]
-
+    ret[:, 1], ret[:, 2], ret[:, 3] = np.take_along_axis(ret[:, 1:], idx, axis=1).T
     return ret

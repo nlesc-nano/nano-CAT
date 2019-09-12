@@ -67,7 +67,7 @@ def match_interface(mol: Molecule, forcefield: str = 'top_all36_cgenff_new',
 
     forcefield : str
         The name of the requested forcefield.
-        Available options displayed below (*i.e.* all .par file in ``$MATCH/resources/``):
+        Available options are displayed below (*i.e.* all .par file in ``$MATCH/resources/``):
             * ``"top_all22_prot"``
             * ``"top_all27_na"``
             * ``"top_all35_carb"``

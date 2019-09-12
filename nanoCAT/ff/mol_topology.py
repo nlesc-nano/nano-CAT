@@ -8,16 +8,17 @@ Index
 -----
 .. currentmodule:: nanoCAT.ff.mol_topology
 .. autosummary::
+    get_bonds
     get_angles
     get_dihedrals
     get_impropers
 
 API
 ---
-.. autofunction:: nanoCAT.ff.mol_topology
-    get_angles
-    get_dihedrals
-    get_impropers
+.. autofunction:: nanoCAT.ff.mol_topology.get_bonds
+.. autofunction:: nanoCAT.ff.mol_topology.get_angles
+.. autofunction:: nanoCAT.ff.mol_topology.get_dihedrals
+.. autofunction:: nanoCAT.ff.mol_topology.get_impropers
 
 """
 
@@ -25,7 +26,39 @@ import numpy as np
 
 from scm.plams import Molecule
 
-__all__ = ['get_angles', 'get_dihedrals', 'get_impropers']
+__all__ = ['get_bonds', 'get_angles', 'get_dihedrals', 'get_impropers']
+
+
+def get_bonds(mol: Molecule) -> np.ndarray:
+    """Return an array with the atomic indices defining all bonds in **mol**.
+
+    Parameters
+    ----------
+    mol : |plams.Molecule|_
+        A PLAMS molecule.
+
+    Returns
+    -------
+    :math:`n*2` |np.ndarray|_ [|np.int64|_]:
+        A 2D array with atomic indices defining :math:`n` bonds.
+
+    """
+    mol.set_atoms_id()
+    bonds = [(b.atom1.id, b.atom2.id) for b in mol.bonds]
+
+    ret = np.array(bonds, dtype=int, ndmin=2)
+    mol.unset_atoms_id()
+    if not bonds:  # If no angles are found
+        return ret
+
+    # Sort horizontally
+    for i, (j, k) in enumerate(ret):
+        if j > k:
+            ret[i] = (k, j)
+
+    # Sort and return vertically
+    idx = np.argsort(ret, axis=0)[:, 0]
+    return ret[idx]
 
 
 def get_angles(mol: Molecule) -> np.ndarray:
@@ -42,7 +75,7 @@ def get_angles(mol: Molecule) -> np.ndarray:
         A 2D array with atomic indices defining :math:`n` angles.
 
     """
-    mol.set_atoms_id(start=0)
+    mol.set_atoms_id()
     angle = []
 
     for at2 in mol.atoms:
@@ -54,7 +87,7 @@ def get_angles(mol: Molecule) -> np.ndarray:
             for at3 in at_other[i:]:
                 angle.append((at1.id, at2.id, at3.id))
 
-    ret = np.array(angle, dtype=int, ndmin=2) + 1
+    ret = np.array(angle, dtype=int, ndmin=2)
     if not angle:  # If no angles are found
         return ret
 
@@ -82,7 +115,7 @@ def get_dihedrals(mol: Molecule) -> np.ndarray:
         A 2D array with atomic indices defining :math:`n` proper dihedrals.
 
     """
-    mol.set_atoms_id(start=0)
+    mol.set_atoms_id()
     dihed = []
 
     for b1 in mol.bonds:
@@ -100,7 +133,7 @@ def get_dihedrals(mol: Molecule) -> np.ndarray:
                 if at4 != at2:
                     dihed.append((at1.id, at2.id, at3.id, at4.id))
 
-    ret = np.array(dihed, dtype=int, ndmin=2) + 1
+    ret = np.array(dihed, dtype=int, ndmin=2)
     if not dihed:  # If no dihedrals are found
         return ret
 
@@ -128,7 +161,7 @@ def get_impropers(mol: Molecule) -> np.ndarray:
         A 2D array with atomic indices defining :math:`n` improper dihedrals.
 
     """
-    mol.set_atoms_id(start=0)
+    mol.set_atoms_id()
     impropers = []
 
     for at1 in mol.atoms:
@@ -140,7 +173,7 @@ def get_impropers(mol: Molecule) -> np.ndarray:
             at2, at3, at4 = [bond.other_end(at1) for bond in at1.bonds]
             impropers.append((at1.id, at2.id, at3.id, at4.id))
 
-    ret = np.array(impropers, dtype=int, ndmin=2) + 1
+    ret = np.array(impropers, dtype=int, ndmin=2)
     if not impropers:  # If no impropers are found
         return ret
 

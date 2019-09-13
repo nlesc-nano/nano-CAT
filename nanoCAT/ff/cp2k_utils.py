@@ -18,7 +18,7 @@ API
 
 from scm.plams import Molecule, Settings
 
-__all__ = ['set_cp2k_element', 'set_cp2k_charge']
+__all__ = ['set_cp2k_element', 'set_cp2k_charge', 'set_cp2k_lj']
 
 
 def set_cp2k_element(settings: Settings, mol: Molecule) -> None:
@@ -62,7 +62,7 @@ def set_cp2k_charge(settings: Settings, mol: Molecule) -> None:
         A PLAMS molecule whose atoms possess the :attr:`Atom.properties` ``["atom_type"]``
         and :attr:`Atom.properties` ``["charge"]`` attributes.
 
-    """  # noqa
+    """
     # {atom_type: atom_charge}
     charge_dict = {at.properties.atom_type: at.properties.charge for at in mol}
     charge = settings.input.force_eval.mm.forcefield.charge = []
@@ -70,3 +70,27 @@ def set_cp2k_charge(settings: Settings, mol: Molecule) -> None:
     for k, v in charge_dict.items():
         new_charge = Settings({'atom': k, 'charge': f'{v:.6f}'})
         charge.append(new_charge)
+
+
+def set_cp2k_lj(settings: Settings, lj_dict: dict) -> None:
+    """Set the CP2K_INPUT/FORCE_EVAL/MM/FORCEFIELD/NONBONDED/`LENNARD-JONES`_ keyword(s) in CP2K job settings.
+
+    Performs an inplace update of the input.force_eval.mm.forcefield.nonbonded.lennard-jones key in **settings**.
+
+    .. _LENNARD-JONES`: https://manual.cp2k.org/trunk/CP2K_INPUT/FORCE_EVAL/MM/FORCEFIELD/NONBONDED/LENNARD-JONES.html
+
+    Parameters
+    ----------
+    settings : |plams.Settings|_
+        CP2K settings.
+
+    lj_dict : dict
+        A dictionary with sigma and epsilon values per atom pair.
+
+    """  # noqa
+    lj = settings.input.force_eval.mm.forcefield.nonbonded['lennard-jones'] = []
+
+    for k, v in lj_dict.items():
+        new_lj = Settings({'atoms': k})
+        new_lj.update(v)
+        lj.append(new_lj)

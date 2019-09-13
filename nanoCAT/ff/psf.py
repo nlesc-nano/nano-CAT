@@ -552,9 +552,9 @@ class PSF(Container):
         """
         # Prepare the !NTITLE block
         ret = ('PSF EXT\n'
-               '\n{:>10d} !NTITLE'.format(self.title.shape[0]))
+               '\n{:>10d} !NTITLE\n'.format(self.title.shape[0]))
         for i in self.title:
-            ret += f'   REMARKS {i}'
+            ret += f'   REMARKS {i}\n'
 
         # Prepare the !NATOM block
         ret += '\n\n{:>10d} !NATOM\n'.format(self.atoms.shape[0])
@@ -562,11 +562,7 @@ class PSF(Container):
         for i, j in self.atoms.iterrows():
             args = [i] + j.values.tolist()
             ret += string.format(*args)
-
-        if len(self.atoms) == 0:
-            return ret
-        else:  # Clip the last newline character
-            return ret[:-1]
+        return ret
 
     def _serialize_bottom(self) -> str:
         """Serialize the bottom-most section of the to-be create .psf file.

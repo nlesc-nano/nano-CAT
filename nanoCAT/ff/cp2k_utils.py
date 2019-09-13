@@ -16,9 +16,9 @@ API
 
 """
 
-from scm.plams import Molecule, Settings
+from scm.plams import (Molecule, Settings)
 
-__all__ = ['set_cp2k_element', 'set_cp2k_charge', 'set_cp2k_lj']
+__all__ = ['set_cp2k_element', 'set_cp2k_charge', 'set_cp2k_value']
 
 
 def set_cp2k_element(settings: Settings, mol: Molecule) -> None:
@@ -72,25 +72,29 @@ def set_cp2k_charge(settings: Settings, mol: Molecule) -> None:
         charge.append(new_charge)
 
 
-def set_cp2k_lj(settings: Settings, lj_dict: dict) -> None:
-    """Set the CP2K_INPUT/FORCE_EVAL/MM/FORCEFIELD/NONBONDED/`LENNARD-JONES`_ keyword(s) in CP2K job settings.
+def set_cp2k_param(settings: Settings, param_dict: dict) -> None:
+    """Placeholder."""
+    for block_name, block in param_dict.items():
+        # Create a to-be formatted string with user-specified units
+        unit = f'[{block.unit}]' + ' {}' if 'unit' in block else '{}'
 
-    Performs an inplace update of the input.force_eval.mm.forcefield.nonbonded.lennard-jones key in **settings**.
+        # Get the to-be update list of settings
+        s = settings.get_nested(block['keys'])
+        if not isinstance(s, list):
+            _s = settings.get_nested(block['keys'][:-1])
+            s = _s[block['keys'][-1]] = []
 
-    .. _LENNARD-JONES`: https://manual.cp2k.org/trunk/CP2K_INPUT/FORCE_EVAL/MM/FORCEFIELD/NONBONDED/LENNARD-JONES.html
+        for k, v in block.items():
+            if k in ('keys', 'unit'):  # Skip
+                continue
 
-    Parameters
-    ----------
-    settings : |plams.Settings|_
-        CP2K settings.
+            value = unit.format(v)
+            atom = 'atoms' if len(k.split()) > 1 else 'atom'
+            atom_list = [i[atom] for i in s]
 
-    lj_dict : dict
-        A dictionary with sigma and epsilon values per atom pair.
-
-    """  # noqa
-    lj = settings.input.force_eval.mm.forcefield.nonbonded['lennard-jones'] = []
-
-    for k, v in lj_dict.items():
-        new_lj = Settings({'atoms': k})
-        new_lj.update(v)
-        lj.append(new_lj)
+            try:  # Intersecting set
+                idx = atom_list.index(k)
+                s[idx].update({block_name: value})
+            except ValueError:  # Disjoint set
+                new_block = Settings({atom: k, block_name: value})
+                s.append(new_block)

@@ -195,7 +195,7 @@ class MatchJob(SingleJob):
 
     try:
         #: The path to ``"$MATCH/scripts/MATCH.pl"`` executable.
-        MATCH: str = repr(os.path.join(os.environ['MATCH'], 'scripts', 'MATCH.pl'))
+        MATCH: Optional[str] = repr(os.path.join(os.environ['MATCH'], 'scripts', 'MATCH.pl'))
     except KeyError:
         #: The path to ``"$MATCH/scripts/MATCH.pl"`` executable.
         MATCH: Optional[str] = None

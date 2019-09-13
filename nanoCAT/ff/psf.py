@@ -45,8 +45,8 @@ class PSF(Container):
     * Methods for updating atom types: :meth:`PSF.update_atom_charge`
       and :meth:`PSF.update_atom_type`.
     * Methods for extracting bond, angle and dihedral-pairs from :class:`Molecule` instances:
-      :meth:`PSF.update_bonds`, :meth:`PSF.update_angles`, :meth:`PSF.update_dihedrals`,
-      :meth:`PSF.update_impropers` and :meth:`PSF.generate_atoms`.
+      :meth:`PSF.generate_bonds`, :meth:`PSF.generate_angles`, :meth:`PSF.generate_dihedrals`,
+      :meth:`PSF.generate_impropers` and :meth:`PSF.generate_atoms`.
 
     Parameters
     ----------

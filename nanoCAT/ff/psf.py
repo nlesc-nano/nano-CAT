@@ -380,7 +380,8 @@ class PSF(Container):
             array = np.array(_value, dtype=dtype, ndmin=ndmin, copy=False)
             setattr(self, name, array)
         except ValueError as ex:
-            ex.args = (f"The parameter '{name}' expects a '{ndmin}'d array-like object consisting "
+            _name = name.strip('_')
+            ex.args = (f"The parameter '{_name}' expects a {ndmin}d array-like object consisting "
                        f"of '{dtype}'; observed type: '{value.__class__.__name__}'",)
             raise ex
 
@@ -389,23 +390,44 @@ class PSF(Container):
     @property
     def segment_name(self) -> pd.Series: return self.atoms.loc[:, 'segment name']
 
+    @segment_name.setter
+    def segment_name(self, value) -> None: self.atoms.loc[:, 'segment name'] = value
+
     @property
     def residue_id(self) -> pd.Series: return self.atoms.loc[:, 'residue ID']
+
+    @residue_id.setter
+    def residue_id(self, value) -> None: self.atoms.loc[:, 'residue ID'] = value
 
     @property
     def residue_name(self) -> pd.Series: return self.atoms.loc[:, 'residue name']
 
+    @residue_name.setter
+    def residue_name(self, value) -> None: self.atoms.loc[:, 'residue name'] = value
+
     @property
     def atom_name(self) -> pd.Series: return self.atoms.loc[:, 'atom name']
+
+    @atom_name.setter
+    def atom_name(self, value) -> None: self.atoms.loc[:, 'atom name'] = value
 
     @property
     def atom_type(self) -> pd.Series: return self.atoms.loc[:, 'atom type']
 
+    @atom_type.setter
+    def atom_type(self, value) -> None: self.atoms.loc[:, 'atom type'] = value
+
     @property
     def charge(self) -> pd.Series: return self.atoms.loc[:, 'charge']
 
+    @charge.setter
+    def charge(self, value) -> None: self.atoms.loc[:, 'charge'] = value
+
     @property
     def mass(self) -> pd.Series: return self.atoms.loc[:, 'mass']
+
+    @mass.setter
+    def mass(self, value) -> None: self.atoms.loc[:, 'mass'] = value
 
     """########################### methods for reading .psf files. ##############################"""
 

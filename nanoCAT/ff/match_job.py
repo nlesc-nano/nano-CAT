@@ -96,7 +96,7 @@ class MatchResults(Results):
         """Return a list of atom types extracted from ``"$JN.rtf"``."""
         return self._parse_rtf(2)
 
-    def get_charges(self) -> List[float]:
+    def get_atom_charges(self) -> List[float]:
         """Return a list of atomic charges extracted from ``"$JN.rtf"``."""
         return self._parse_rtf(3, as_type=float)
 

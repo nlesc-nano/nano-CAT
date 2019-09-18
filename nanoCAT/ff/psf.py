@@ -9,10 +9,12 @@ Index
 .. currentmodule:: nanoCAT.ff.psf
 .. autosummary::
     PSF
+    write_psf
 
 API
 ---
-.. autoclass:: nanoCAT.ff.psf.PSF
+.. autofunction:: write_psf
+.. autoclass:: PSF
     :members:
     :private-members:
     :special-members:
@@ -31,9 +33,10 @@ import pandas as pd
 from scm.plams import Molecule, Atom
 
 from CAT.frozen_settings import FrozenSettings
-from nanoCAT.ff.mol_topology import (get_bonds, get_angles, get_dihedrals, get_impropers)
 
-__all__ = ['PSF']
+from .mol_topology import (get_bonds, get_angles, get_dihedrals, get_impropers)
+
+__all__ = ['PSF', 'write_psf']
 
 
 class PSF(Container):
@@ -201,6 +204,8 @@ class PSF(Container):
                 ret = ',\n'.join(_str(k, v) for k, v in vars(self).items())
 
         return f'{self.__class__.__name__}(\n{textwrap.indent(ret, indent1)}\n)'
+
+    __repr__ = __str__
 
     def __eq__(self, value: Any) -> bool:
         """Check if this instance is equivalent to **value**."""
@@ -379,6 +384,29 @@ class PSF(Container):
                        f"of '{dtype}'; observed type: '{value.__class__.__name__}'",)
             raise ex
 
+    """################################## dataframe shortcuts ###################################"""
+
+    @property
+    def segment_name(self) -> pd.Series: return self.atoms.loc[:, 'segment name']
+
+    @property
+    def residue_id(self) -> pd.Series: return self.atoms.loc[:, 'residue ID']
+
+    @property
+    def residue_name(self) -> pd.Series: return self.atoms.loc[:, 'residue name']
+
+    @property
+    def atom_name(self) -> pd.Series: return self.atoms.loc[:, 'atom name']
+
+    @property
+    def atom_type(self) -> pd.Series: return self.atoms.loc[:, 'atom type']
+
+    @property
+    def charge(self) -> pd.Series: return self.atoms.loc[:, 'charge']
+
+    @property
+    def mass(self) -> pd.Series: return self.atoms.loc[:, 'mass']
+
     """########################### methods for reading .psf files. ##############################"""
 
     @classmethod
@@ -512,7 +540,6 @@ class PSF(Container):
             Raised if the filename is specified in neither **filename** nor :attr:`PSF.filename`.
 
         """
-
         _filename = filename if filename is not None else self.filename
         if not _filename:
             raise TypeError("The 'filename' parameter is missing")
@@ -657,7 +684,7 @@ class PSF(Container):
             See :attr:`self.atoms` ``["charge"]``.
 
         """
-        condition = self.atoms['atom type'] == atom_type
+        condition = self.atom_type == atom_type
         self.atoms.loc[condition, 'charge'] = charge
 
     def update_atom_type(self, atom_type_old: str, atom_type_new: str) -> None:
@@ -673,7 +700,7 @@ class PSF(Container):
             See :attr:`self.atoms` ``["atom type"]``.
 
         """
-        condition = self.atoms['atom type'] == atom_type_old
+        condition = self.atom_type == atom_type_old
         self.atoms.loc[condition, 'atom type'] = atom_type_new
 
     def generate_bonds(self, mol: Molecule) -> None:
@@ -732,7 +759,7 @@ class PSF(Container):
         ``"residue ID"``   :attr:`Atom.properties` ``["pdb_info"]["ResidueNumber"]``  ``1``
         ``"residue name"`` :attr:`Atom.properties` ``["pdb_info"]["ResidueName"]``    ``"COR"``
         ``"atom name"``    :attr:`Atom.symbol`
-        ``"atom type"``    :attr:`Atom.properties` ``["atom_symbol"]``                :attr:`Atom.symbol`
+        ``"atom type"``    :attr:`Atom.properties` ``["symbol"]``                     :attr:`Atom.symbol`
         ``"charge"``       :attr:`Atom.properties` ``["charge"]``                     ``0.0``
         ``"mass"``         :attr:`Atom.mass`
         ``"0"``            ``0``
@@ -754,7 +781,7 @@ class PSF(Container):
             return at.properties.pdb_info.ResidueName if 'ResidueName' in at.properties.pdb_info else 'COR'  # noqa
 
         def get_at_type(at: Atom) -> str:
-            return at.properties.atom_type if 'atom_type' in at.properties else at.symbol
+            return at.properties.symbol if 'symbol' in at.properties else at.symbol
 
         def get_charge(at: Atom) -> float:
             return float(at.properties.charge) if 'charge' in at.properties else 0.0
@@ -790,3 +817,45 @@ class PSF(Container):
             ret.append(value)
 
         return ret
+
+
+def write_psf(mol: Molecule, filename: str, return_psf: bool = False,
+              encoding: Optional[str] = None) -> Optional[PSF]:
+    """Create a protein structure file (.psf) from a :class:`Molecule`.
+
+    .. _`file object`: https://docs.python.org/3/glossary.html#term-file-object
+
+    Parameters
+    ----------
+    mol : |plams.Molecule|_
+        A PLAMS molecule.
+
+    filename : |str|_ or `file object`_
+        The path+filename or a file object of the output .psf file.
+        If ``None``, attempt to pull the filename from :attr:`PSF.filename`.
+
+    return_psf : bool
+        If ``True``, return the created :class:`PSF` instance.
+
+    encoding : str
+        Optional: Encoding used to encode the output (*e.g.* ``"utf-8"``).
+        Only relevant when a file object is supplied to **filename** and
+        the datastream is *not* in text mode.
+
+    Returns
+    -------
+    |nanoCAT.PSF|_
+        Optional: if ``return_psf=True`` return the created :class:`PSF` instance.
+
+    """
+    psf = PSF(filename=filename) if isinstance(filename, str) else PSF()
+    psf.generate_bonds(mol)
+    psf.generate_angles(mol)
+    psf.generate_dihedrals(mol)
+    psf.generate_impropers(mol)
+    psf.generate_atoms(mol)
+    psf.write(filename, encoding=encoding)
+
+    if return_psf:
+        return psf
+    return None

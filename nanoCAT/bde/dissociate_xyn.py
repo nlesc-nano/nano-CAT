@@ -43,8 +43,7 @@ from .guess_core_dist import guess_core_core_dist
 __all__ = ['dissociate_ligand']
 
 
-def dissociate_ligand(mol: Molecule,
-                      settings: Settings) -> List[Molecule]:
+def dissociate_ligand(mol: Molecule, settings: Settings) -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -99,8 +98,7 @@ def dissociate_ligand(mol: Molecule,
     return remove_ligands(mol, combinations_dict, indices)
 
 
-def dissociate_ligand2(mol: Molecule,
-                       settings: Settings) -> List[Molecule]:
+def dissociate_ligand2(mol: Molecule, settings: Settings) -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -156,18 +154,18 @@ def get_anchor_idx(mol: Molecule) -> np.ndarray:
 
 def gather_residues(mol: Molecule) -> List[List[Atom]]:
     """Create a nested list of atoms using their residue number."""
-    res_count = mol[-1].properties.pdb_info.ResidueNumber - 1
-    ret = [[]] * res_count
+    ret = []
     for at in mol:
         i = at.properties.pdb_info.ResidueNumber - 1
-        ret[i].append(at)
+        try:
+            ret[i].append(at)
+        except IndexError:
+            ret.append([at])
     return ret
 
 
-def filter_lig_core2(xyz_array: np.ndarray,
-                     idx_lig: Sequence[int],
-                     idx_core: Sequence[int],
-                     lig_count: int = 2) -> np.ndarray:
+def filter_lig_core2(xyz_array: np.ndarray, idx_lig: Sequence[int],
+                     idx_core: Sequence[int], lig_count: int = 2) -> np.ndarray:
     """Create and return the indices of all possible ligand/core pairs.
 
     Parameters
@@ -228,8 +226,7 @@ def get_fragment(mol: Molecule, atom: Atom) -> List[int]:
     return ret
 
 
-def remove_ligands(mol: Molecule,
-                   combinations_dict: dict,
+def remove_ligands(mol: Molecule, combinations_dict: dict,
                    indices: Sequence[int]) -> List[Molecule]:
     """ """
     ret = []
@@ -237,18 +234,17 @@ def remove_ligands(mol: Molecule,
     for core in combinations_dict:
         for lig in combinations_dict[core]:
             mol_tmp = mol.copy()
-            prop = mol_tmp.properties = Settings()
+            mol_tmp.properties = prop = Settings()
 
             prop.indices = indices
             prop.job_path = []
-            prop.df_index = mol_tmp.properties.core_topology
+            prop.df_index = mol_tmp.properties.topology
             prop.df_index += ' '.join(str(i) for i in mol_tmp.properties.lig_residue)
             prop.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber for i in lig])
-            prop.core_topology = f'{str(mol[core].properties.topology)}_{core}'
+            prop.topology = f'{str(mol[core].properties.topology)}_{core}'
 
             core_at = mol_tmp[core]
-            delete_idx = list(chain.from_iterable(lig))
-            delete_idx += core
+            delete_idx = [core] + list(chain.from_iterable(lig))
             if core_at.bonds:
                 delete_idx += get_fragment(mol_tmp, core_at)
             delete_idx.sort(reverse=True)

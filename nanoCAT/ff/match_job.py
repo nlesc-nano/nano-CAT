@@ -185,7 +185,7 @@ class MatchJob(SingleJob):
 
         kwargs_iter = chain.from_iterable(kwargs.items())
         args = ' '.join(i for i in kwargs_iter)
-        return f'{self.MATCH} {args} {filename}'
+        return f'{repr(self.MATCH)} {args} {filename}'
 
     def check(self) -> bool:
         files = (f'{self.name}.prm', f'{self.name}.rtf', f'top_{self.name}.rtf')
@@ -195,7 +195,7 @@ class MatchJob(SingleJob):
 
     try:
         #: The path to ``"$MATCH/scripts/MATCH.pl"`` executable.
-        MATCH: Optional[str] = repr(os.path.join(os.environ['MATCH'], 'scripts', 'MATCH.pl'))
+        MATCH: Optional[str] = os.path.join(os.environ['MATCH'], 'scripts', 'MATCH.pl')
     except KeyError:
         #: The path to ``"$MATCH/scripts/MATCH.pl"`` executable.
         MATCH: Optional[str] = None

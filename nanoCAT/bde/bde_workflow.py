@@ -347,7 +347,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         s_cp.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
         lig.job_geometry_opt(job, s_cp, name='E_XYn_opt')
     elif forcefield:
-        qd_opt_ff(lig, Settings({'job1': Cp2kJob, 's1': s}))
+        qd_opt_ff(lig, Settings({'job1': Cp2kJob, 's1': s}), name='E_XYn_opt')
     else:
         lig.job_geometry_opt(job, s, name='E_XYn_opt')
 
@@ -358,7 +358,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
 
     # Perform a single point on the full quantum dot
     if forcefield:
-        qd_opt_ff(tot, Settings({'job1': Cp2kJob, 's1': s}))
+        qd_opt_ff(tot, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD_opt')
     else:
         tot.job_single_point(job, s, name='E_QD_sp')
 
@@ -370,7 +370,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     # Perform a single point on the quantum dot(s) - XYn
     for mol in core:
         if forcefield:
-            qd_opt_ff(mol, Settings({'job1': Cp2kJob, 's1': s}))
+            qd_opt_ff(mol, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD-XYn_opt')
         else:
             mol.job_single_point(job, s, name='E_QD-XYn_sp')
     E_core = np.array([mol.properties.energy.E for mol in core])

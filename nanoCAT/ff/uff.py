@@ -9,13 +9,17 @@ Index
 .. currentmodule:: nanoCAT.ff.uff
 .. autosummary::
     UFF_DF
+    _CSV
     combine_xi
     combine_di
 
 API
 ---
 .. autodata:: UFF_DF
-    :annotation: = pandas.DataFrame
+    :annotation: = <pandas.core.frame.DataFrame object>
+
+.. autodata:: _CSV
+    :annotation: = <str object>
 
 .. autofunction:: combine_xi
 .. autofunction:: combine_di
@@ -34,7 +38,7 @@ __all__ = ['UFF_DF', 'combine_xi', 'combine_di']
 _CSV: str = join(nanoCAT.__path__[0], 'data', 'uff.csv')
 
 #: A DataFrame with UFF Lennard-Jones parameters.
-#: Has access to the ``"xi"``, ``"di"``and ``"psi"`` columns.
+#: Has access to the ``"xi"``, ``"di"`` and ``"psi"`` columns.
 #: See :data:`_CSV` for the path to the corresponding .csv file.
 UFF_DF: pd.DataFrame = pd.read_csv(_CSV, index_col=0, skiprows=10)
 

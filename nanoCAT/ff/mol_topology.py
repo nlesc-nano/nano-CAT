@@ -4,6 +4,8 @@ nanoCAT.ff.mol_topology
 
 A module for constructing arrays of bond angles and proper & improper dihedral angles.
 
+See also the :class:`.PSF` class.
+
 Index
 -----
 .. currentmodule:: nanoCAT.ff.mol_topology

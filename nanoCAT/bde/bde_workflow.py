@@ -125,6 +125,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     lig_count = settings.qd.dissociate.lig_count
     core_index = settings.qd.dissociate.core_index
     write = settings.database.db and 'qd' in settings.database.write
+    forcefield = bool(settings.qd.dissociate.use_ff)
 
     # Identify previously calculated results
     try:
@@ -166,8 +167,8 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
         # Run the BDE calculations
         mol.properties.job_path = []
         qd_df.loc[label_slice] = labels
-        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job=job1, s=s1)
-        qd_df.loc[ddG_slice] = get_bde_ddG(mol, xyn, mol_wo_xyn, job=job2, s=s2)
+        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job1, s1, forcefield)
+        qd_df.loc[ddG_slice] = get_bde_ddG(mol, xyn, mol_wo_xyn, job2, s2)
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
@@ -211,6 +212,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     lig_count = settings.qd.dissociate.lig_count
     core_index = settings.qd.dissociate.core_index
     write = settings.database.db and 'qd' in settings.database.write
+    forcefield = bool(settings.qd.dissociate.use_ff)
 
     # Identify previously calculated results
     try:
@@ -252,7 +254,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
         # Run the BDE calculations
         mol.properties.job_path = []
         qd_df.loc[label_slice] = labels
-        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job=job1, s=s1)
+        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job1, s1, forcefield)
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')

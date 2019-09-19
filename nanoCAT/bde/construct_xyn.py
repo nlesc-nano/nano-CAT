@@ -118,7 +118,8 @@ def get_xyn(mol_ref: Molecule,
         'name': mol_ref.properties.name,
         'path': mol_ref.properties.path,
         'indices': (list(range(1, 1 + len(ion))) if isinstance(ion, Molecule) else [1]),
-        'job_path': []
+        'job_path': [],
+        'prm': mol_ref.properties.prm
     })
 
     # Perform a constrained UFF optimization on XYn with X frozen
@@ -132,18 +133,15 @@ def get_xyn(mol_ref: Molecule,
     start = idx + (len(ion) if isinstance(ion, Molecule) else 1)
     XYn.properties.indices = [X_idx] + [start + i*len(lig) for i in range(lig_count)]
 
-    # Delete bonds between X and Yn; they served their purpose during :func:`_preoptimize`
-    for _ in range(lig_count):
-        XYn.delete_bond(XYn.bonds[-1])
+    # Delete the now redundant bonds connected to X
+    for bond in reversed(X.bonds):
+        XYn.delete_bond(bond)
 
     return XYn
 
 
-def _construct_xyn(ion: Union[str, int, Molecule],
-                   lig_count: int,
-                   lig: Molecule,
-                   lig_at: Atom,
-                   lig_idx: int) -> Tuple[Molecule, Atom]:
+def _construct_xyn(ion: Union[str, int, Molecule], lig_count: int,
+                   lig: Molecule, lig_at: Atom, lig_idx: int) -> Tuple[Molecule, Atom]:
     """Construct the :math:`XYn` molecule for :func:`get_xyn`.
 
     Parameters
@@ -180,7 +178,8 @@ def _construct_xyn(ion: Union[str, int, Molecule],
 
     # Update the XYn molecule with ligands
     XYn, X = _parse_ion(ion)
-    for angle, mol in zip(angle_ar, lig_gen):
+    iterator = enumerate(zip(angle_ar, lig_gen), 2)
+    for i, (angle, mol) in iterator:
         # Prepare for translations and rotations
         anchor = mol[lig_idx]
         rotmat = axis_rotation_matrix(vec2, angle)
@@ -193,9 +192,15 @@ def _construct_xyn(ion: Union[str, int, Molecule],
         vec3 /= np.linalg.norm(vec3) / dist
         mol.translate(vec3)
 
+        # Set pdb attributes
+        for at in mol:
+            at.properties.pdb_info.ResidueNumber = i
+            at.properties.pdb_info.ResidueName = 'LIG'
+
         # Combine the translated and rotated ligand with XYn
         XYn.add_molecule(mol)
         XYn.add_bond(X, anchor)
+
     return XYn, X
 
 

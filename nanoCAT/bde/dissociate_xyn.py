@@ -237,14 +237,18 @@ def remove_ligands(mol: Molecule, combinations_dict: dict,
             mol_tmp.properties = prop = Settings()
 
             prop.indices = indices
-            prop.job_path = []
-            prop.df_index = mol_tmp.properties.topology
-            prop.df_index += ' '.join(str(i) for i in mol_tmp.properties.lig_residue)
             prop.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber for i in lig])
-            prop.topology = f'{str(mol[core].properties.topology)}_{core}'
+            prop.job_path = []
+            prop.core_topology = f'{str(mol[core].properties.topology)}_{core}'
+            prop.df_index = (mol_tmp.properties.core_topology +
+                             ' '.join(str(i) for i in mol_tmp.properties.lig_residue))
+            prop.name = mol.properties.name
+            prop.path = mol.properties.path
+            prop.prm = mol.properties.prm
 
+            delete_idx = [core]
+            delete_idx += chain.from_iterable(lig)
             core_at = mol_tmp[core]
-            delete_idx = [core] + list(chain.from_iterable(lig))
             if core_at.bonds:
                 delete_idx += get_fragment(mol_tmp, core_at)
             delete_idx.sort(reverse=True)
@@ -384,8 +388,7 @@ def filter_lig_core(xyz_array: np.ndarray,
     return xy
 
 
-def get_combinations(xy: np.ndarray,
-                     res_list: Sequence[Sequence[Atom]],
+def get_combinations(xy: np.ndarray, res_list: Sequence[Sequence[Atom]],
                      lig_count: int = 2) -> dict:
     """Given an array of indices (**xy**) and a nested list of atoms **res_list**.
 

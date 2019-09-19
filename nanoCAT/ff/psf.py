@@ -827,7 +827,7 @@ class PSF(Container):
         ret = []
         type_dict = {}
 
-        for at_type, res_name in zip(self.atoms['atom type'], self.atoms['residue name']):
+        for at_type, res_name in zip(self.atom_type, self.residue_name):
             if res_name == 'LIG':
                 at_type = 'LIG'
 

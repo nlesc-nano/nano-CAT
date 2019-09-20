@@ -38,7 +38,9 @@ class AbstractFileContainer(abc.ABC, Container):
         def decorator(type_: type) -> type:
             cls_meth = getattr(cls, type_.__name__)
             annotations = cls_meth.__annotations__.copy()
-            type_.__annotations__ = annotations.update(type_.__annotations__)
+            dct = type_.__annotations__ = annotations.update(type_.__annotations__)
+            if 'return' in dct and dct['return'] == cls.__name__:
+                dct['return'] = type_.__self__.__name__
             return type_
         return decorator
 

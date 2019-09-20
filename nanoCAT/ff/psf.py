@@ -231,7 +231,7 @@ class PSF(AbstractDataClass, AbstractFileContainer):
 
     @AbstractDataClass.inherit_annotations()
     def _str_iterator(self) -> Iterator[Tuple[str, Any]]:
-        return ((k, v) for k, v in self.as_dict().items())
+        return ((k.strip('_'), v) for k, v in self.as_dict().items())
 
     def __eq__(self, value: Any) -> bool:
         """Check if this instance is equivalent to **value**."""
@@ -417,7 +417,6 @@ class PSF(AbstractDataClass, AbstractFileContainer):
                     key = cls._HEADER_DICT[i.split()[1].rstrip(':')]
                 except KeyError:
                     raise OSError('Failed to parse file; invalid header: {repr(i)}')
-                import pdb; pdb.set_trace()
                 ret[key] = value = []
 
                 # Read the actual psf blocks

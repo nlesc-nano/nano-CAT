@@ -20,12 +20,9 @@ API
     :special-members:
 
 """
-
-import textwrap
-from codecs import iterdecode
-from typing import (Dict, Optional, Any, Iterable, Iterator, Union, List)
+import inspect
+from typing import (Dict, Optional, Any, Iterable, Iterator, List, Tuple, FrozenSet, Callable)
 from itertools import chain
-from collections.abc import Container
 
 import numpy as np
 import pandas as pd
@@ -35,11 +32,13 @@ from scm.plams import Molecule, Atom
 from CAT.frozen_settings import FrozenSettings
 
 from .mol_topology import (get_bonds, get_angles, get_dihedrals, get_impropers)
+from ..abc.dataclass import AbstractDataClass
+from ..abc.file_container import AbstractFileContainer
 
 __all__ = ['PSF', 'write_psf']
 
 
-class PSF(Container):
+class PSF(AbstractDataClass, AbstractFileContainer):
     """A container for managing protein structure files.
 
     The :class:`PSF` class has access to three general sets of methods:
@@ -148,6 +147,10 @@ class PSF(Container):
 
     """
 
+    #: A :class:`frozenset` with the names of private instance attributes.
+    #: These attributes will be excluded whenever calling :meth:`PSF.as_dict`.
+    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_pd_printoptions', '_np_printoptions'})
+
     #: A dictionary containg array shapes among other things
     _SHAPE_DICT = FrozenSettings({
         'filename': {'shape': 1},
@@ -190,22 +193,45 @@ class PSF(Container):
         self.acceptors = acceptors
         self.no_nonbonded = no_nonbonded
 
+        # Print options for NumPy ndarrays and Pandas DataFrames
+        self.np_printoptions: Dict[str, Any] = {'threshold': 20, 'edgeitems': 5}
+        self.pd_printoptions: Dict[str, Any] = {'display.max_rows': 10}
+
+    def __delattr__(self, key, value):
+        print(inspect.stack()[1])
+        super().__delattr__(key, value)
+
+    @property
+    def np_printoptions(self) -> Dict[str, Any]: return self._np_printoptions
+
+    @np_printoptions.setter
+    def np_printoptions(self, value: dict) -> None: self._np_printoptions = self._is_dict(value)
+
+    @property
+    def pd_printoptions(self) -> Iterator: return chain.from_iterable(self._pd_printoptions.items())
+
+    @pd_printoptions.setter
+    def pd_printoptions(self, value: dict) -> None: self._pd_printoptions = self._is_dict(value)
+
+    @staticmethod
+    def _is_dict(value: Any) -> dict:
+        """Check if **value** is a :class:`dict` instance; raise a :exc:`TypeError` if not."""
+        if not isinstance(value, dict):
+            caller_name: str = inspect.stack()[1][3]
+            raise TypeError(f"The {repr(caller_name)} parameter expects an instance of 'dict'; "
+                            f"observed type: {repr(type(value))}")
+        return value
+
+    @AbstractDataClass.inherit_annotations()
     def __str__(self) -> str:
-        """Return a string representation of this instance."""
-        def _str(k: str, v: Any) -> str:
-            _k = k[1:] if k.startswith('_') else k
-            return f'{_k:{width}} = ' + textwrap.indent(str(v), indent2)[len(indent2):]
-
-        width = max(len(k) for k in vars(self))
-        indent1 = ' ' * 4
-        indent2 = ' ' * (3 + width)
-        with np.printoptions(threshold=20, edgeitems=10):
-            with pd.option_context('display.max_rows', 20):
-                ret = ',\n'.join(_str(k, v) for k, v in vars(self).items())
-
-        return f'{self.__class__.__name__}(\n{textwrap.indent(ret, indent1)}\n)'
+        with np.printoptions(**self.np_printoptions), pd.option_context(*self.pd_printoptions):
+            return super().__str__()
 
     __repr__ = __str__
+
+    @AbstractDataClass.inherit_annotations()
+    def _str_iterator(self) -> Iterator[Tuple[str, Any]]:
+        return ((k, v) for k, v in self.as_dict().items())
 
     def __eq__(self, value: Any) -> bool:
         """Check if this instance is equivalent to **value**."""
@@ -213,71 +239,14 @@ class PSF(Container):
             return False
 
         try:  # Check if the object attribute values are identical
-            for k, v1 in vars(self).items():
+            for k, v1 in self.as_dict().items():
                 v1 = np.asarray(v1)
                 v2 = np.asarray(getattr(value, k))
                 assert (v1 == v2).all()
-        except (AttributeError, AssertionError):
+        except AssertionError:
             return False  # An attribute is missing or not equivalent
 
         return True
-
-    def copy(self) -> 'PSF':
-        """Return a deep copy of this instance.
-
-        Returns
-        -------
-        |nanoCAT.PSF|_
-            A new :class:`PSF` object constructed from this instance.
-
-        """
-        kwargs = {(k[1:] if k.startswith('_') else k): v.copy() for k, v in vars(self).items()}
-        return self.from_dict(kwargs)
-
-    def __copy__(self) -> 'PSF':
-        """Return a deep copy of this instance."""
-        return self.copy()
-
-    def __deepcopy__(self, memo: Any = None) -> 'PSF':
-        """Return a deep copy of this instance."""
-        return self.copy()
-
-    def __contains__(self, value: Any) -> bool:
-        """Check if this instance contains **value**."""
-        return value in vars(self).values()
-
-    def as_dict(self) -> Dict[str, np.ndarray]:
-        """Construct a :class:`dict` from this instance.
-
-        Returns
-        -------
-        |dict|_ [|str|_, |np.ndarray|_]
-            A dictionary of arrays with keyword arguments for :meth:`PSF.__init__`.
-
-        See also
-        --------
-        :meth:`PSF.from_dict`:
-            Construct a :class:`PSF` instance from a dictionary.
-
-        """
-        return {(k[1:] if k.startswith('_') else k): v for k, v in vars(self).items()}
-
-    @classmethod
-    def from_dict(cls, psf_dict: Dict[str, np.ndarray]) -> 'PSF':
-        """Construct a :class:`PSF` instance from **psf_dict**.
-
-        Returns
-        -------
-        |nanoCAT.PSF|_
-            A :class:`PSF` instance constructed from **psf_dict**.
-
-        See also
-        --------
-        :meth:`PSF.as_dict`:
-            Construct a dictionary from a :class:`PSF` instance.
-
-        """
-        return cls(**psf_dict)
 
     """###################################### Properties ########################################"""
 
@@ -432,36 +401,23 @@ class PSF(Container):
     """########################### methods for reading .psf files. ##############################"""
 
     @classmethod
-    def read(cls, filename: Union[str, Iterator[Union[str, bytes]]],
-             encoding: Optional[str] = None) -> 'PSF':
-        """Construct :class:`PSF` instance from a protein structure file (.psf).
+    @AbstractFileContainer.inherit_annotations()
+    def _read_iterate(cls, iterator):
+        ret = {}
 
-        Parameters
-        ----------
-        filename : |str|_ or `file object`_
-            The path+filename or a file object of the to-be read .psf file.
-
-        encoding : str
-            Optional: Encoding used to decode the input (*e.g.* ``"utf-8"``).
-            Only relevant when a file object is supplied to **filename** and
-            the datastream is *not* in text mode.
-
-        Returns
-        -------
-        |nanoCAT.PSF|_:
-            A :class:`.PSF` instance holding the content of **filename**.
-
-        """
-        def iterate(stream: Iterator[Union[str, bytes]]) -> None:
-            iterator = iter(stream) if encoding is None else iterdecode(stream, encoding)
-            next(iterator)  # Skip the first line
+        next(iterator)  # Skip the first line
+        with FrozenSettings.EnableMissing():
             for i in iterator:
                 # Search for psf blocks
                 if i == '\n':
                     continue
 
                 # Read the psf block header
-                key = cls._HEADER_DICT[i.split()[1].rstrip(':')]
+                try:
+                    key = cls._HEADER_DICT[i.split()[1].rstrip(':')]
+                except KeyError:
+                    raise OSError('Failed to parse file; invalid header: {repr(i)}')
+                import pdb; pdb.set_trace()
                 ret[key] = value = []
 
                 # Read the actual psf blocks
@@ -477,19 +433,12 @@ class PSF(Container):
                     except StopIteration:
                         break
 
-        ret = {}
+        return cls._post_process_psf(ret)
 
-        # filename is an actual filename
+    @AbstractFileContainer.inherit_annotations()
+    def _read_postprocess(self, filename, encoding=None, **kwargs):
         if isinstance(filename, str):
-            with open(filename, 'r') as f:
-                iterate(f)
-        else:  # filename is a data stream
-            iterate(filename)
-
-        # Post-process and return
-        _ret = cls(**PSF._post_process_psf(ret))
-        _ret.filename = filename if isinstance(filename, str) else None
-        return _ret
+            self.filename = filename
 
     @classmethod
     def _post_process_psf(cls, psf_dict: dict) -> Dict[str, np.ndarray]:
@@ -539,49 +488,20 @@ class PSF(Container):
 
     """########################### methods for writing .psf files. ##############################"""
 
-    def write(self, filename: Union[str, None, Iterator] = None,
-              encoding: Optional[str] = None) -> None:
-        """Create a protein structure file (.psf) from this :class:`.PSF` instance.
-
-        .. _`file object`: https://docs.python.org/3/glossary.html#term-file-object
-
-        Parameters
-        ----------
-        filename : |str|_ or `file object`_
-            The path+filename or a file object of the output .psf file.
-            If ``None``, attempt to pull the filename from :attr:`PSF.filename`.
-
-        encoding : str
-            Optional: Encoding used to encode the output (*e.g.* ``"utf-8"``).
-            Only relevant when a file object is supplied to **filename** and
-            the datastream is *not* in text mode.
-
-        Raises
-        ------
-        TypeError
-            Raised if the filename is specified in neither **filename** nor :attr:`PSF.filename`.
-
-        """
+    @AbstractFileContainer.inherit_annotations()
+    def write(self, filename, encoding=None):
         _filename = filename if filename is not None else self.filename
         if not _filename:
             raise TypeError("The 'filename' parameter is missing")
+        super().write(_filename, encoding)
 
-        output = self._serialize_top()
-        output += self._serialize_bottom()
+    @AbstractFileContainer.inherit_annotations()
+    def _write_iterate(self, write, **kwargs):
+        self._write_top(write)
+        self._write_bottom(write)
 
-        # _filename is an actual filename
-        if isinstance(_filename, str):
-            with open(_filename, 'w') as f:
-                f.write(output)
-
-        else:  # _filename is a data stream
-            if encoding is None:
-                _filename.write(output)
-            else:
-                _filename.write(output.encode(encoding))
-
-    def _serialize_top(self) -> str:
-        """Serialize the top-most section of the to-be create .psf file.
+    def _write_top(self, write: Callable) -> None:
+        """Write the top-most section of the to-be create .psf file.
 
         The following blocks are seralized:
 
@@ -600,21 +520,19 @@ class PSF(Container):
 
         """
         # Prepare the !NTITLE block
-        ret = ('PSF EXT\n'
-               '\n{:>10d} !NTITLE\n'.format(self.title.shape[0]))
+        write('PSF EXT\n\n{:>10d} !NTITLE\n'.format(self.title.shape[0]))
         for i in self.title:
-            ret += f'   REMARKS {i}\n'
+            write(f'   REMARKS {i}\n')
 
         # Prepare the !NATOM block
-        ret += '\n\n{:>10d} !NATOM\n'.format(self.atoms.shape[0])
+        write('\n\n{:>10d} !NATOM\n'.format(self.atoms.shape[0]))
         string = '{:>10d} {:8.8} {:<8d} {:8.8} {:8.8} {:6.6} {:>9f} {:>15f} {:>8d}\n'
         for i, j in self.atoms.iterrows():
             args = [i] + j.values.tolist()
-            ret += string.format(*args)
-        return ret
+            write(string.format(*args))
 
-    def _serialize_bottom(self) -> str:
-        """Serialize the bottom-most section of the to-be create .psf file.
+    def _write_bottom(self, write: Callable) -> None:
+        """Write the bottom-most section of the to-be create .psf file.
 
         The following blocks are seralized:
 
@@ -626,10 +544,11 @@ class PSF(Container):
             * :attr:`PSF.acceptors`
             * :attr:`PSF.no_nonbonded`
 
-        Returns
+        Parameters
         -------
-        |str|_
-            A string constructed from the above-mentioned psf blocks.
+        writer : :class:`Callable` [[:class:`AnyStr`], ``None``]
+            A callable for writing the content of this instance to a `file object`_.
+            An example would be the :meth:`io.TextIOWrapper.write` method.
 
         See Also
         --------
@@ -640,16 +559,14 @@ class PSF(Container):
         sections = ('bonds', 'angles', 'dihedrals', 'impropers',
                     'donors', 'acceptors', 'no_nonbonded')
 
-        ret = ''
         for attr in sections:
             header = self._SHAPE_DICT[attr].header
             row_len = self._SHAPE_DICT[attr].row_len
 
             value = getattr(self, attr)
             item_count = len(value) if value.shape[-1] != 0 else 0
-            ret += ('\n\n' + header.format(item_count) +
-                    '\n' + self._serialize_array(value, row_len))
-        return ret
+            write('\n\n' + header.format(item_count) +
+                  '\n' + self._serialize_array(value, row_len))
 
     @staticmethod
     def _serialize_array(array: np.ndarray, items_per_row: int = 4) -> str:

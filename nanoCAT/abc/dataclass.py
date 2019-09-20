@@ -1,7 +1,7 @@
 import textwrap
 from abc import ABC
 from copy import deepcopy
-from typing import (Any, Dict, FrozenSet)
+from typing import (Any, Dict, FrozenSet, Iterator, Tuple)
 
 __all__ = ['AbstractDataClass']
 
@@ -21,9 +21,14 @@ class AbstractDataClass(ABC):
         width = max(len(k) for k in vars(self))
         indent1 = ' ' * 4
         indent2 = ' ' * (3 + width)
-        ret = ',\n'.join(_str(k, v) for k, v in self.as_dict().items())
+        iterator = self._str_iterator()
+        ret = ',\n'.join(_str(k, v) for k, v in iterator)
 
         return f'{self.__class__.__name__}(\n{textwrap.indent(ret, indent1)}\n)'
+
+    def _str_iterator(self) -> Iterator[Tuple[str, Any]]:
+        """Return an iterator for this instances' :meth:`.__str__` method."""
+        return self.as_dict().items()
 
     def __repr__(self) -> str:
         """Return a machine-readable string representation of this instance."""
@@ -33,7 +38,7 @@ class AbstractDataClass(ABC):
         """Check if this instance is equivalent to **value**."""
         if type(self) is not type(value):
             return False
-        return vars(self) == vars(value)
+        return self.as_dict() == self.as_dict()
 
     def copy(self, deep: bool = False) -> 'AbstractDataClass':
         """Return a deep or shallow copy of this instance.
@@ -58,14 +63,14 @@ class AbstractDataClass(ABC):
     def as_dict(self) -> Dict[str, Any]:
         """Construct a dictionary from this instance with all non-private instance attributes.
 
-        No attributes specified in :data:`_PRIVATE_ATTR` will be included in the to-be
+        No attributes specified in :data:`._PRIVATE_ATTR` will be included in the to-be
         returned dictionary.
 
         Returns
         -------
         :class:`dict` [:class:`str`, :class:`.Any`]
             A dictionary of arrays with keyword arguments for initializing a new
-            :class:`AbstractDataClass` instance.
+            instance of this class.
 
         See also
         --------
@@ -73,18 +78,16 @@ class AbstractDataClass(ABC):
             Construct a dictionary from this instance with *all* instance attributes.
 
         :meth:`AbstractDataClass.from_dict`:
-            Construct a :class:`AbstractDataClass` instance from
-            a dictionary with keyword arguments.
+            Construct a instance of this objects' class from a dictionary with keyword arguments.
 
         """
-        ret = vars(self)
-        for key in self._PRIVATE_ATTR:
-            del ret[key]
-        return ret
+        if not self._PRIVATE_ATTR:
+            return vars(self)
+        return {k: v for k, v in vars(self).items() if k not in self._PRIVATE_ATTR}
 
     @classmethod
     def from_dict(cls, dct: Dict[str, Any]) -> 'AbstractDataClass':
-        """Construct a :class:`AbstractDataClass` instance from a dictionary with keyword arguments.
+        """Construct a instance of this objects' class from a dictionary with keyword arguments.
 
         Parameters
         ----------
@@ -95,12 +98,21 @@ class AbstractDataClass(ABC):
         Returns
         -------
         :class:`AbstractDataClass`
-            A new :class:`AbstractDataClass` instance constructed from **dct**.
+            A new instance of this object's class constructed from **dct**.
 
         See also
         --------
         :meth:`AbstractDataClass.as_dict`:
-            Construct a dictionary from a :class:`AbstractDataClass` instance.
+            Construct a dictionary from this instance with all non-private instance attributes.
 
         """
         return cls(**dct)
+
+    @classmethod
+    def inherit_annotations(cls) -> type:
+        def decorator(type_: type) -> type:
+            cls_meth = getattr(cls, type_.__name__)
+            annotations = cls_meth.__annotations__.copy()
+            type_.__annotations__ = annotations.update(type_.__annotations__)
+            return type_
+        return decorator

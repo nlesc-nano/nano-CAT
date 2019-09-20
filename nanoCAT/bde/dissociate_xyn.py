@@ -30,7 +30,7 @@ API
 
 """
 
-from typing import (Iterable, Tuple, Sequence, Dict, List, Optional, Hashable)
+from typing import (Any, Iterable, Tuple, Sequence, Dict, List, Optional, Hashable, FrozenSet, Callable)
 from itertools import (chain, combinations)
 
 import numpy as np
@@ -38,26 +38,32 @@ from scipy.spatial.distance import cdist
 
 from scm.plams import (Molecule, Atom, Settings)
 
-from .guess_core_dist import guess_core_core_dist
+from nanoCAT.bde.guess_core_dist import guess_core_core_dist
+from nanoCAT.dataclass import AbstractDataClass
 
 __all__ = ['dissociate_ligand']
 
 
-class MolDissociater:
+class MolDissociater(AbstractDataClass):
+
+    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords'})
+
     def __init__(self, mol: Molecule,
                  core_index: Iterable[int],
                  ligand_count: int,
                  cc_dist: Optional[float] = None,
-                 topology: Optional[dict] = None) -> None:
+                 topology: Optional[Dict[int, str]] = None) -> None:
         """Initialize a :class:`MolDissociater` instance."""
-        self.mol = mol
-        self.core_idx = np.array(core_index) - 1
-        self.ligand_count = ligand_count
-        self.cc_dist = cc_dist if cc_dist is not None else self.guess_core_core_dist()
-        self.topology = topology if topology is not None else {}
+        self.mol: Molecule = mol
+        self.core_idx: np.ndarray = np.array(core_index) - 1
+        self.ligand_count: int = ligand_count
+        self.cc_dist: float = cc_dist if cc_dist is not None else guess_core_core_dist()
+        self.topology: Dict[int, str] = topology if topology is not None else {}
 
-        mol.set_atoms_id()
-        self.coords = mol.as_array()
+        self._coords: np.ndarray = mol.as_array()
+
+    def run(self, *args, **kwargs) -> List[Molecule]:
+        pass
 
     def assign_topology(self, max_dist: float = 5.0) -> None:
         """Find all atoms (**idx**) in **xyz_array** which are exposed to the surface.
@@ -88,7 +94,7 @@ class MolDissociater:
         """
         # Extract variables
         mol: Molecule = self.mol
-        xyz: np.ndarray = self.coords
+        xyz: np.ndarray = self._coords
         i: np.ndarray = self.core_idx
 
         # Create a distance matrix and find all elements with a distance smaller than **max_dist**
@@ -145,7 +151,7 @@ class MolDissociater:
 
         """
         # Extract variables
-        xyz: np.ndarray = self.coords
+        xyz: np.ndarray = self._coords
         i: np.ndarray = self.core_idx
         j: np.ndarray = self._gather_anchors(anchor_marker)
         n: int = self.ligand_count
@@ -172,13 +178,37 @@ class MolDissociater:
         valid = np.invert(invalid)[None, :]
         return cor_lig_pairs[valid]
 
+    @staticmethod
+    def _recursive_get(obj: Any, key_tup: Iterable[Hashable], getter: Callable = getattr):
+        """Recursivelly call **getter** on **obj** untill all keys in **key_tup** are exhausted."""
+        ret = obj
+        for k in key_tup:
+            ret = getter(ret, k)
+        return ret
+
+    def partition_mol(self,
+                      key_tup: Iterable[Hashable] = ('properties', 'pdb_info', 'ResidueNumber'),
+                      getter: Callable = getattr) -> Dict[Hashable, List[Atom]]:
+        """Partition the atoms within a molecule based on a list of user specified keys."""
+        ret = {}
+        for at in self.mol:
+            key = self._recursive_get(at, key_tup, getter)
+            try:
+                ret[key].append(at)
+            except KeyError:
+                ret[key] = [at]
+        return ret
+
     def get_combinations_dict(self, cor_lig_pairs: np.ndarray):
+        partition_dict = self.partition_mol()
         keys = cor_lig_pairs[:, 0]
 
-
-    def _gather_anchors(self, anchor_marker: Hashable = 'anchor'):
+    def _gather_anchors(self, key_tup: Iterable[Hashable] = ('properties', 'anchor'),
+                        getter: Callable = getattr):
         """Construct an array with the atomic indices (0-based) of all ligand anchor atoms."""
-        return np.array([i for i, at in enumerate(self.mol) if at.properties[anchor_marker]])
+        return np.array([
+            i for i, at in enumerate(self.mol) if self._recursive_get(at, key_tup, getter)
+        ])
 
 
 def dissociate_ligand(mol: Molecule, settings: Settings) -> List[Molecule]:

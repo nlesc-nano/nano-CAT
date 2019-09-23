@@ -34,17 +34,6 @@ class AbstractFileContainer(abc.ABC, Container):
         return value in vars(self).values()
 
     @classmethod
-    def inherit_annotations(cls) -> type:
-        def decorator(type_: type) -> type:
-            cls_meth = getattr(cls, type_.__name__)
-            annotations = cls_meth.__annotations__.copy()
-            dct = type_.__annotations__ = annotations.update(type_.__annotations__)
-            if 'return' in dct and dct['return'] == cls.__name__:
-                dct['return'] = type_.__self__.__name__
-            return type_
-        return decorator
-
-    @classmethod
     def read(cls, filename: Union[AnyStr, os.PathLike, Iterable[AnyStr]],
              encoding: Optional[str] = None, **kwargs) -> 'AbstractFileContainer':
         """Construct a new instance from this object's class by reading the content of **filename**.
@@ -271,3 +260,36 @@ class AbstractFileContainer(abc.ABC, Container):
 
         """
         raise NotImplementedError('Trying to call an abstract method')
+
+    @classmethod
+    def inherit_annotations(cls) -> type:
+        """A decorator for inheriting annotations and docstrings.
+
+        Can be applied to methods of :class:`AbstractFileContainer` subclasses to automatically
+        inherit the docstring and annotations of identical-named functions of its superclass.
+
+        Examples
+        --------
+        .. code:: python
+
+            >>> class sub_class(AbstractFileContainer)
+            ...
+            ...     @AbstractFileContainer.inherit_annotations()
+            ...     def write(filename, encoding=None, **kwargs):
+            ...         pass
+
+            >>> sub_class.write.__doc__ == AbstractFileContainer.write.__doc__
+            True
+
+            >>> sub_class.write.__annotations__ == AbstractFileContainer.write.__annotations__
+            True
+
+        """
+        def decorator(sub_attr: type) -> type:
+            super_attr = getattr(cls, sub_attr.__name__)
+            if not sub_attr.__annotations__:
+                sub_attr.__annotations__ = super_attr.__annotations__.copy()
+            if sub_attr.__doc__ is None:
+                sub_attr.__doc__ = super_attr.__doc__
+            return sub_attr
+        return decorator

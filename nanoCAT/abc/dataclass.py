@@ -1,7 +1,7 @@
 import textwrap
 from abc import ABC
 from copy import deepcopy
-from typing import (Any, Dict, FrozenSet, Iterator, Tuple)
+from typing import (Any, Dict, FrozenSet, Iterable, Tuple)
 
 __all__ = ['AbstractDataClass']
 
@@ -10,11 +10,12 @@ class AbstractDataClass(ABC):
     """A generic dataclass."""
 
     #: A :class:`frozenset` with the names of private instance attributes.
-    #: These attributes will be excluded whenever calling :meth:`AbstractDataClass.as_dict`.
+    #: These attributes will be excluded whenever calling :meth:`AbstractDataClass.as_dict`,
+    #: printing an instance or comparing objects.
     _PRIVATE_ATTR: FrozenSet[str] = frozenset({})
 
     def __str__(self) -> str:
-        """Return a human-readable string representation of this instance."""
+        """Return a string representation of this instance."""
         def _str(k: str, v: Any) -> str:
             return f'{k:{width}} = ' + textwrap.indent(repr(v), indent2)[len(indent2):]
 
@@ -26,13 +27,11 @@ class AbstractDataClass(ABC):
 
         return f'{self.__class__.__name__}(\n{textwrap.indent(ret, indent1)}\n)'
 
-    def _str_iterator(self) -> Iterator[Tuple[str, Any]]:
-        """Return an iterator for this instances' :meth:`.__str__` method."""
-        return self.as_dict().items()
+    __repr__ = __str__
 
-    def __repr__(self) -> str:
-        """Return a machine-readable string representation of this instance."""
-        return str(self)
+    def _str_iterator(self) -> Iterable[Tuple[str, Any]]:
+        """Return an iterable for this instances' :meth:`.__str__` method."""
+        return self.as_dict().items()
 
     def __eq__(self, value: Any) -> bool:
         """Check if this instance is equivalent to **value**."""
@@ -40,8 +39,14 @@ class AbstractDataClass(ABC):
             return False
         return self.as_dict() == self.as_dict()
 
-    def copy(self, deep: bool = False) -> 'AbstractDataClass':
+    def copy(self, deep: bool = False, copy_private: bool = False) -> 'AbstractDataClass':
         """Return a deep or shallow copy of this instance.
+
+        Parameters
+        ----------
+        return_private : :class:`bool`
+            If ``True``, copy both public and private instance variables.
+            Private instance variables are defined in :data:`AbstractDataClass._PRIVATE_ATTR`.
 
         Returns
         -------
@@ -49,7 +54,7 @@ class AbstractDataClass(ABC):
             A new instance constructed from this instance.
 
         """
-        kwargs = deepcopy(self.as_dict()) if deep else self.as_dict()
+        kwargs = deepcopy(self.as_dict(copy_private)) if deep else self.as_dict(copy_private)
         return self.from_dict(kwargs)
 
     def __copy__(self) -> 'AbstractDataClass':
@@ -60,11 +65,17 @@ class AbstractDataClass(ABC):
         """Return a deep copy of this instance."""
         return self.copy(deep=True)
 
-    def as_dict(self) -> Dict[str, Any]:
-        """Construct a dictionary from this instance with all non-private instance attributes.
+    def as_dict(self, return_private: bool = False) -> Dict[str, Any]:
+        """Construct a dictionary from this instance with all non-private instance variables.
 
-        No attributes specified in :data:`._PRIVATE_ATTR` will be included in the to-be
-        returned dictionary.
+        No attributes specified in :data:`AbstractDataClass._PRIVATE_ATTR` will be included in
+        the to-be returned dictionary.
+
+        Parameters
+        ----------
+        return_private : :class:`bool`
+            If ``True``, return both public and private instance variables.
+            Private instance variables are defined in :data:`AbstractDataClass._PRIVATE_ATTR`.
 
         Returns
         -------
@@ -81,9 +92,11 @@ class AbstractDataClass(ABC):
             Construct a instance of this objects' class from a dictionary with keyword arguments.
 
         """
+        ret = vars(self).copy()
         if not self._PRIVATE_ATTR:
-            return vars(self)
-        return {k: v for k, v in vars(self).items() if k not in self._PRIVATE_ATTR}
+            return ret
+        for key in self._PRIVATE_ATTR:
+            del ret[key]
 
     @classmethod
     def from_dict(cls, dct: Dict[str, Any]) -> 'AbstractDataClass':
@@ -110,11 +123,33 @@ class AbstractDataClass(ABC):
 
     @classmethod
     def inherit_annotations(cls) -> type:
-        def decorator(type_: type) -> type:
-            cls_meth = getattr(cls, type_.__name__)
-            annotations = cls_meth.__annotations__.copy()
-            dct = type_.__annotations__ = annotations.update(type_.__annotations__)
-            if 'return' in dct and dct['return'] == cls.__name__:
-                dct['return'] = type_.__self__.__name__
-            return type_
+        """A decorator for inheriting annotations and docstrings.
+
+        Can be applied to methods of :class:`AbstractDataClass` subclasses to automatically
+        inherit the docstring and annotations of identical-named functions of its superclass.
+
+        Examples
+        --------
+        .. code:: python
+
+            >>> class sub_class(AbstractDataClass)
+            ...
+            ...     @AbstractDataClass.inherit_annotations()
+            ...     def as_dict(self, return_private=False):
+            ...         pass
+
+            >>> sub_class.as_dict.__doc__ == AbstractDataClass.as_dict.__doc__
+            True
+
+            >>> sub_class.as_dict.__annotations__ == AbstractDataClass.as_dict.__annotations__
+            True
+
+        """
+        def decorator(sub_attr: type) -> type:
+            super_attr = getattr(cls, sub_attr.__name__)
+            if not sub_attr.__annotations__:
+                sub_attr.__annotations__ = super_attr.__annotations__.copy()
+            if sub_attr.__doc__ is None:
+                sub_attr.__doc__ = super_attr.__doc__
+            return sub_attr
         return decorator

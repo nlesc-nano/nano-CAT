@@ -8,7 +8,7 @@ Index
 -----
 .. currentmodule:: nanoCAT.ff.prm
 .. autosummary::
-    PSF
+    PRM
 
 API
 ---

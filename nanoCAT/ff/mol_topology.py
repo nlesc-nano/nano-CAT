@@ -170,7 +170,7 @@ def get_impropers(mol: Molecule) -> np.ndarray:
         if len(order) != 3:
             continue
 
-        if order in (2.0, 1.5):
+        if 2.0 in order or 1.5 in order:
             at2, at3, at4 = [bond.other_end(at1) for bond in at1.bonds]
             impropers.append((at1.id, at2.id, at3.id, at4.id))
 

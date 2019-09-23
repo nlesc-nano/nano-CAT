@@ -73,7 +73,7 @@ class AbstractFileContainer(abc.ABC, Container):
             Only relevant when a file object is supplied to **filename** and
             the datastream is *not* in text mode.
 
-        \**kwargs : :class:`.Any`, optional
+        \**kwargs : optional
             Optional keyword arguments that will be passed to both
             :meth:`AbstractFileContainer._read_iterate` and
             :meth:`AbstractFileContainer._read_postprocess`.
@@ -121,7 +121,7 @@ class AbstractFileContainer(abc.ABC, Container):
         class`dict` [:class:`str`, :class:`.Any`]
             A dictionary with keyword arguments for a new instance of this objects' class.
 
-        \**kwargs : :class:`.Any`, optional
+        \**kwargs : optional
             Optional keyword arguments.
 
         See also
@@ -148,7 +148,7 @@ class AbstractFileContainer(abc.ABC, Container):
             Only relevant when a file object is supplied to **filename** and
             the datastream is *not* in text mode.
 
-        \**kwargs : :class:`.Any`, optional
+        \**kwargs : optional
             Optional keyword arguments that will be passed to both
             :meth:`AbstractFileContainer._read_iterate` and
             :meth:`AbstractFileContainer._read_postprocess`.
@@ -181,7 +181,7 @@ class AbstractFileContainer(abc.ABC, Container):
             Only relevant when a file object is supplied to **filename** and
             the datastream is *not* in text mode.
 
-        \**kwargs : :class:`.Any`, optional
+        \**kwargs : optional
             Optional keyword arguments that will be passed to :meth:`._write_iterate`.
 
         See also

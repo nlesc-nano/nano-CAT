@@ -20,8 +20,11 @@ API
 """
 import inspect
 import reprlib
-from typing import (Dict, Optional, Any, Iterable, Iterator, List, Tuple, FrozenSet, Callable)
 from itertools import chain
+from typing import (
+    Dict, Optional, Any, Iterable, Iterator, List, Tuple, FrozenSet, Callable, AnyStr
+)
+
 
 import numpy as np
 import pandas as pd
@@ -40,71 +43,80 @@ __all__ = ['PSFContainer']
 class PSFContainer(AbstractDataClass, AbstractFileContainer):
     """A container for managing protein structure files.
 
-    The :class:`PSFContainer` class has access to three general sets of methods:
+    The :class:`PSFContainer` class has access to three general sets of methods.
 
-    * Methods for reading & constructing .psf files: :meth:`PSFContainer.read` and
-      :meth:`PSFContainer.write`.
-    * Methods for updating atom types: :meth:`PSFContainer.update_atom_charge`
-      and :meth:`PSFContainer.update_atom_type`.
-    * Methods for extracting bond, angle and dihedral-pairs from :class:`Molecule` instances:
-      :meth:`PSFContainer.generate_bonds`, :meth:`PSFContainer.generate_angles`,
-      :meth:`PSFContainer.generate_dihedrals`, :meth:`PSFContainer.generate_impropers` and
-      :meth:`PSFContainer.generate_atoms`.
+    Methods for reading & constructing .psf files:
+
+        * :meth:`PSFContainer.read`
+        * :meth:`PSFContainer.write`
+
+    Methods for updating atom types:
+
+        * :meth:`PSFContainer.update_atom_charge`
+        * :meth:`PSFContainer.update_atom_type`
+
+    Methods for extracting bond, angle and dihedral-pairs from |plams.Molecule| instances:
+
+        * :meth:`PSFContainer.generate_bonds`
+        * :meth:`PSFContainer.generate_angles`
+        * :meth:`PSFContainer.generate_dihedrals`
+        * :meth:`PSFContainer.generate_impropers`
+        * :meth:`PSFContainer.generate_atoms`
 
     Parameters
     ----------
-    filename : :math:`1` |np.ndarray|_ [|np.str_|_]
+    filename : :math:`1` :class:`numpy.ndarray` [:class:`str`]
         Optional: A 1D array-like object containing a single filename.
         See also :attr:`PSFContainer.filename`.
 
-    title : :math:`n` |np.ndarray|_ [|np.str_|_]
+    title : :math:`n` :class:`numpy.ndarray` [:class:`str`]
         Optional: A 1D array of strings holding the title block.
         See also :attr:`PSFContainer.title`.
 
-    atoms : :math:`n*8` |pd.DataFrame|_
+    atoms : :math:`n*8` :class:`pandas.DataFrame`
         Optional: A Pandas DataFrame holding the atoms block.
         See also :attr:`PSFContainer.atoms`.
 
-    bonds : :math:`n*2` |np.ndarray|_ [|np.int64|_]
+    bonds : :math:`n*2` :class:`numpy.ndarray` [:class:`int`]
         Optional: A 2D array-like object holding the indices of all atom-pairs defining bonds.
         See also :attr:`PSFContainer.bonds`.
 
-    angles : :math:`n*3` |np.ndarray|_ [|np.int64|_]
+    angles : :math:`n*3` :class:`numpy.ndarray` [:class:`int`]
         Optional: A 2D array-like object holding the indices of all atom-triplets defining angles.
         See also :attr:`PSFContainer.angles`.
 
-    dihedrals : :math:`n*4` |np.ndarray|_ [|np.int64|_]
+    dihedrals : :math:`n*4` :class:`numpy.ndarray` [:class:`int`]
         Optional: A 2D array-like object holding the indices of
         all atom-quartets defining proper dihedral angles.
         See also :attr:`PSFContainer.dihedrals`.
 
-    impropers : :math:`n*4` |np.ndarray|_ [|np.int64|_]
+    impropers : :math:`n*4` :class:`numpy.ndarray` [:class:`int`]
         Optional: A 2D array-like object holding the indices of
         all atom-quartets defining improper dihedral angles.
         See also :attr:`PSFContainer.impropers`.
 
-    donors : :math:`n*1` |np.ndarray|_ [|np.int64|_]
+    donors : :math:`n*1` :class:`numpy.ndarray` [:class:`int`]
         Optional: A 2D array-like object holding the atomic indices of all hydrogen-bond donors.
         See also :attr:`PSFContainer.donors`.
 
-    acceptors : :math:`n*1` |np.ndarray|_ [|np.int64|_]
+    acceptors : :math:`n*1` :class:`numpy.ndarray` [:class:`int`]
         Optional: A 2D array-like object holding the atomic indices of all hydrogen-bond acceptors.
         See also :attr:`PSFContainer.acceptors`.
 
-    no_nonbonded : :math:`n*2` |np.ndarray|_ [|np.int64|_]
+    no_nonbonded : :math:`n*2` :class:`numpy.ndarray` [:class:`int`]
         Optional: A 2D array-like object holding the indices of all atom-pairs whose nonbonded
         interactions should be ignored.
         See also :attr:`PSFContainer.no_nonbonded`.
 
     Attributes
     ----------
-    filename : :math:`1` |np.ndarray|_ [|np.str_|_]
+    filename : :math:`1` :class:`numpy.ndarray` [:class:`str`]
         A 1D array with a single string as filename.
 
-    title : :math:`n` |np.ndarray|_ [|np.str_|_]
+    title : :math:`n` :class:`numpy.ndarray` [:class:`str`]
         A 1D array of strings holding the title block.
 
-    atoms : :math:`n*8` |pd.DataFrame|_
+    atoms : :math:`n*8` :class:`pandas.DataFrame`
         A Pandas DataFrame holding the atoms block.
         The DataFrame should possess the following collumn keys:
 
@@ -117,31 +129,31 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
         * ``"mass"``
         * ``"0"``
 
-    bonds : :math:`n*2` |np.ndarray|_ [|np.int64|_]
+    bonds : :math:`n*2` :class:`numpy.ndarray` [:class:`int`]
         A 2D array holding the indices of all atom-pairs defining bonds.
         Indices are expected to be 1-based.
 
-    angles : :math:`n*3` |np.ndarray|_ [|np.int64|_]
+    angles : :math:`n*3` :class:`numpy.ndarray` [:class:`int`]
         A 2D array holding the indices of all atom-triplets defining angles.
         Indices are expected to be 1-based.
 
-    dihedrals : :math:`n*4` |np.ndarray|_ [|np.int64|_]
+    dihedrals : :math:`n*4` :class:`numpy.ndarray` [:class:`int`]
         A 2D array holding the indices of all atom-quartets defining proper dihedral angles.
         Indices are expected to be 1-based.
 
-    impropers : :math:`n*4` |np.ndarray|_ [|np.int64|_]
+    impropers : :math:`n*4` :class:`numpy.ndarray` [:class:`int`]
         A 2D array holding the indices of all atom-quartets defining improper dihedral angles.
         Indices are expected to be 1-based.
 
-    donors : :math:`n*1` |np.ndarray|_ [|np.int64|_]
+    donors : :math:`n*1` :class:`numpy.ndarray` [:class:`int`]
         A 2D array holding the atomic indices of all hydrogen-bond donors.
         Indices are expected to be 1-based.
 
-    acceptors : :math:`n*1` |np.ndarray|_ [|np.int64|_]
+    acceptors : :math:`n*1` :class:`numpy.ndarray` [:class:`int`]
         A 2D array holding the atomic indices of all hydrogen-bond acceptors.
         Indices are expected to be 1-based.
 
-    no_nonbonded : :math:`n*2` |np.ndarray|_ [|np.int64|_]
+    no_nonbonded : :math:`n*2` :class:`numpy.ndarray` [:class:`int`]
         A 2D array holding the indices of all atom-pairs whose nonbonded
         interactions should be ignored.
         Indices are expected to be 1-based.
@@ -253,11 +265,21 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         return True
 
+    @AbstractDataClass.inherit_annotations()
+    def as_dict(self, return_private=False):
+        ret = super().as_dict(return_private)
+        return {k.strip('_'): v for k, v in ret.items()}
+
+    @AbstractDataClass.inherit_annotations()
+    def copy(self, deep=True, copy_private=False): return super().copy(deep, copy_private)
+
+    __copy__ = AbstractDataClass.__deepcopy__
+
     """###################################### Properties ########################################"""
 
     @property
     def filename(self) -> str:
-        """Get :attr:`PSF.filename` as string or assign an array-like object as a 1D array."""
+        """Get :attr:`PSFContainer.filename` as string or assign an array-like object as a 1D array."""  # noqa
         return str(self._filename[0])
 
     @filename.setter
@@ -265,7 +287,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def title(self) -> np.ndarray:
-        """Get :attr:`PSF.title` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFContainer.title` or assign an array-like object as a 2D array."""
         return self._title
 
     @title.setter
@@ -278,7 +300,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def atoms(self) -> pd.DataFrame:
-        """Get :attr:`PSF.atoms` or assign an a DataFrame."""
+        """Get :attr:`PSFContainer.atoms` or assign an a DataFrame."""
         return self._atoms
 
     @atoms.setter
@@ -286,7 +308,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def bonds(self) -> np.ndarray:
-        """Get :attr:`PSF.bonds` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFContainer.bonds` or assign an array-like object as a 2D array."""
         return self._bonds
 
     @bonds.setter
@@ -294,7 +316,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def angles(self) -> np.ndarray:
-        """Get :attr:`PSF.angles` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFContainer.angles` or assign an array-like object as a 2D array."""
         return self._angles
 
     @angles.setter
@@ -302,7 +324,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def dihedrals(self) -> np.ndarray:
-        """Get :attr:`PSF.dihedrals` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFContainer.dihedrals` or assign an array-like object as a 2D array."""
         return self._dihedrals
 
     @dihedrals.setter
@@ -310,7 +332,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def impropers(self) -> np.ndarray:
-        """Get :attr:`PSF.impropers` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFPSFContainerimpropers` or assign an array-like object as a 2D array."""
         return self._impropers
 
     @impropers.setter
@@ -318,7 +340,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def donors(self) -> np.ndarray:
-        """Get :attr:`PSF.donors` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFContainer.donors` or assign an array-like object as a 2D array."""
         return self._donors
 
     @donors.setter
@@ -326,7 +348,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def acceptors(self) -> np.ndarray:
-        """Get :attr:`PSF.acceptors` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFContainer.acceptors` or assign an array-like object as a 2D array."""
         return self._acceptors
 
     @acceptors.setter
@@ -334,7 +356,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def no_nonbonded(self) -> np.ndarray:
-        """Get :attr:`PSF.no_nonbonded` or assign an array-like object as a 2D array."""
+        """Get :attr:`PSFContainer.no_nonbonded` or assign an array-like object as a 2D array."""
         return self._no_nonbonded
 
     @no_nonbonded.setter
@@ -350,17 +372,17 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         Parameters
         ----------
-        name : str
+        name : :class:`str`
             The name of the to-be set attribute.
 
         value : `array-like`_
             The array-like object to-be assigned to **name**.
             The supplied object is converted into into an array beforehand.
 
-        ndmin : int
+        ndmin : :class:`int`
             The minimum number of dimensions of the to-be assigned array.
 
-        dtype : |type|_ or |np.dtype|_
+        dtype : :class:`type` or :class:`numpy.dtype`
             The desired datatype of the to-be assigned array.
 
         Exceptions
@@ -383,7 +405,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def segment_name(self) -> pd.Series:
-        """Get or set the ``"segment name"`` column in :attr:`PSF.atoms`."""
+        """Get or set the ``"segment name"`` column in :attr:`PSFContainer.atoms`."""
         return self.atoms['segment name']
 
     @segment_name.setter
@@ -391,7 +413,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def residue_id(self) -> pd.Series:
-        """Get or set the ``"residue ID"`` column in :attr:`PSF.atoms`."""
+        """Get or set the ``"residue ID"`` column in :attr:`PSFContainer.atoms`."""
         return self.atoms['residue ID']
 
     @residue_id.setter
@@ -399,7 +421,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def residue_name(self) -> pd.Series:
-        """Get or set the ``"residue name"`` column in :attr:`PSF.atoms`."""
+        """Get or set the ``"residue name"`` column in :attr:`PSFContainer.atoms`."""
         return self.atoms['residue name']
 
     @residue_name.setter
@@ -407,7 +429,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def atom_name(self) -> pd.Series:
-        """Get or set the ``"atom name"`` column in :attr:`PSF.atoms`."""
+        """Get or set the ``"atom name"`` column in :attr:`PSFContainer.atoms`."""
         return self.atoms['atom name']
 
     @atom_name.setter
@@ -415,7 +437,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def atom_type(self) -> pd.Series:
-        """Get or set the ``"atom type"`` column in :attr:`PSF.atoms`."""
+        """Get or set the ``"atom type"`` column in :attr:`PSFContainer.atoms`."""
         return self.atoms['atom type']
 
     @atom_type.setter
@@ -423,7 +445,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def charge(self) -> pd.Series:
-        """Get or set the ``"charge"`` column in :attr:`PSF.atoms`."""
+        """Get or set the ``"charge"`` column in :attr:`PSFContainer.atoms`."""
         return self.atoms['charge']
 
     @charge.setter
@@ -431,7 +453,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @property
     def mass(self) -> pd.Series:
-        """Get or set the ``"mass"`` column in :attr:`PSF.atoms`."""
+        """Get or set the ``"mass"`` column in :attr:`PSFContainer.atoms`."""
         return self.atoms['mass']
 
     @mass.setter
@@ -494,12 +516,12 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         Parameters
         ----------
-        psf_dict : |dict|_ [|str|_, |np.ndarray|_]
-            A dictionary holding the content of a .psf file (see :func:`.read_psf`).
+        psf_dict : :class:`dict` [:class:`str`, :class:`numpy.ndarray`]
+            A dictionary holding the content of a .psf file (see :func:`PSFContainer.read_psf`).
 
         Returns
         -------
-        |dict|_ [|str|_, |np.ndarray|_]:
+        :class:`dict` [:class:`str`, :class:`numpy.ndarray`]:
             The .psf output, **psf_dict**, with properly formatted values.
 
         """
@@ -533,18 +555,18 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
     """########################### methods for writing .psf files. ##############################"""
 
     @AbstractFileContainer.inherit_annotations()
-    def write(self, filename, encoding=None):
+    def write(self, filename, encoding=None, **kwargs):
         _filename = filename if filename is not None else self.filename
         if not _filename:
             raise TypeError("The 'filename' parameter is missing")
-        super().write(_filename, encoding)
+        super().write(_filename, encoding, **kwargs)
 
     @AbstractFileContainer.inherit_annotations()
     def _write_iterate(self, write, **kwargs):
         self._write_top(write)
         self._write_bottom(write)
 
-    def _write_top(self, write: Callable) -> None:
+    def _write_top(self, write: Callable[[AnyStr], None]) -> None:
         """Write the top-most section of the to-be create .psf file.
 
         The following blocks are seralized:
@@ -552,14 +574,20 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
             * :attr:`PSF.title`
             * :attr:`PSF.atoms`
 
+        Parameters
+        ----------
+        write : :class:`Callable` [[:class:`AnyStr`], ``None``]
+            A callable for writing the content of this instance to a `file object`_.
+            An example would be the :meth:`io.TextIOWrapper.write` method.
+
         Returns
         -------
-        |str|_
+        :class:`str`
             A string constructed from the above-mentioned psf blocks.
 
         See Also
         --------
-        :meth:`PSF.write`
+        :meth:`PSFContainer.write`
             The main method for writing .psf files.
 
         """
@@ -575,7 +603,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
             args = [i] + j.values.tolist()
             write(string.format(*args))
 
-    def _write_bottom(self, write: Callable) -> None:
+    def _write_bottom(self, write: Callable[[AnyStr], None]) -> None:
         """Write the bottom-most section of the to-be create .psf file.
 
         The following blocks are seralized:
@@ -589,14 +617,14 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
             * :attr:`PSF.no_nonbonded`
 
         Parameters
-        -------
-        writer : :class:`Callable` [[:class:`AnyStr`], ``None``]
+        ----------
+        write : :class:`Callable` [[:class:`AnyStr`], ``None``]
             A callable for writing the content of this instance to a `file object`_.
             An example would be the :meth:`io.TextIOWrapper.write` method.
 
         See Also
         --------
-        :meth:`PSF.write`
+        :meth:`PSFContainer.write`
             The main method for writing .psf files.
 
         """
@@ -620,20 +648,20 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         Parameters
         ----------
-        array : |np.ndarray|_
+        array : :class:`numpy.ndarray`
             A 2D array.
 
-        items_per_row : int
+        items_per_row : :class:`int`
             The number of values per row before switching to a new line.
 
         Returns
         -------
-        |str|_:
+        :class:`str`:
             A serialized array.
 
         See Also
         --------
-        :meth:`PSF.write`
+        :meth:`PSFContainer.write`
             The main method for writing .psf files.
 
         """
@@ -659,101 +687,120 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         Parameters
         ----------
-        atom_type : str
-            An atom type in :attr:`self.atoms` ``["atom type"]``.
+        atom_type : :class:`str`
+            An atom type in :attr:`PSFContainer.atoms` ``["atom type"]``.
 
-        charge : float
+        charge : :class:`float`
             The new atomic charge to-be assigned to **atom_type**.
-            See :attr:`self.atoms` ``["charge"]``.
+            See :attr:`PSFContainer.atoms` ``["charge"]``.
+
+        Raises
+        ------
+        KeyError:
+            Raised if no atom type by the name of **atom_type** is available.
+
+        ValueError:
+            Raised if **charge** cannot be converted into a :class:`float`.
 
         """
         condition = self.atom_type == atom_type
-        self.atoms.loc[condition, 'charge'] = charge
+        if not condition.any():
+            raise KeyError(f'No atom type {repr(atom_type)} in this instance; '
+                           f'available atom types: {reprlib.repr(set(self.atom_type))}')
+        self.atoms.loc[condition, 'charge'] = float(charge)
 
     def update_atom_type(self, atom_type_old: str, atom_type_new: str) -> None:
         """Change the atom type of a **atom_type_old** to **atom_type_new**.
 
         Parameters
         ----------
-        atom_type_old : str
-            An atom type in :attr:`self.atoms` ``["atom type"]``.
+        atom_type_old : :class:`str`
+            An atom type in :attr:`PSFContainer.atoms` ``["atom type"]``.
 
-        atom_type_new : float
+        atom_type_new : :class:`str`
             The new atom type to-be assigned to **atom_type**.
-            See :attr:`self.atoms` ``["atom type"]``.
+            See :attr:`PSFContainer.atoms` ``["atom type"]``.
+
+        Raises
+        ------
+        KeyError:
+            Raised if no atom type by the name of **atom_type_old** is available.
 
         """
         condition = self.atom_type == atom_type_old
+        if not condition.any():
+            raise KeyError(f'No atom type {repr(atom_type_old)} in this instance; '
+                           f'available atom types: {reprlib.repr(set(self.atom_type))}')
         self.atoms.loc[condition, 'atom type'] = atom_type_new
 
     def generate_bonds(self, mol: Molecule) -> None:
-        """Update :attr:`PSF.bonds` with the indices of all bond-forming atoms from **mol**.
+        """Update :attr:`PSFContainer.bonds` with the indices of all bond-forming atoms from **mol**.
 
         Parameters
         ----------
-        mol : |plams.Molecule|_
+        mol : |plams.Molecule|
             A PLAMS Molecule.
 
-        """
+        """  # noqa
         self.bonds = get_bonds(mol)
 
     def generate_angles(self, mol: Molecule) -> None:
-        """Update :attr:`PSF.angles` with the indices of all angle-defining atoms from **mol**.
+        """Update :attr:`PSFContainer.angles` with the indices of all angle-defining atoms from **mol**.
 
         Parameters
         ----------
-        mol : |plams.Molecule|_
+        mol : |plams.Molecule|
             A PLAMS Molecule.
 
-        """
+        """  # noqa
         self.angles = get_angles(mol)
 
     def generate_dihedrals(self, mol: Molecule) -> None:
-        """Update :attr:`PSF.dihedrals` with the indices of all proper dihedral angle-defining atoms from **mol**.
+        """Update :attr:`PSFContainer.dihedrals` with the indices of all proper dihedral angle-defining atoms from **mol**.
 
         Parameters
         ----------
-        mol : |plams.Molecule|_
+        mol : |plams.Molecule|
             A PLAMS Molecule.
 
         """  # noqa
         self.dihedrals = get_dihedrals(mol)
 
     def generate_impropers(self, mol: Molecule) -> None:
-        """Update :attr:`PSF.impropers` with the indices of all improper dihedral angle-defining atoms from **mol**.
+        """Update :attr:`PSFContainer.impropers` with the indices of all improper dihedral angle-defining atoms from **mol**.
 
         Parameters
         ----------
-        mol : |plams.Molecule|_
+        mol : |plams.Molecule|
             A PLAMS Molecule.
 
         """  # noqa
         self.impropers = get_impropers(mol)
 
     def generate_atoms(self, mol: Molecule) -> None:
-        """Update :attr:`PSF.atoms` with the all properties from **mol**.
+        """Update :attr:`PSFContainer.atoms` with the all properties from **mol**.
 
-        DataFrame keys in :attr:`PSF.atoms` are set based on the following values in **mol**:
+        DataFrame keys in :attr:`PSFContainer.atoms` are set based on the following values in **mol**:
 
         ================== ========================================================= =================================================
         DataFrame column   Value                                                     Backup value(s)
         ================== ========================================================= =================================================
         ``"segment name"`` ``"MOL{:d}"``; See ``"atom type"`` and ``"residue name"``
-        ``"residue ID"``   :attr:`Atom.properties` ``["pdb_info"]["ResidueNumber"]``  ``1``
-        ``"residue name"`` :attr:`Atom.properties` ``["pdb_info"]["ResidueName"]``    ``"COR"``
-        ``"atom name"``    :attr:`Atom.symbol`
-        ``"atom type"``    :attr:`Atom.properties` ``["symbol"]``                     :attr:`Atom.symbol`
-        ``"charge"``       :attr:`Atom.properties` ``["charge_float"]``               :attr:`Atom.properties` ``["charge"]`` & ``0.0``
-        ``"mass"``         :attr:`Atom.mass`
+        ``"residue ID"``   |Atom.properties| ``["pdb_info"]["ResidueNumber"]``       ``1``
+        ``"residue name"`` |Atom.properties| ``["pdb_info"]["ResidueName"]``         ``"COR"``
+        ``"atom name"``    |Atom.symbol|
+        ``"atom type"``    |Atom.properties| ``["symbol"]``                          |Atom.symbol|
+        ``"charge"``       |Atom.properties| ``["charge_float"]``                    |Atom.properties| ``["charge"]`` & ``0.0``
+        ``"mass"``         |Atom.mass|
         ``"0"``            ``0``
         ================== ========================================================= =================================================
 
-        If a value is not available in a particular :attr:`Atom.properties` instance then
+        If a value is not available in a particular |Atom.properties| instance then
         a backup value will be set.
 
         Parameters
         ----------
-        mol : |plams.Molecule|_
+        mol : |plams.Molecule|
             A PLAMS Molecule.
 
         """  # noqa

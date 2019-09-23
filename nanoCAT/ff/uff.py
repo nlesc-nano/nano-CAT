@@ -76,7 +76,7 @@ def combine_xi(a: str, b: str) -> float:
 
 
 def combine_di(a: str, b: str) -> float:
-    r"""Return the root of the product of two Lennard-Jones well depths (:math:`D_{i}`).
+    r"""Return the root of the product of two UFF Lennard-Jones well depths (:math:`D_{i}`).
 
     .. math::
 

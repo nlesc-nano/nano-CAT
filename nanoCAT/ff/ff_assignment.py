@@ -27,7 +27,7 @@ from CAT.utils import restart_init
 from CAT.settings_dataframe import SettingsDataFrame
 
 from .match_job import MatchJob
-from .prm import PRM
+from .prm import PRMContainer
 
 __all__ = ['init_ff_assignment', 'run_match_job']
 
@@ -112,7 +112,7 @@ def run_match_job(mol: Molecule, s: Settings) -> None:
         A :class:`Job` subclass for interfacing with MATCH_: Multipurpose Atom-Typer for CHARMM.
 
     """  # noqa
-    job = MatchJob(molecule=mol, settings=s)
+    job = MatchJob(molecule=mol, settings=s, name='ff_assignment')
 
     # Run the job
     try:
@@ -142,7 +142,7 @@ def run_match_job(mol: Molecule, s: Settings) -> None:
 
 def post_proccess_prm(filename: str) -> None:
     """Move the ``"IMPROPERS"`` block to the bottom of the .prm file so CP2K doesnt complain."""
-    prm = PRM.read(filename)
+    prm = PRMContainer.read(filename)
     prm.write(filename)
 
 

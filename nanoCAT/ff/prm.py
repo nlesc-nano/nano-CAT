@@ -8,11 +8,11 @@ Index
 -----
 .. currentmodule:: nanoCAT.ff.prm
 .. autosummary::
-    PRM
+    PRMContainer
 
 API
 ---
-.. autoclass:: PRM
+.. autoclass:: PRMContainer
     :members:
     :private-members:
     :special-members:
@@ -28,10 +28,10 @@ import pandas as pd
 from ..abc.dataclass import AbstractDataClass
 from ..abc.file_container import AbstractFileContainer
 
-__all__ = ['PRM']
+__all__ = ['PRMContainer']
 
 
-class PRM(AbstractDataClass, AbstractFileContainer):
+class PRMContainer(AbstractDataClass, AbstractFileContainer):
     """A container for managing prm files.
 
     Attributes

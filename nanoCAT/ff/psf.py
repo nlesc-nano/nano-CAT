@@ -8,11 +8,11 @@ Index
 -----
 .. currentmodule:: nanoCAT.ff.psf
 .. autosummary::
-    PSF
+    PSFContainer
 
 API
 ---
-.. autoclass:: PSF
+.. autoclass:: PSFContainer
     :members:
     :private-members:
     :special-members:
@@ -34,65 +34,67 @@ from .mol_topology import (get_bonds, get_angles, get_dihedrals, get_impropers)
 from ..abc.dataclass import AbstractDataClass
 from ..abc.file_container import AbstractFileContainer
 
-__all__ = ['PSF']
+__all__ = ['PSFContainer']
 
 
-class PSF(AbstractDataClass, AbstractFileContainer):
+class PSFContainer(AbstractDataClass, AbstractFileContainer):
     """A container for managing protein structure files.
 
-    The :class:`PSF` class has access to three general sets of methods:
+    The :class:`PSFContainer` class has access to three general sets of methods:
 
-    * Methods for reading & constructing .psf files: :meth:`PSF.read` and :meth:`PSF.write`.
-    * Methods for updating atom types: :meth:`PSF.update_atom_charge`
-      and :meth:`PSF.update_atom_type`.
+    * Methods for reading & constructing .psf files: :meth:`PSFContainer.read` and
+      :meth:`PSFContainer.write`.
+    * Methods for updating atom types: :meth:`PSFContainer.update_atom_charge`
+      and :meth:`PSFContainer.update_atom_type`.
     * Methods for extracting bond, angle and dihedral-pairs from :class:`Molecule` instances:
-      :meth:`PSF.generate_bonds`, :meth:`PSF.generate_angles`, :meth:`PSF.generate_dihedrals`,
-      :meth:`PSF.generate_impropers` and :meth:`PSF.generate_atoms`.
+      :meth:`PSFContainer.generate_bonds`, :meth:`PSFContainer.generate_angles`,
+      :meth:`PSFContainer.generate_dihedrals`, :meth:`PSFContainer.generate_impropers` and
+      :meth:`PSFContainer.generate_atoms`.
 
     Parameters
     ----------
     filename : :math:`1` |np.ndarray|_ [|np.str_|_]
         Optional: A 1D array-like object containing a single filename.
-        See also :attr:`PSF.filename`.
+        See also :attr:`PSFContainer.filename`.
 
     title : :math:`n` |np.ndarray|_ [|np.str_|_]
         Optional: A 1D array of strings holding the title block.
-        See also :attr:`PSF.title`.
+        See also :attr:`PSFContainer.title`.
 
     atoms : :math:`n*8` |pd.DataFrame|_
         Optional: A Pandas DataFrame holding the atoms block.
-        See also :attr:`PSF.atoms`.
+        See also :attr:`PSFContainer.atoms`.
 
     bonds : :math:`n*2` |np.ndarray|_ [|np.int64|_]
         Optional: A 2D array-like object holding the indices of all atom-pairs defining bonds.
-        See also :attr:`PSF.bonds`.
+        See also :attr:`PSFContainer.bonds`.
 
     angles : :math:`n*3` |np.ndarray|_ [|np.int64|_]
         Optional: A 2D array-like object holding the indices of all atom-triplets defining angles.
-        See also :attr:`PSF.angles`.
+        See also :attr:`PSFContainer.angles`.
 
     dihedrals : :math:`n*4` |np.ndarray|_ [|np.int64|_]
         Optional: A 2D array-like object holding the indices of
         all atom-quartets defining proper dihedral angles.
-        See also :attr:`PSF.dihedrals`.
+        See also :attr:`PSFContainer.dihedrals`.
 
     impropers : :math:`n*4` |np.ndarray|_ [|np.int64|_]
         Optional: A 2D array-like object holding the indices of
         all atom-quartets defining improper dihedral angles.
-        See also :attr:`PSF.impropers`.
+        See also :attr:`PSFContainer.impropers`.
 
     donors : :math:`n*1` |np.ndarray|_ [|np.int64|_]
         Optional: A 2D array-like object holding the atomic indices of all hydrogen-bond donors.
-        See also :attr:`PSF.donors`.
+        See also :attr:`PSFContainer.donors`.
 
     acceptors : :math:`n*1` |np.ndarray|_ [|np.int64|_]
         Optional: A 2D array-like object holding the atomic indices of all hydrogen-bond acceptors.
-        See also :attr:`PSF.acceptors`.
+        See also :attr:`PSFContainer.acceptors`.
 
     no_nonbonded : :math:`n*2` |np.ndarray|_ [|np.int64|_]
         Optional: A 2D array-like object holding the indices of all atom-pairs whose nonbonded
         interactions should be ignored.
-        See also :attr:`PSF.no_nonbonded`.
+        See also :attr:`PSFContainer.no_nonbonded`.
 
     Attributes
     ----------
@@ -172,7 +174,7 @@ class PSF(AbstractDataClass, AbstractFileContainer):
         'no_nonbonded': {'shape': 2, 'row_len': 4, 'header': '{:>10d} !NNB'}
     })
 
-    #: A dictionary mapping .psf headers to :class:`PSF` attribute names
+    #: A dictionary mapping .psf headers to :class:`PSFContainer` attribute names
     _HEADER_DICT = FrozenSettings({
         '!NTITLE': 'title',
         '!NATOM': 'atoms',
@@ -188,7 +190,7 @@ class PSF(AbstractDataClass, AbstractFileContainer):
     def __init__(self, filename=None, title=None, atoms=None, bonds=None,
                  angles=None, dihedrals=None, impropers=None, donors=None,
                  acceptors=None, no_nonbonded=None) -> None:
-        """Initialize a :class:`PSF` instance."""
+        """Initialize a :class:`PSFContainer` instance."""
         self.filename = filename
         self.title = title
         self.atoms = atoms

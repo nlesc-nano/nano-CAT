@@ -122,6 +122,10 @@ def get_xyn(mol_ref: Molecule,
         'prm': mol_ref.properties.prm
     })
 
+    X.properties.symbol = X.symbol
+    X.properties.pdb_info.ResidueName = 'COR'
+    X.properties.pdb_info.ResidueNumber = 1
+
     # Perform a constrained UFF optimization on XYn with X frozen
     if opt:
         XYn.round_coords()

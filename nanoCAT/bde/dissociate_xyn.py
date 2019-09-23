@@ -242,7 +242,7 @@ def remove_ligands(mol: Molecule, combinations_dict: dict,
             prop.core_topology = f'{str(mol[core].properties.topology)}_{core}'
             prop.df_index = (mol_tmp.properties.core_topology +
                              ' '.join(str(i) for i in mol_tmp.properties.lig_residue))
-            prop.name = mol.properties.name
+            prop.name = mol.properties.name + '_wo_XYn'
             prop.path = mol.properties.path
             prop.prm = mol.properties.prm
 

@@ -9,11 +9,9 @@ Index
 .. currentmodule:: nanoCAT.ff.psf
 .. autosummary::
     PSF
-    write_psf
 
 API
 ---
-.. autofunction:: write_psf
 .. autoclass:: PSF
     :members:
     :private-members:
@@ -21,6 +19,7 @@ API
 
 """
 import inspect
+import reprlib
 from typing import (Dict, Optional, Any, Iterable, Iterator, List, Tuple, FrozenSet, Callable)
 from itertools import chain
 
@@ -35,7 +34,7 @@ from .mol_topology import (get_bonds, get_angles, get_dihedrals, get_impropers)
 from ..abc.dataclass import AbstractDataClass
 from ..abc.file_container import AbstractFileContainer
 
-__all__ = ['PSF', 'write_psf']
+__all__ = ['PSF']
 
 
 class PSF(AbstractDataClass, AbstractFileContainer):
@@ -145,7 +144,15 @@ class PSF(AbstractDataClass, AbstractFileContainer):
         interactions should be ignored.
         Indices are expected to be 1-based.
 
-    """
+    np_printoptions : :class:`dict` [:class:`str`, :class:`object`], private
+        A dictionary with Numpy print options.
+        See `np.set_printoptions <https://docs.scipy.org/doc/numpy/reference/generated/numpy.set_printoptions.html>`_.
+
+    pd_printoptions : :class:`dict` [:class:`str`, :class:`object`], private
+        A dictionary with Pandas print options.
+        See `Options and settings <https://pandas.pydata.org/pandas-docs/stable/user_guide/options.html>`_.
+
+    """  # noqa
 
     #: A :class:`frozenset` with the names of private instance attributes.
     #: These attributes will be excluded whenever calling :meth:`PSF.as_dict`.
@@ -197,10 +204,6 @@ class PSF(AbstractDataClass, AbstractFileContainer):
         self.np_printoptions: Dict[str, Any] = {'threshold': 20, 'edgeitems': 5}
         self.pd_printoptions: Dict[str, Any] = {'display.max_rows': 10}
 
-    def __delattr__(self, key, value):
-        print(inspect.stack()[1])
-        super().__delattr__(key, value)
-
     @property
     def np_printoptions(self) -> Dict[str, Any]: return self._np_printoptions
 
@@ -233,8 +236,8 @@ class PSF(AbstractDataClass, AbstractFileContainer):
     def _str_iterator(self) -> Iterator[Tuple[str, Any]]:
         return ((k.strip('_'), v) for k, v in self.as_dict().items())
 
-    def __eq__(self, value: Any) -> bool:
-        """Check if this instance is equivalent to **value**."""
+    @AbstractDataClass.inherit_annotations()
+    def __eq__(self, value):
         if self.__class__ is not value.__class__:
             return False
 
@@ -251,13 +254,17 @@ class PSF(AbstractDataClass, AbstractFileContainer):
     """###################################### Properties ########################################"""
 
     @property
-    def filename(self) -> str: return str(self._filename[0])
+    def filename(self) -> str:
+        """Get :attr:`PSF.filename` as string or assign an array-like object as a 1D array."""
+        return str(self._filename[0])
 
     @filename.setter
     def filename(self, value: Iterable): self._set_nd_array('_filename', value, 1, str)
 
     @property
-    def title(self) -> np.ndarray: return self._title
+    def title(self) -> np.ndarray:
+        """Get :attr:`PSF.title` or assign an array-like object as a 2D array."""
+        return self._title
 
     @title.setter
     def title(self, value: Iterable):
@@ -268,49 +275,65 @@ class PSF(AbstractDataClass, AbstractFileContainer):
                                     'https://github.com/nlesc-nano/nano-CAT'])
 
     @property
-    def atoms(self) -> pd.DataFrame: return self._atoms
+    def atoms(self) -> pd.DataFrame:
+        """Get :attr:`PSF.atoms` or assign an a DataFrame."""
+        return self._atoms
 
     @atoms.setter
     def atoms(self, value: Iterable): self._atoms = value if value is not None else pd.DataFrame()
 
     @property
-    def bonds(self) -> np.ndarray: return self._bonds
+    def bonds(self) -> np.ndarray:
+        """Get :attr:`PSF.bonds` or assign an array-like object as a 2D array."""
+        return self._bonds
 
     @bonds.setter
     def bonds(self, value: Iterable): self._set_nd_array('_bonds', value, 2, int)
 
     @property
-    def angles(self) -> np.ndarray: return self._angles
+    def angles(self) -> np.ndarray:
+        """Get :attr:`PSF.angles` or assign an array-like object as a 2D array."""
+        return self._angles
 
     @angles.setter
     def angles(self, value: Iterable): self._set_nd_array('_angles', value, 2, int)
 
     @property
-    def dihedrals(self) -> np.ndarray: return self._dihedrals
+    def dihedrals(self) -> np.ndarray:
+        """Get :attr:`PSF.dihedrals` or assign an array-like object as a 2D array."""
+        return self._dihedrals
 
     @dihedrals.setter
     def dihedrals(self, value: Iterable): self._set_nd_array('_dihedrals', value, 2, int)
 
     @property
-    def impropers(self) -> np.ndarray: return self._impropers
+    def impropers(self) -> np.ndarray:
+        """Get :attr:`PSF.impropers` or assign an array-like object as a 2D array."""
+        return self._impropers
 
     @impropers.setter
     def impropers(self, value: Iterable): self._set_nd_array('_impropers', value, 2, int)
 
     @property
-    def donors(self) -> np.ndarray: return self._donors
+    def donors(self) -> np.ndarray:
+        """Get :attr:`PSF.donors` or assign an array-like object as a 2D array."""
+        return self._donors
 
     @donors.setter
     def donors(self, value: Iterable): self._set_nd_array('_donors', value, 2, int)
 
     @property
-    def acceptors(self) -> np.ndarray: return self._acceptors
+    def acceptors(self) -> np.ndarray:
+        """Get :attr:`PSF.acceptors` or assign an array-like object as a 2D array."""
+        return self._acceptors
 
     @acceptors.setter
     def acceptors(self, value: Iterable): self._set_nd_array('_acceptors', value, 2, int)
 
     @property
-    def no_nonbonded(self) -> np.ndarray: return self._no_nonbonded
+    def no_nonbonded(self) -> np.ndarray:
+        """Get :attr:`PSF.no_nonbonded` or assign an array-like object as a 2D array."""
+        return self._no_nonbonded
 
     @no_nonbonded.setter
     def no_nonbonded(self, value: Iterable): self._set_nd_array('_no_nonbonded', value, 2, int)
@@ -357,48 +380,68 @@ class PSF(AbstractDataClass, AbstractFileContainer):
     """################################## dataframe shortcuts ###################################"""
 
     @property
-    def segment_name(self) -> pd.Series: return self.atoms.loc[:, 'segment name']
+    def segment_name(self) -> pd.Series:
+        """Get or set the ``"segment name"`` column in :attr:`PSF.atoms`."""
+        return self.atoms['segment name']
 
     @segment_name.setter
-    def segment_name(self, value) -> None: self.atoms.loc[:, 'segment name'] = value
+    def segment_name(self, value) -> None: self.atoms['segment name'] = value
 
     @property
-    def residue_id(self) -> pd.Series: return self.atoms.loc[:, 'residue ID']
+    def residue_id(self) -> pd.Series:
+        """Get or set the ``"residue ID"`` column in :attr:`PSF.atoms`."""
+        return self.atoms['residue ID']
 
     @residue_id.setter
-    def residue_id(self, value) -> None: self.atoms.loc[:, 'residue ID'] = value
+    def residue_id(self, value) -> None: self.atoms['residue ID'] = value
 
     @property
-    def residue_name(self) -> pd.Series: return self.atoms.loc[:, 'residue name']
+    def residue_name(self) -> pd.Series:
+        """Get or set the ``"residue name"`` column in :attr:`PSF.atoms`."""
+        return self.atoms['residue name']
 
     @residue_name.setter
-    def residue_name(self, value) -> None: self.atoms.loc[:, 'residue name'] = value
+    def residue_name(self, value) -> None: self.atoms['residue name'] = value
 
     @property
-    def atom_name(self) -> pd.Series: return self.atoms.loc[:, 'atom name']
+    def atom_name(self) -> pd.Series:
+        """Get or set the ``"atom name"`` column in :attr:`PSF.atoms`."""
+        return self.atoms['atom name']
 
     @atom_name.setter
-    def atom_name(self, value) -> None: self.atoms.loc[:, 'atom name'] = value
+    def atom_name(self, value) -> None: self.atoms['atom name'] = value
 
     @property
-    def atom_type(self) -> pd.Series: return self.atoms.loc[:, 'atom type']
+    def atom_type(self) -> pd.Series:
+        """Get or set the ``"atom type"`` column in :attr:`PSF.atoms`."""
+        return self.atoms['atom type']
 
     @atom_type.setter
-    def atom_type(self, value) -> None: self.atoms.loc[:, 'atom type'] = value
+    def atom_type(self, value) -> None: self.atoms['atom type'] = value
 
     @property
-    def charge(self) -> pd.Series: return self.atoms.loc[:, 'charge']
+    def charge(self) -> pd.Series:
+        """Get or set the ``"charge"`` column in :attr:`PSF.atoms`."""
+        return self.atoms['charge']
 
     @charge.setter
-    def charge(self, value) -> None: self.atoms.loc[:, 'charge'] = value
+    def charge(self, value) -> None: self.atoms['charge'] = value
 
     @property
-    def mass(self) -> pd.Series: return self.atoms.loc[:, 'mass']
+    def mass(self) -> pd.Series:
+        """Get or set the ``"mass"`` column in :attr:`PSF.atoms`."""
+        return self.atoms['mass']
 
     @mass.setter
-    def mass(self, value) -> None: self.atoms.loc[:, 'mass'] = value
+    def mass(self, value) -> None: self.atoms['mass'] = value
 
     """########################### methods for reading .psf files. ##############################"""
+
+    # The decorator will handle the docstring and annotations
+    @classmethod
+    @AbstractFileContainer.inherit_annotations()
+    def read(cls, filename, encoding=None, **kwargs):
+        return super().read(filename, encoding, **kwargs)
 
     @classmethod
     @AbstractFileContainer.inherit_annotations()
@@ -406,7 +449,7 @@ class PSF(AbstractDataClass, AbstractFileContainer):
         ret = {}
 
         next(iterator)  # Skip the first line
-        with FrozenSettings.EnableMissing():
+        with FrozenSettings.enable_missing():
             for i in iterator:
                 # Search for psf blocks
                 if i == '\n':
@@ -416,7 +459,7 @@ class PSF(AbstractDataClass, AbstractFileContainer):
                 try:
                     key = cls._HEADER_DICT[i.split()[1].rstrip(':')]
                 except KeyError:
-                    raise OSError('Failed to parse file; invalid header: {repr(i)}')
+                    raise OSError(f'Failed to parse file; invalid header: {reprlib.repr(i)}')
                 ret[key] = value = []
 
                 # Read the actual psf blocks
@@ -690,18 +733,18 @@ class PSF(AbstractDataClass, AbstractFileContainer):
 
         DataFrame keys in :attr:`PSF.atoms` are set based on the following values in **mol**:
 
-        ================== ========================================================= ===================
-        DataFrame column   Value                                                     Backup value
-        ================== ========================================================= ===================
+        ================== ========================================================= =================================================
+        DataFrame column   Value                                                     Backup value(s)
+        ================== ========================================================= =================================================
         ``"segment name"`` ``"MOL{:d}"``; See ``"atom type"`` and ``"residue name"``
         ``"residue ID"``   :attr:`Atom.properties` ``["pdb_info"]["ResidueNumber"]``  ``1``
         ``"residue name"`` :attr:`Atom.properties` ``["pdb_info"]["ResidueName"]``    ``"COR"``
         ``"atom name"``    :attr:`Atom.symbol`
         ``"atom type"``    :attr:`Atom.properties` ``["symbol"]``                     :attr:`Atom.symbol`
-        ``"charge"``       :attr:`Atom.properties` ``["charge"]``                     ``0.0``
+        ``"charge"``       :attr:`Atom.properties` ``["charge_float"]``               :attr:`Atom.properties` ``["charge"]`` & ``0.0``
         ``"mass"``         :attr:`Atom.mass`
         ``"0"``            ``0``
-        ================== ========================================================= ===================
+        ================== ========================================================= =================================================
 
         If a value is not available in a particular :attr:`Atom.properties` instance then
         a backup value will be set.
@@ -722,7 +765,11 @@ class PSF(AbstractDataClass, AbstractFileContainer):
             return at.properties.symbol if 'symbol' in at.properties else at.symbol
 
         def get_charge(at: Atom) -> float:
-            return float(at.properties.charge) if 'charge' in at.properties else 0.0
+            if 'charge_float' in at.properties:
+                return float(at.properties.charge_float)
+            elif 'charge' in at.properties:
+                return float(at.properties.charge)
+            return 0.0
 
         index = pd.RangeIndex(1, 1 + len(mol))
         self.atoms = df = pd.DataFrame(index=index, dtype=str)
@@ -755,45 +802,3 @@ class PSF(AbstractDataClass, AbstractFileContainer):
             ret.append(value)
 
         return ret
-
-
-def write_psf(mol: Molecule, filename: str, return_psf: bool = False,
-              encoding: Optional[str] = None) -> Optional[PSF]:
-    """Create a protein structure file (.psf) from a :class:`Molecule`.
-
-    .. _`file object`: https://docs.python.org/3/glossary.html#term-file-object
-
-    Parameters
-    ----------
-    mol : |plams.Molecule|_
-        A PLAMS molecule.
-
-    filename : |str|_ or `file object`_
-        The path+filename or a file object of the output .psf file.
-        If ``None``, attempt to pull the filename from :attr:`PSF.filename`.
-
-    return_psf : bool
-        If ``True``, return the created :class:`PSF` instance.
-
-    encoding : str
-        Optional: Encoding used to encode the output (*e.g.* ``"utf-8"``).
-        Only relevant when a file object is supplied to **filename** and
-        the datastream is *not* in text mode.
-
-    Returns
-    -------
-    |nanoCAT.PSF|_
-        Optional: if ``return_psf=True`` return the created :class:`PSF` instance.
-
-    """
-    psf = PSF(filename=filename) if isinstance(filename, str) else PSF()
-    psf.generate_bonds(mol)
-    psf.generate_angles(mol)
-    psf.generate_dihedrals(mol)
-    psf.generate_impropers(mol)
-    psf.generate_atoms(mol)
-    psf.write(filename, encoding=encoding)
-
-    if return_psf:
-        return psf
-    return None

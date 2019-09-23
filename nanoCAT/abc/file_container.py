@@ -1,3 +1,24 @@
+"""
+nanoCAT.ff.file_container
+=========================
+
+An abstract container for reading and writing files.
+
+Index
+-----
+.. currentmodule:: nanoCAT.ff.file_container
+.. autosummary::
+    AbstractFileContainer
+
+API
+---
+.. autoclass:: AbstractFileContainer
+    :members:
+    :private-members:
+    :special-members:
+
+"""
+
 import os
 import io
 import abc
@@ -54,15 +75,16 @@ class AbstractFileContainer(abc.ABC, Container):
 
         \**kwargs : :class:`.Any`, optional
             Optional keyword arguments that will be passed to both
-            :meth:`._read_iterate` and :meth:`._read_postprocess`.
+            :meth:`AbstractFileContainer._read_iterate` and
+            :meth:`AbstractFileContainer._read_postprocess`.
 
         See also
         --------
-        :meth:`._read_iterate`
-            An abstract method for parsing the opened file in :meth:`.read`.
+        :meth:`AbstractFileContainer._read_iterate`
+            An abstract method for parsing the opened file in :meth:`AbstractFileContainer.read`.
 
-        :meth:`._read_postprocess`
-            Post processing the class instance created by :meth:`.read`.
+        :meth:`AbstractFileContainer._read_postprocess`
+            Post processing the class instance created by :meth:`AbstractFileContainer.read`.
 
         """
 
@@ -128,11 +150,12 @@ class AbstractFileContainer(abc.ABC, Container):
 
         \**kwargs : :class:`.Any`, optional
             Optional keyword arguments that will be passed to both
-            :meth:`._read_iterate` and :meth:`._read_postprocess`.
+            :meth:`AbstractFileContainer._read_iterate` and
+            :meth:`AbstractFileContainer._read_postprocess`.
 
         See also
         --------
-        :meth:`.read`
+        :meth:`AbstractFileContainer.read`
             The main method for reading files.
 
         """
@@ -163,16 +186,16 @@ class AbstractFileContainer(abc.ABC, Container):
 
         See also
         --------
-        :meth:`._write_iterate`
+        :meth:`AbstractFileContainer._write_iterate`
             Write the content of this instance to an opened datastream.
 
-        :meth:`._get_writer`
+        :meth:`AbstractFileContainer._get_writer`
             Take a :meth:`write` method and ensure its first argument is properly encoded.
 
         """
         # filename is an actual filename
         if isinstance(filename, (bytes, str, os.PathLike)):
-            with open(filename, 'r') as f:
+            with open(filename, 'w') as f:
                 writer = self._get_writer(f.write, encoding)
                 self._write_iterate(writer, **kwargs)
 
@@ -210,7 +233,7 @@ class AbstractFileContainer(abc.ABC, Container):
 
         See also
         --------
-        :meth:`.write`:
+        :meth:`AbstractFileContainer.write`:
             The main method for writing files.
 
         """
@@ -246,16 +269,16 @@ class AbstractFileContainer(abc.ABC, Container):
 
         Parameters
         ----------
-        writer : :class:`Callable` [[:class:`AnyStr`], ``None``]
+        writer : :class:`Callable` [[:class:`.AnyStr`], ``None``]
             A callable for writing the content of this instance to a `file object`_.
             An example would be the :meth:`io.TextIOWrapper.write` method.
 
-        \**kwargs : :class:`.Any`, optional
+        \**kwargs : optional
             Optional keyword arguments.
 
         See also
         --------
-        :meth:`.write`:
+        :meth:`AbstractFileContainer.write`:
             The main method for writing files.
 
         """
@@ -287,9 +310,17 @@ class AbstractFileContainer(abc.ABC, Container):
         """
         def decorator(sub_attr: type) -> type:
             super_attr = getattr(cls, sub_attr.__name__)
+            sub_cls_name = sub_attr.__qualname__.split('.')[0]
+
+            # Update annotations
             if not sub_attr.__annotations__:
-                sub_attr.__annotations__ = super_attr.__annotations__.copy()
+                sub_attr.__annotations__ = dct = super_attr.__annotations__.copy()
+                if 'return' in dct and dct['return'] == cls.__name__:
+                    dct['return'] = sub_attr.__qualname__.split('.')[0]
+
+            # Update docstring
             if sub_attr.__doc__ is None:
-                sub_attr.__doc__ = super_attr.__doc__
+                sub_attr.__doc__ = super_attr.__doc__.replace(cls.__name__, sub_cls_name)
+
             return sub_attr
         return decorator

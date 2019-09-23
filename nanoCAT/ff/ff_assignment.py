@@ -134,7 +134,7 @@ def run_match_job(mol: Molecule, s: Settings) -> None:
     mol.properties.prm = prm = results['$JN.prm']
     for at, symbol, charge in zip(mol, symbol_list, charge_list):
         at.properties.symbol = symbol
-        at.properties.charge = charge
+        at.properties.charge_float = charge
 
     post_proccess_prm(prm)
     return None

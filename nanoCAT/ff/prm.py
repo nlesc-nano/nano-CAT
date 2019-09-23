@@ -32,6 +32,15 @@ __all__ = ['PRM']
 
 
 class PRM(AbstractDataClass, AbstractFileContainer):
+    """A container for managing prm files.
+
+    Attributes
+    ----------
+    pd_printoptions : :class:`dict` [:class:`str`, :class:`object`], private
+        A dictionary with Pandas print options.
+        See `Options and settings <https://pandas.pydata.org/pandas-docs/stable/user_guide/options.html>`_.
+
+    """  # noqa
 
     #: A :class:`frozenset` with the names of private instance attributes.
     #: These attributes will be excluded whenever calling :meth:`PRM.as_dict`.
@@ -160,9 +169,9 @@ class PRM(AbstractDataClass, AbstractFileContainer):
     @AbstractFileContainer.inherit_annotations()
     def _write_iterate(self, write, **kwargs) -> None:
         for key in self.HEADERS[:-1]:
-            _key = key.lower()
-            df = getattr(self, _key)
-            if _key == 'hbond':
+            key_low = key.lower()
+            df = getattr(self, key_low)
+            if key_low == 'hbond':
                 write(f'\n{key} {df}\n')
                 continue
             elif not isinstance(df, pd.DataFrame):
@@ -171,7 +180,7 @@ class PRM(AbstractDataClass, AbstractFileContainer):
             iterator = range(df.shape[1] - 1)
             df_str = ' '.join('{:8}' for _ in iterator) + ' ! {}\n'
 
-            if _key != 'nonbonded':
+            if key_low != 'nonbonded':
                 write(f'\n{key}\n')
             else:
                 header = '-\n'.join(i for i in self.nonbonded_header.split('-'))

@@ -102,7 +102,7 @@ def get_xyn(mol_ref: Molecule,
     # Return a the ligand without an ion
     if ion is None:
         lig.properties.update({
-            'name': mol_ref.properties.name,
+            'name': mol_ref.properties.name + '_XYn',
             'path': mol_ref.properties.path,
             'indices': [idx],
             'job_path': []
@@ -115,7 +115,7 @@ def get_xyn(mol_ref: Molecule,
     # Update the properties of X and XYn
     X.properties.charge = 0 - sum([at.properties.charge for at in XYn if at.properties.charge])
     XYn.properties.update({
-        'name': mol_ref.properties.name,
+        'name': mol_ref.properties.name + '_XYn',
         'path': mol_ref.properties.path,
         'indices': (list(range(1, 1 + len(ion))) if isinstance(ion, Molecule) else [1]),
         'job_path': [],

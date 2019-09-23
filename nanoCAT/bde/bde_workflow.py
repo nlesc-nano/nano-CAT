@@ -115,7 +115,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
-    keep_files = settings.qd.keep_files
+    keep_files = settings.qd.dissociate.keep_files
     path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     job2 = settings.qd.dissociate.job2
@@ -204,7 +204,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
-    keep_files = settings.qd.keep_files
+    keep_files = settings.qd.dissociate.keep_files
     path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     s1 = settings.qd.dissociate.s1
@@ -258,6 +258,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
+
     logger.info('Finishing ligand dissociation workflow\n')
     finish()
     if not keep_files:
@@ -352,7 +353,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         lig.job_geometry_opt(job, s, name='E_XYn_opt')
 
     E_lig = lig.properties.energy.E
-    if E_lig is np.nan:
+    if E_lig in (None, np.nan):
         logger.error('The BDE XYn geometry optimization failed, skipping further jobs')
         return np.full(len(core), np.nan)
 
@@ -363,7 +364,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         tot.job_single_point(job, s, name='E_QD_sp')
 
     E_tot = tot.properties.energy.E
-    if E_tot is np.nan:
+    if E_tot in (None, np.nan):
         logger.error('The BDE quantum dot single point failed, skipping further jobs')
         return np.full(len(core), np.nan)
 

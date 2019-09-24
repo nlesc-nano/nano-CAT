@@ -12,6 +12,7 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 * Added the ``PSFContainer()`` and ``PRMContainer()`` classes handling .psf and .prm files, respectively.
 * Updated the handling of assertions, see ``CAT.assertions.assertion_manager``.
 * A couple of bug fixes to the ligand dissociation module(s).
+* Added tests.
 
 .. _MATCH: http://brooks.chem.lsa.umich.edu/index.php?page=match&subdir=articles/resources/software
 

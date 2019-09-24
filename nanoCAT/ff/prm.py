@@ -25,8 +25,8 @@ from itertools import chain
 
 import pandas as pd
 
-from ..abc.dataclass import AbstractDataClass
-from ..abc.file_container import AbstractFileContainer
+from CAT.abc.dataclass import AbstractDataClass
+from CAT.abc.file_container import AbstractFileContainer
 
 __all__ = ['PRMContainer']
 
@@ -43,7 +43,7 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
     """  # noqa
 
     #: A :class:`frozenset` with the names of private instance attributes.
-    #: These attributes will be excluded whenever calling :meth:`PRM.as_dict`.
+    #: These attributes will be excluded whenever calling :meth:`PRMContainer.as_dict`.
     _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_pd_printoptions'})
 
     #: A tuple of supported .psf headers.
@@ -54,7 +54,7 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
     def __init__(self, filename=None, atoms=None, bonds=None, angles=None, dihedrals=None,
                  impropers=None, nonbonded=None, nonbonded_header=None, nbfix=None,
                  hbond=None) -> None:
-        """Initialize a :class:`PRM` instance."""
+        """Initialize a :class:`PRMContainer` instance."""
         self.filename: str = filename
         self.atoms: pd.DataFrame = atoms
         self.bonds: pd.DataFrame = bonds
@@ -91,6 +91,16 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
 
     __repr__ = __str__
 
+    # Ensure that a deepcopy is returned unless explictly specified
+
+    @AbstractDataClass.inherit_annotations()
+    def copy(self, deep=True, copy_private=False):
+        kwargs = self.as_dict(copy=deep, return_private=copy_private)
+        return self.from_dict(kwargs)
+
+    @AbstractDataClass.inherit_annotations()
+    def __copy__(self): return self.copy()
+
     """########################### methods for reading .prm files. ##############################"""
 
     @classmethod
@@ -121,7 +131,7 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
 
     @staticmethod
     def _read_post_iterate(kwargs: dict) -> None:
-        """Post process the dictionary produced by :meth:`PRM._read_iterate`."""
+        """Post process the dictionary produced by :meth:`PRMContainer._read_iterate`."""
         if 'end' in kwargs:
             del kwargs['end']
         if 'end_comment' in kwargs:

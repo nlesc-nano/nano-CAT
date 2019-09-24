@@ -32,10 +32,10 @@ import pandas as pd
 from scm.plams import Molecule, Atom
 
 from CAT.frozen_settings import FrozenSettings
+from CAT.abc.dataclass import AbstractDataClass
+from CAT.abc.file_container import AbstractFileContainer
 
 from .mol_topology import (get_bonds, get_angles, get_dihedrals, get_impropers)
-from ..abc.dataclass import AbstractDataClass
-from ..abc.file_container import AbstractFileContainer
 
 __all__ = ['PSFContainer']
 
@@ -248,7 +248,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     @AbstractDataClass.inherit_annotations()
     def _str_iterator(self) -> Iterator[Tuple[str, Any]]:
-        return ((k.strip('_'), v) for k, v in self.as_dict().items())
+        return ((k.strip('_'), v) for k, v in self.as_dict(copy=False).items())
 
     @AbstractDataClass.inherit_annotations()
     def __eq__(self, value):
@@ -256,7 +256,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
             return False
 
         try:  # Check if the object attribute values are identical
-            for k, v1 in self.as_dict().items():
+            for k, v1 in self.as_dict(copy=False).items():
                 v1 = np.asarray(v1)
                 v2 = np.asarray(getattr(value, k))
                 assert (v1 == v2).all()
@@ -266,14 +266,19 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
         return True
 
     @AbstractDataClass.inherit_annotations()
-    def as_dict(self, return_private=False):
-        ret = super().as_dict(return_private)
+    def as_dict(self, copy=True, return_private=False):
+        ret = super().as_dict(copy, return_private)
         return {k.strip('_'): v for k, v in ret.items()}
 
-    @AbstractDataClass.inherit_annotations()
-    def copy(self, deep=True, copy_private=False): return super().copy(deep, copy_private)
+    # Ensure that a deepcopy is returned unless explictly specified
 
-    __copy__ = AbstractDataClass.__deepcopy__
+    @AbstractDataClass.inherit_annotations()
+    def copy(self, deep=True, copy_private=False):
+        kwargs = self.as_dict(copy=deep, return_private=copy_private)
+        return self.from_dict(kwargs)
+
+    @AbstractDataClass.inherit_annotations()
+    def __copy__(self): return self.copy()
 
     """###################################### Properties ########################################"""
 
@@ -696,10 +701,10 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         Raises
         ------
-        KeyError:
+        KeyError
             Raised if no atom type by the name of **atom_type** is available.
 
-        ValueError:
+        ValueError
             Raised if **charge** cannot be converted into a :class:`float`.
 
         """
@@ -723,7 +728,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         Raises
         ------
-        KeyError:
+        KeyError
             Raised if no atom type by the name of **atom_type_old** is available.
 
         """

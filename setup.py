@@ -24,7 +24,8 @@ setup(
     url='https://github.com/nlesc-nano/nano-CAT',
     packages=[
         'nanoCAT',
-        'nanoCAT.bde'
+        'nanoCAT.bde',
+        'nanoCAT.ff'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
     include_package_data=True,

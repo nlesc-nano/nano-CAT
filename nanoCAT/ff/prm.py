@@ -188,14 +188,15 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
                 continue
 
             iterator = range(df.shape[1] - 1)
-            df_str = ' '.join('{:8}' for _ in iterator) + ' ! {}\n'
+            df_str = ' '.join('{:8}' for _ in iterator) + ' !{}\n'
 
             if key_low != 'nonbonded':
                 write(f'\n{key}\n')
             else:
                 header = '-\n'.join(i for i in self.nonbonded_header.split('-'))
                 write(f'\n{key} {header}\n')
-            for _, value in df.iterrows():
-                write(df_str.format(*(('' if i is None else i) for i in value)))
+            for _, row_value in df.iterrows():
+                write_str = df_str.format(*(('' if i is None else i) for i in row_value))
+                write(write_str)
 
         write('\nEND\n')

@@ -17,7 +17,7 @@ def test_combine_xi() -> None:
     xi = np.array([combine_xi('H', i) for i in UFF_DF.index])
 
     np.testing.assert_allclose(xi_ref, xi)
-    assertion.exceptions(KeyError, combine_xi, 'bob', 'bob')
+    assertion.exception(KeyError, combine_xi, 'bob', 'bob')
 
 
 def test_combine_di() -> None:
@@ -26,7 +26,7 @@ def test_combine_di() -> None:
     di = np.array([combine_di('H', i) for i in UFF_DF.index])
 
     np.testing.assert_allclose(di_ref, di)
-    assertion.exceptions(KeyError, combine_di, 'bob', 'bob')
+    assertion.exception(KeyError, combine_di, 'bob', 'bob')
 
 
 def test_uff_df() -> None:

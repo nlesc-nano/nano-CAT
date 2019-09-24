@@ -15,7 +15,7 @@ Index
     filter_lig_core2
     filter_core
     get_topology
-    get_lig_core_combinations
+    get_combinations
 
 API
 ---
@@ -26,7 +26,7 @@ API
 .. autofunction:: filter_lig_core2
 .. autofunction:: filter_core
 .. autofunction:: get_topology
-.. autofunction:: get_lig_core_combinations
+.. autofunction:: get_combinations
 
 """
 
@@ -37,15 +37,13 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 from scm.plams import (Molecule, Atom, Settings)
-import scm.plams.interfaces.molecule.rdkit as molkit
 
-from .guess_core_dist import guess_core_core_dist
+from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 
 __all__ = ['dissociate_ligand']
 
 
-def dissociate_ligand(mol: Molecule,
-                      settings: Settings) -> List[Molecule]:
+def dissociate_ligand(mol: Molecule, settings: Settings) -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -79,18 +77,12 @@ def dissociate_ligand(mol: Molecule,
 
     # Create a nested list of atoms,
     # each nested element containing all atoms with a given residue number
-    res_list = []
-    for at in mol:
-        try:
-            res_list[at.properties.pdb_info.ResidueNumber - 1].append(at)
-        except IndexError:
-            res_list.append([at])
+    res_list = gather_residues(mol)
 
     # Create a list of all core indices and ligand anchor indices
     idx_c_old = np.array([j for j, at in enumerate(res_list[0]) if at.atnum == atnum])
     idx_c, topology = filter_core(xyz_array, idx_c_old, top_dict, cc_dist)
-    idx_l = np.array([i for i in mol.properties.indices if
-                      mol[i].properties.pdb_info.ResidueName == 'LIG']) - 1
+    idx_l = np.array(get_anchor_idx(mol)) - 1
 
     # Mark the core atoms with their topologies
     for i, top in zip(idx_c_old, topology):
@@ -98,7 +90,7 @@ def dissociate_ligand(mol: Molecule,
 
     # Create a dictionary with core indices as keys and all combinations of 2 ligands as values
     xy = filter_lig_core(xyz_array, idx_l, idx_c, lc_dist, l_count)
-    combinations_dict = get_lig_core_combinations(xy, res_list, l_count)
+    combinations_dict = get_combinations(xy, res_list, l_count)
 
     # Create and return new molecules
     indices = [at.id for at in res_list[0][:-l_count]]
@@ -106,8 +98,7 @@ def dissociate_ligand(mol: Molecule,
     return remove_ligands(mol, combinations_dict, indices)
 
 
-def dissociate_ligand2(mol: Molecule,
-                       settings: Settings) -> List[Molecule]:
+def dissociate_ligand2(mol: Molecule, settings: Settings) -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -134,38 +125,47 @@ def dissociate_ligand2(mol: Molecule,
     mol.set_atoms_id()
     xyz_array = mol.as_array()
 
-    # Create a nested list of atoms,
-    # each nested element containing all atoms with a given residue number
-    res_list = []
-    for at in mol:
-        try:
-            res_list[at.properties.pdb_info.ResidueNumber - 1].append(at)
-        except IndexError:
-            res_list.append([at])
-
     # Create a list of all core indices and ligand anchor indices
     _, topology = filter_core(xyz_array, idx_c_old, top_dict, cc_dist)
-    idx_l = np.array([i for i in mol.properties.indices if
-                      mol[i].properties.pdb_info.ResidueName == 'LIG']) - 1
 
     # Mark the core atoms with their topologies
-    for i, top in zip(idx_c_old, topology):
-        mol[int(i+1)].properties.topology = top
+    for i, top in zip(settings.qd.dissociate.core_index, topology):
+        mol[i].properties.topology = top
 
     # Create a dictionary with core indices as keys and all combinations of 2 ligands as values
-    xy = filter_lig_core2(xyz_array, idx_l, idx_c_old, l_count)
-    combinations_dict = get_lig_core_combinations(xy, res_list, l_count)
+    res_list = gather_residues(mol)
+    anchor_idx = get_anchor_idx(mol)
+    xy = filter_lig_core2(xyz_array, anchor_idx, idx_c_old, l_count)
+    combinations_dict = get_combinations(xy, res_list, l_count)
 
     # Create and return new molecules
-    indices = [at.id for at in res_list[0][:-l_count]]
-    indices += (idx_l[:-l_count] + 1).tolist()
+    _anchor_idx = (1 + anchor_idx).tolist()
+    indices = [at.id for at in res_list[0][:-l_count]] + _anchor_idx[:-l_count]
     return remove_ligands(mol, combinations_dict, indices)
 
 
-def filter_lig_core2(xyz_array: np.ndarray,
-                     idx_lig: Sequence[int],
-                     idx_core: Sequence[int],
-                     lig_count: int = 2) -> np.ndarray:
+def get_anchor_idx(mol: Molecule) -> np.ndarray:
+    """Create a list of (1-based) indices of all ligand anchor atoms."""
+    list_ = [i for i in mol.properties.indices if mol[i].properties.pdb_info.ResidueName == 'LIG']
+    ret = np.array(list_)
+    ret -= 1
+    return ret
+
+
+def gather_residues(mol: Molecule) -> List[List[Atom]]:
+    """Create a nested list of atoms using their residue number."""
+    ret = []
+    for at in mol:
+        i = at.properties.pdb_info.ResidueNumber - 1
+        try:
+            ret[i].append(at)
+        except IndexError:
+            ret.append([at])
+    return ret
+
+
+def filter_lig_core2(xyz_array: np.ndarray, idx_lig: Sequence[int],
+                     idx_core: Sequence[int], lig_count: int = 2) -> np.ndarray:
     """Create and return the indices of all possible ligand/core pairs.
 
     Parameters
@@ -207,28 +207,57 @@ def filter_lig_core2(xyz_array: np.ndarray,
     return xy
 
 
-def remove_ligands(mol: Molecule,
-                   combinations_dict: dict,
+def get_fragment(mol: Molecule, atom: Atom) -> List[int]:
+    ret = []
+    atom._visited = True
+
+    def dfs(at: Atom) -> None:
+        for bond in at.bonds:
+            at_new = bond.other_end(at)
+            if hasattr(at_new, '_visited'):
+                continue
+            ret.append(at_new.id)
+            at_new._visited = True
+            dfs(at_new)
+
+    dfs(atom)
+    for at in mol:
+        del at._visited
+    return ret
+
+
+def remove_ligands(mol: Molecule, combinations_dict: dict,
                    indices: Sequence[int]) -> List[Molecule]:
     """ """
     ret = []
+    mol.set_atoms_id()
     for core in combinations_dict:
         for lig in combinations_dict[core]:
             mol_tmp = mol.copy()
-            prop = mol_tmp.properties = Settings()
+            mol_tmp.properties = prop = Settings()
 
             prop.indices = indices
-            prop.job_path = []
-            prop.df_index = mol_tmp.properties.core_topology
-            prop.df_index += ' '.join(str(i) for i in mol_tmp.properties.lig_residue)
             prop.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber for i in lig])
+            prop.job_path = []
             prop.core_topology = f'{str(mol[core].properties.topology)}_{core}'
+            prop.df_index = (mol_tmp.properties.core_topology +
+                             ' '.join(str(i) for i in mol_tmp.properties.lig_residue))
+            prop.name = mol.properties.name + '_wo_XYn'
+            prop.path = mol.properties.path
+            prop.prm = mol.properties.prm
 
-            delete_idx = sorted([core] + list(chain.from_iterable(lig)), reverse=True)
+            delete_idx = [core]
+            delete_idx += chain.from_iterable(lig)
+            core_at = mol_tmp[core]
+            if core_at.bonds:
+                delete_idx += get_fragment(mol_tmp, core_at)
+            delete_idx.sort(reverse=True)
+
             for i in delete_idx:
                 mol_tmp.delete_atom(mol_tmp[i])
 
             ret.append(mol_tmp)
+    mol.unset_atoms_id()
     return ret
 
 
@@ -359,9 +388,8 @@ def filter_lig_core(xyz_array: np.ndarray,
     return xy
 
 
-def get_lig_core_combinations(xy: np.ndarray,
-                              res_list: Sequence[Sequence[Atom]],
-                              lig_count: int = 2) -> dict:
+def get_combinations(xy: np.ndarray, res_list: Sequence[Sequence[Atom]],
+                     lig_count: int = 2) -> dict:
     """Given an array of indices (**xy**) and a nested list of atoms **res_list**.
 
     Parameters
@@ -388,21 +416,3 @@ def get_lig_core_combinations(xy: np.ndarray,
         except KeyError:
             dict_[res_list[0][core].id] = [[at.id for at in res_list[lig]]]
     return {k: combinations(v, lig_count) for k, v in dict_.items()}
-
-
-def find_polyatomic_ions(mol: Molecule,
-                         ion: Molecule) -> None:
-    """Placeholder."""
-    rdmol = molkit.to_rdmol(mol)
-    rdmol_ion = molkit.to_rdmol(ion)
-
-    _matches = np.array(rdmol.GetSubstructMatches(rdmol_ion, useChirality=True))
-    _matches += 1
-    matches = _matches.tolist()
-
-    for idx_list in matches:
-        at_list = [mol[i] for i in idx_list]
-        for at in at_list:
-            if at.properties.charge:
-                at.properties.poly_ion = at_list
-                break

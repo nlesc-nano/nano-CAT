@@ -29,25 +29,24 @@ API
 """
 
 from shutil import rmtree
-from typing import (Callable, Optional, Iterable)
+from typing import (Optional, Iterable, Type)
 from os.path import join
 from itertools import product
 
 import numpy as np
 import pandas as pd
 
-from scm.plams import AMSJob
-from scm.plams.mol.molecule import Molecule
-from scm.plams.core.functions import finish
-from scm.plams.core.settings import Settings
+from scm.plams import AMSJob, Molecule, finish, Settings, Cp2kJob
+from scm.plams.core.basejob import Job
 
 import qmflows
 
-from CAT.logger import logger
 from CAT.jobs import (job_single_point, job_geometry_opt, job_freq)
 from CAT.utils import (type_to_string, restart_init)
+from CAT.logger import logger
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
+from CAT.attachment.qd_opt_ff import qd_opt_ff
 
 from .construct_xyn import get_xyn
 from .dissociate_xyn import (dissociate_ligand, dissociate_ligand2)
@@ -87,12 +86,13 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
     # Check if the calculation has been done already
     if not overwrite and read:
         logger.info('Pulling ligand dissociation energies from the database')
-        with db.OpenCsvQd(db.csv_qd, write=False) as db:
+        with db.csv_qd.open(write=False) as db_df:
             key_ar = np.array(['BDE label', 'BDE dE', 'BDE dG', 'BDE ddG'])
-            bool_ar = np.isin(key_ar, db.columns.levels[0])
-            for i in db[key_ar[bool_ar]]:
+            bool_ar = np.isin(key_ar, db_df.columns.levels[0])
+            for i in db_df[key_ar[bool_ar]]:
                 qd_df[i] = np.nan
             db.from_csv(qd_df, database='QD', get_mol=False)
+
         qd_df.dropna(axis='columns', how='all', inplace=True)
 
     # Calculate the BDEs with thermochemical corrections
@@ -115,7 +115,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
-    keep_files = settings.qd.keep_files
+    keep_files = settings.qd.dissociate.keep_files
     path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     job2 = settings.qd.dissociate.job2
@@ -125,6 +125,7 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
     lig_count = settings.qd.dissociate.lig_count
     core_index = settings.qd.dissociate.core_index
     write = settings.database.db and 'qd' in settings.database.write
+    forcefield = bool(settings.qd.dissociate.use_ff)
 
     # Identify previously calculated results
     try:
@@ -166,8 +167,8 @@ def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
         # Run the BDE calculations
         mol.properties.job_path = []
         qd_df.loc[label_slice] = labels
-        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job=job1, s=s1)
-        qd_df.loc[ddG_slice] = get_bde_ddG(mol, xyn, mol_wo_xyn, job=job2, s=s2)
+        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job1, s1, forcefield)
+        qd_df.loc[ddG_slice] = get_bde_ddG(mol, xyn, mol_wo_xyn, job2, s2)
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
@@ -203,7 +204,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     """
     # Unpack arguments
     settings = qd_df.settings.optional
-    keep_files = settings.qd.keep_files
+    keep_files = settings.qd.dissociate.keep_files
     path = settings.qd.dirname
     job1 = settings.qd.dissociate.job1
     s1 = settings.qd.dissociate.s1
@@ -211,6 +212,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
     lig_count = settings.qd.dissociate.lig_count
     core_index = settings.qd.dissociate.core_index
     write = settings.database.db and 'qd' in settings.database.write
+    forcefield = bool(settings.qd.dissociate.use_ff)
 
     # Identify previously calculated results
     try:
@@ -252,10 +254,11 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
         # Run the BDE calculations
         mol.properties.job_path = []
         qd_df.loc[label_slice] = labels
-        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job=job1, s=s1)
+        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job1, s1, forcefield)
         mol.properties.job_path += xyn.properties.pop('job_path')
         for m in mol_wo_xyn:
             mol.properties.job_path += m.properties.pop('job_path')
+
     logger.info('Finishing ligand dissociation workflow\n')
     finish()
     if not keep_files:
@@ -275,8 +278,7 @@ def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
             _qd_to_db(qd_df, has_na, with_dg=False)
 
 
-def _qd_to_db(qd_df: SettingsDataFrame,
-              idx: pd.Series,
+def _qd_to_db(qd_df: SettingsDataFrame, idx: pd.Series,
               with_dg: bool = True) -> None:
     # Unpack arguments
     settings = qd_df.settings.optional
@@ -302,10 +304,8 @@ def _qd_to_db(qd_df: SettingsDataFrame,
     db.update_csv(qd_df[idx], **kwarg)
 
 
-def get_recipe(job1: Callable,
-               s1: Settings,
-               job2: Optional[Callable] = None,
-               s2: Optional[Callable] = None) -> Settings:
+def get_recipe(job1: Type[Job], s1: Settings,
+               job2: Optional[Type[Job]] = None, s2: Optional[Settings] = None) -> Settings:
     """Return the a dictionary with job types and job settings."""
     ret = Settings()
     value1 = qmflows.singlepoint['specific'][type_to_string(job1)].copy()
@@ -320,35 +320,60 @@ def get_recipe(job1: Callable,
     return ret
 
 
-def get_bde_dE(tot: Molecule,
-               lig: Molecule,
-               core: Iterable[Molecule],
-               job: Callable,
-               s: Settings) -> np.ndarray:
-    """Calculate the bond dissociation energy: dE = dE(mopac) + (dG(uff) - dE(uff))."""
+def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
+               job: Type[Job], s: Settings, forcefield: bool = False) -> np.ndarray:
+    """Calculate the bond dissociation energy: dE = dE(mopac) + (dG(uff) - dE(uff)).
+
+    Parameters
+    ----------
+    tot : |plams.Molecule|_
+        The complete intact quantum dot.
+
+    lig : |plams.Molecule|_
+        A ligand dissociated from the surface of the quantum dot
+
+    core : |list|_ [|plams.Molecule|_]
+        A list with one or more quantum dots (*i.e.* **tot**) with **lig** removed.
+
+    job : |plams.Job|_
+        A :class:`.Job` subclass.
+
+    s : |plams.Settings|_
+        The settings for **job**.
+
+    """
     # Optimize XYn
     if job == AMSJob:
         s_cp = s.copy()
         s_cp.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
         lig.job_geometry_opt(job, s_cp, name='E_XYn_opt')
+    elif forcefield:
+        qd_opt_ff(lig, Settings({'job1': Cp2kJob, 's1': s}), name='E_XYn_opt')
     else:
         lig.job_geometry_opt(job, s, name='E_XYn_opt')
 
     E_lig = lig.properties.energy.E
-    if E_lig is np.nan:
+    if E_lig in (None, np.nan):
         logger.error('The BDE XYn geometry optimization failed, skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Perform a single point on the full quantum dot
-    tot.job_single_point(job, s, name='E_QD_sp')
+    if forcefield:
+        qd_opt_ff(tot, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD_opt')
+    else:
+        tot.job_single_point(job, s, name='E_QD_sp')
+
     E_tot = tot.properties.energy.E
-    if E_tot is np.nan:
+    if E_tot in (None, np.nan):
         logger.error('The BDE quantum dot single point failed, skipping further jobs')
         return np.full(len(core), np.nan)
 
     # Perform a single point on the quantum dot(s) - XYn
     for mol in core:
-        mol.job_single_point(job, s, name='E_QD-XYn_sp')
+        if forcefield:
+            qd_opt_ff(mol, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD-XYn_opt')
+        else:
+            mol.job_single_point(job, s, name='E_QD-XYn_sp')
     E_core = np.array([mol.properties.energy.E for mol in core])
 
     # Calculate and return dE
@@ -356,12 +381,28 @@ def get_bde_dE(tot: Molecule,
     return dE
 
 
-def get_bde_ddG(tot: Molecule,
-                lig: Molecule,
-                core: Iterable[Molecule],
-                job: Callable,
-                s: Settings) -> np.ndarray:
-    """Calculate the bond dissociation energy: dE = dE(mopac) + (dG(uff) - dE(uff))."""
+def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
+                job: Type[Job], s: Settings) -> np.ndarray:
+    """Calculate the bond dissociation energy: dG = dE(lvl1) + (dG(lvl2) - dE(lvl2)).
+
+    Parameters
+    ----------
+    tot : |plams.Molecule|_
+        The complete intact quantum dot.
+
+    lig : |plams.Molecule|_
+        A ligand dissociated from the surface of the quantum dot
+
+    core : |list|_ [|plams.Molecule|_]
+        A list with one or more quantum dots (*i.e.* **tot**) with **lig** removed.
+
+    job : |plams.Job|_
+        A :class:`.Job` subclass.
+
+    s : |plams.Settings|_
+        The settings for **job**.
+
+    """
     # Optimize XYn
     s.input.ams.Constraints.Atom = lig.properties.indices
     lig.job_freq(job, s, name='G_XYn_freq')

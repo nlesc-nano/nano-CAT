@@ -25,6 +25,7 @@ setup(
     packages=[
         'nanoCAT',
         'nanoCAT.bde',
+        'nanoCAT.data',
         'nanoCAT.ff'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},

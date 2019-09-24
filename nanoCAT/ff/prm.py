@@ -106,7 +106,7 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
     @classmethod
     @AbstractFileContainer.inherit_annotations()
     def write(cls, filename=None, encoding=None, **kwargs):
-        return super().write(filename, encoding **kwargs)
+        return super().write(filename, encoding, **kwargs)
 
     @classmethod
     @AbstractFileContainer.inherit_annotations()

@@ -6,10 +6,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
-0.1.5
+0.2.0
 *****
 * Implemented an interface to MATCH_: Multipurpose Atom-Typer for CHARMM.
-* Added the ``PSF()`` class handling .psf files.
+* Added the ``PSFContainer()`` and ``PRMContainer()`` classes handling .psf and .prm files, respectively.
+* Updated the handling of assertions, see ``CAT.assertions.assertion_manager``.
+* A couple of bug fixes to the ligand dissociation module(s).
 
 .. _MATCH: http://brooks.chem.lsa.umich.edu/index.php?page=match&subdir=articles/resources/software
 

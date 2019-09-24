@@ -9,7 +9,7 @@ from CAT.assertion.assertion_manager import assertion
 from nanoCAT.ff.prm import PRMContainer
 
 PATH: str = join('tests', 'test_files')
-PRM: PRMContainer = PRMContainer.read(join(PATH, 'butoxide.prm'))
+PRM: PRMContainer = PRMContainer.read(join(PATH, 'Butoxide.prm'))
 
 
 def test_write() -> None:

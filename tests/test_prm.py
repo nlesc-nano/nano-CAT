@@ -14,7 +14,7 @@ PRM: PRMContainer = PRMContainer.read(join(PATH, 'Butoxide.prm'))
 
 def test_write() -> None:
     """Tests for :meth:`PSFContainer.write`."""
-    filename1 = join(PATH, 'butoxide.prm')
+    filename1 = join(PATH, 'Butoxide.prm')
     filename2 = join(PATH, 'tmp.prm')
 
     try:

@@ -240,45 +240,46 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
         return value
 
     @AbstractDataClass.inherit_annotations()
-    def __str__(self) -> str:
+    def __str__(self):
         with np.printoptions(**self.np_printoptions), pd.option_context(*self.pd_printoptions):
             return super().__str__()
 
     __repr__ = __str__
 
     @AbstractDataClass.inherit_annotations()
-    def _str_iterator(self) -> Iterator[Tuple[str, Any]]:
-        return ((k.strip('_'), v) for k, v in self.as_dict(copy=False).items())
+    def _str_iterator(self):
+        ret = super()._str_iterator()
+        return ((k.strip('_'), v) for k, v in ret)
 
     @AbstractDataClass.inherit_annotations()
     def __eq__(self, value):
-        if self.__class__ is not value.__class__:
+        if type(self) is not type(value):
             return False
 
-        try:  # Check if the object attribute values are identical
-            for k, v1 in self.as_dict(copy=False).items():
-                v1 = np.asarray(v1)
+        try:
+            for k, v in vars(self).items():
+                if k in self._PRIVATE_ATTR:
+                    continue
+                v1 = np.asarray(v)
                 v2 = np.asarray(getattr(value, k))
                 assert (v1 == v2).all()
-        except AssertionError:
-            return False  # An attribute is missing or not equivalent
-
-        return True
+        except (AttributeError, AssertionError):
+            return False
+        else:
+            return True
 
     @AbstractDataClass.inherit_annotations()
-    def as_dict(self, copy=True, return_private=False):
-        ret = super().as_dict(copy, return_private)
+    def as_dict(self, return_private=False):
+        ret = super().as_dict(return_private)
         return {k.strip('_'): v for k, v in ret.items()}
 
     # Ensure that a deepcopy is returned unless explictly specified
 
     @AbstractDataClass.inherit_annotations()
-    def copy(self, deep=True, copy_private=False):
-        kwargs = self.as_dict(copy=deep, return_private=copy_private)
-        return self.from_dict(kwargs)
+    def copy(self, deep=True): return super().copy(deep)
 
     @AbstractDataClass.inherit_annotations()
-    def __copy__(self): return self.copy()
+    def __copy__(self): return self.copy(deep=True)
 
     """###################################### Properties ########################################"""
 
@@ -478,7 +479,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
         ret = {}
 
         next(iterator)  # Skip the first line
-        with FrozenSettings.enable_missing():
+        with FrozenSettings.supress_missing():
             for i in iterator:
                 # Search for psf blocks
                 if i == '\n':

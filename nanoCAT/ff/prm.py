@@ -91,15 +91,33 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
 
     __repr__ = __str__
 
+    @AbstractDataClass.inherit_annotations()
+    def __eq__(self, value):
+        if type(self) is not type(value):
+            return False
+
+        try:
+            for k, v1 in vars(self).items():
+                if k in self._PRIVATE_ATTR:
+                    continue
+
+                v2 = getattr(value, k)
+                if isinstance(v2, pd.DataFrame):
+                    assert (v1 == v2).all().all()
+                else:
+                    assert v1 == v2
+        except (AttributeError, AssertionError):
+            return False
+        else:
+            return True
+
     # Ensure that a deepcopy is returned unless explictly specified
 
     @AbstractDataClass.inherit_annotations()
-    def copy(self, deep=True, copy_private=False):
-        kwargs = self.as_dict(copy=deep, return_private=copy_private)
-        return self.from_dict(kwargs)
+    def copy(self, deep=True): return super().copy(deep)
 
     @AbstractDataClass.inherit_annotations()
-    def __copy__(self): return self.copy()
+    def __copy__(self): return self.copy(deep=True)
 
     """########################### methods for reading .prm files. ##############################"""
 

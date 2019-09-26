@@ -1,7 +1,7 @@
 .. image:: https://travis-ci.org/nlesc-nano/nano-CAT.svg?branch=master
    :target: https://travis-ci.org/nlesc-nano/nano-CAT
 
-| 
+|
 
 .. image:: https://img.shields.io/badge/python-3.6-blue.svg
    :target: https://www.python.org
@@ -11,7 +11,7 @@
 
 
 ##############
-Nano-CAT 0.2.0
+Nano-CAT 0.2.1
 ##############
 
 **Nano-CAT** is a collection of tools for the analysis of nanocrystals,

@@ -140,7 +140,7 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
     with np.errstate(divide='ignore', invalid='ignore'):
         ret = np.arctan(r / h)
     ret[np.isnan(ret)] = 0.0
-    return ret, h
+    return ret, r
 
 
 def _get_anchor_idx(mol: Molecule) -> int:
@@ -158,13 +158,14 @@ def _get_anchor_idx(mol: Molecule) -> int:
             pass
         else:
             return idx - 1
+    raise ValueError
 
 
-def get_V(angle_array: np.ndarray, height_array: np.ndarray) -> float:
+def get_V(angle_array: np.ndarray, radius_array: np.ndarray) -> float:
     r"""Calculate the "bulkiness factor", :math:`V_{bulk}`, from an array of angles, :math:`\phi`.
 
     .. math::
-        V_{bulk} = \sum_{i}^{n} \frac {e^{\sin \phi_{i}}} {h_{i}^2}
+        V_{bulk} = \sum_{i}^{n} \frac {e^{\sin \phi_{i}}} {r_{i}^2}
 
     The bulkiness factor, :math:`V_{bulk}`, makes the following two assumptions:
 
@@ -179,8 +180,8 @@ def get_V(angle_array: np.ndarray, height_array: np.ndarray) -> float:
     angle_array : array-like
         An `array-like`_ object consisting of angles between :math:`0.0` and :math:`\pi` rad.
 
-    height_array : array-like
-        An `array-like`_ object representing the height of the cone matching **angle_array**.
+    radius_array : array-like
+        An `array-like`_ object representing the radius of the cone matching **angle_array**.
 
     Returns
     -------
@@ -190,18 +191,16 @@ def get_V(angle_array: np.ndarray, height_array: np.ndarray) -> float:
     """
     # Convert into an array if required and change the unit to radian
     angle = np.array(angle_array, dtype=float, copy=True)
-    height = np.array(height_array, dtype=float, copy=False)
+    radius = np.array(radius_array, dtype=float, copy=False)
 
     # Ensure that all angles are between 0.0 and pi
     if angle.min() < 0.0:
         angle[:] = np.abs(angle)
     if angle.max() > np.pi:
         angle[angle > np.pi] = np.pi
-    if height.min() < 0.0:
-        height[:] = np.abs(height)
 
     ret = np.exp(np.sin(angle))
     with np.errstate(divide='ignore', invalid='ignore'):
-        ret /= height**2
+        ret /= radius**2
     ret[ret == np.inf] = 0.0
     return ret.sum()

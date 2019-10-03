@@ -33,6 +33,7 @@ from scm.plams import rotation_matrix, Molecule
 
 from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
+from CAT.attachment.optimize_rotmat import optimize_rotmat
 
 __all__ = ['init_lig_bulkiness']
 
@@ -74,8 +75,8 @@ def init_lig_bulkiness(ligand_df: SettingsDataFrame) -> None:
     logger.info('Starting ligand bulkiness calculations')
 
     for mol in ligand_df[MOL]:
-        angle_ar, height_ar = get_cone_angles(mol)
-        V_bulk = get_V(angle_ar, height_ar)
+        angle_ar, height_ar, radius_ar = get_cone_angles(mol)
+        V_bulk = get_V(radius_ar)
         V_list.append(V_bulk)
 
     logger.info('Finishing ligand bulkiness calculations\n')
@@ -123,11 +124,6 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
     i = _get_anchor_idx(mol) if anchor is None else anchor
     xyz = np.array(mol)
 
-    # Reset the origin and allign the ligand with the Cartesian x-axis
-    rotmat = optimize_rotmat(xyz, i)
-    xyz[:] = xyz@rotmat.T
-    xyz -= xyz[i]
-
     # Calculate distance the height (h) and radius (r)
     h = xyz[:, 0]
     r = np.linalg.norm(xyz[:, 1:], axis=1)
@@ -138,63 +134,18 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
     with np.errstate(divide='ignore', invalid='ignore'):
         ret = np.arctan(r / h)
     ret[np.isnan(ret)] = 0.0
-    return ret, r
-
-
-def optimize_rotmat(xyz: np.ndarray, anchor: int) -> np.ndarray:
-    r"""Find the rotation matrix for **xyz** that minimizes its deviation from the Cartesian X-axis.
-
-    A set of vectors, :math:`v`, is constructed for all atoms in **xyz**,
-    denoting their deviation from the Cartesian X-axis.
-    Subsequently, the rotation matrix that minimizes
-    :math:`\sum_{i}^{n} {e^{v_{i}}}` is returned.
-
-    Parameters
-    ----------
-    xyz : :math:`n*3` :class:`numpy.ndarray` [:class:`float`]
-        An array of Cartesian coordinates.
-
-    anchor : :class:`int`, optional
-        The index (0-based) of the anchor atom in **xyz**.
-        Used for defining the origin in **xyz** (*i.e.* :code:`xyz[i] == (0, 0, 0)`).
-
-    Returns
-    -------
-    :math:`3*3` :class:`numpy.ndarray` [:class:`float`]
-        A rotation matrix.
-
-    """
-    # Construct the initial vectors
-    vec1_trial = xyz.mean(axis=0) - xyz[anchor]
-    vec2 = np.array([1, 0, 0], dtype=float)
-
-    # Optimize the trial vector; return the matching rotation matrix
-    output = minimize(_minimize_func, vec1_trial, args=(vec2, xyz, anchor))
-    vec1 = output.x
-    return rotation_matrix(vec1, vec2)
-
-
-def _minimize_func(vec1: np.ndarray, vec2: np.ndarray, xyz: np.ndarray, anchor: int) -> float:
-    """The function whose output is to-be minimized by :func:`scipy.optimize.minimize`."""
-    # Rotate and translate
-    rotmat = rotation_matrix(vec1, vec2)
-    xyz = xyz@rotmat
-    xyz -= xyz[anchor]
-
-    # Apply the cost function: e^(|yz|)
-    yz = xyz[:, 1:]
-    distance = np.linalg.norm(yz, axis=1)
-    return np.exp(distance).sum()
+    return ret, h, r
 
 
 def _get_anchor_idx(mol: Molecule) -> int:
     """Return the index of the anchor atom specified |Molecule.properties| ``["anchor"]``."""
     anchor_str = mol.properties.anchor
-    try:
+    try:  # Is it an integer?
         return int(anchor_str)
     except ValueError:
         pass
 
+    # Is it a string containing an integer?
     for i, _ in enumerate(anchor_str):
         try:
             idx = int(anchor_str[i:])
@@ -202,30 +153,26 @@ def _get_anchor_idx(mol: Molecule) -> int:
             pass
         else:
             return idx - 1
-    raise ValueError
+    raise ValueError   # I give up
 
 
-def get_V(angle_array: np.ndarray, radius_array: np.ndarray) -> float:
-    r"""Calculate the "bulkiness factor", :math:`V_{bulk}`, from an array of angles, :math:`\phi`.
+def get_V(radius_array: np.ndarray) -> float:
+    r"""Calculate the "bulkiness factor", :math:`V_{bulk}`, from an array of radii.
 
     .. math::
-        V_{bulk} = \sum_{i}^{n} \frac {e^{\sin \phi_{i}}} {r_{i}^2}
+        V_{bulk} = \frac{1}{n} \sum_{i}^{n} {e^{r_{i}}}
 
-    The bulkiness factor, :math:`V_{bulk}`, makes the following two assumptions:
-
-    * The inter-ligand distance is inversely proportional to the angle :math:`\phi_{i}`.
-    * The inter-ligand repulsion (*i.e.* Pauli repulsion) is inversely proportional to the exponent
-      of the inter-ligand distance.
+    :math:`V_{bulk}` represents the mean repulsion with a cylindrical potential,
+    the potential being of exponential form.
 
     .. _`array-like`: https://docs.scipy.org/doc/numpy/glossary.html#term-array-like
 
     Parameters
     ----------
-    angle_array : array-like
-        An `array-like`_ object consisting of angles between :math:`0.0` and :math:`\pi` rad.
-
     radius_array : array-like
-        An `array-like`_ object representing the radius of the cone matching **angle_array**.
+        An `array-like`_ object representing the distance of an atom with respect to vector
+        representing the molecules' orientation.
+        Conceptually equivalent to a set of radii beloning to a cylinder.
 
     Returns
     -------
@@ -233,18 +180,5 @@ def get_V(angle_array: np.ndarray, radius_array: np.ndarray) -> float:
         The bulkiness factor :math:`V_{bulk}`.
 
     """
-    # Convert into an array if required and change the unit to radian
-    angle = np.array(angle_array, dtype=float, copy=True)
-    radius = np.array(radius_array, dtype=float, copy=False)
-
-    # Ensure that all angles are between 0.0 and pi
-    if angle.min() < 0.0:
-        angle[:] = np.abs(angle)
-    if angle.max() > np.pi:
-        angle[angle > np.pi] = np.pi
-
-    ret = np.exp(np.sin(angle))
-    with np.errstate(divide='ignore', invalid='ignore'):
-        ret /= radius**2
-    ret[ret == np.inf] = 0.0
-    return ret.sum()
+    radius = np.array(radius_array, dtype=float, ndmin=1, copy=False)
+    return np.exp(radius).mean()

@@ -18,10 +18,11 @@ API
 
 """
 
-import numpy as np
-import pandas as pd
+from typing import Collection
 
-from scm.plams.core.settings import Settings
+import numpy as np
+
+from scm.plams import Settings, Molecule
 import scm.plams.interfaces.molecule.rdkit as molkit
 
 import rdkit
@@ -71,14 +72,16 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     if write:
         recipe = Settings()
         recipe['ASA 1'] = {'key': 'RDKit_' + rdkit.__version__, 'value': 'UFF'}
-        db.update_csv(qd_df,
-                      columns=[SETTINGS1]+columns,
-                      job_recipe=recipe,
-                      database='QD',
-                      overwrite=overwrite)
+        db.update_csv(
+            qd_df,
+            columns=[SETTINGS1]+columns,
+            job_recipe=recipe,
+            database='QD',
+            overwrite=overwrite
+        )
 
 
-def get_asa_energy(mol_series: pd.Series) -> np.ndarray:
+def get_asa_energy(mol_colllection: Collection[Molecule]) -> np.ndarray:
     """Perform an activation strain analyses (ASA).
 
     The ASA calculates the interaction, strain and total energy.
@@ -95,35 +98,36 @@ def get_asa_energy(mol_series: pd.Series) -> np.ndarray:
         An array containing E_int, E_strain and E for all *n* molecules in **mol_series**.
 
     """
-    ret = np.zeros((len(mol_series), 4))
+    ret = np.zeros((len(mol_colllection), 4))
 
-    for i, mol in enumerate(mol_series):
+    for i, mol in enumerate(mol_colllection):
         logger.info(f'UFFGetMoleculeForceField: {mol.properties.name} activation strain '
                     'analysis has started')
 
-        mol_cp = mol.copy()
-        rd_uff = AllChem.UFFGetMoleculeForceField
+        ligands = mol.copy()
+        uff = AllChem.UFFGetMoleculeForceField
 
         # Calculate the total energy of all perturbed ligands in the absence of the core
-        for atom in reversed(mol_cp.atoms):
-            if atom.properties.pdb_info.ResidueName == 'COR':
-                mol_cp.delete_atom(atom)
-        rdmol = molkit.to_rdmol(mol_cp)
-        E_no_frag = rd_uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+        core_atoms = [at for at in ligands if at.properties.pdb_info.ResidueName == 'COR']
+        for atom in core_atoms:
+            ligands.delete_atom(atom)
+
+        rdmol = molkit.to_rdmol(ligands)
+        E_ligands = uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
 
         # Calculate the total energy of the isolated perturbed ligands in the absence of the core
-        mol_frag = mol_cp.separate()
-        E_frag = 0.0
-        for plams_mol in mol_frag:
-            rdmol = molkit.to_rdmol(plams_mol)
-            E_frag += rd_uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+        ligand_list = ligands.separate()
+        E_ligand = 0.0
+        for ligand in ligand_list:
+            rdmol = molkit.to_rdmol(ligand)
+            E_ligand += uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
 
         # Calculate the total energy of the optimized ligand
-        rd_uff(rdmol, ignoreInterfragInteractions=False).Minimize()
-        E_opt = rd_uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+        uff(rdmol, ignoreInterfragInteractions=False).Minimize()
+        E_ligand_opt = uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
 
         # Update ret with the new activation strain terms
-        ret[i] = E_no_frag, E_frag, E_opt, len(mol_frag)
+        ret[i] = E_ligands, E_ligand, E_ligand_opt, len(ligand_list)
 
         logger.info(f'UFFGetMoleculeForceField: {mol.properties.name} activation strain '
                     'analysis is successful')

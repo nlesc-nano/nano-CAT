@@ -27,6 +27,7 @@ API
 from typing import Tuple, Optional
 
 import numpy as np
+from scipy.optimize import minimize
 
 from scm.plams import rotation_matrix, Molecule
 
@@ -107,7 +108,6 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
     mol : :math:`n` |plams.Molecule|
         A PLAMS molecule with :math:`n` atoms.
 
-
     anchor : :class:`int`, optional
         The index (0-based) of the anchor atom: :math:`B`.
         If ``None``, extract it from the |Molecule.properties| ``["anchor"]`` key.
@@ -124,9 +124,7 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
     xyz = np.array(mol)
 
     # Reset the origin and allign the ligand with the Cartesian x-axis
-    _initial_vec = xyz.mean(axis=0) - xyz[i]
-    _final_vec = np.array([1, 0, 0], dtype=float)
-    rotmat = rotation_matrix(_initial_vec, _final_vec)
+    rotmat = optimize_rotmat(xyz, i)
     xyz[:] = xyz@rotmat.T
     xyz -= xyz[i]
 
@@ -141,6 +139,52 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
         ret = np.arctan(r / h)
     ret[np.isnan(ret)] = 0.0
     return ret, r
+
+
+def optimize_rotmat(xyz: np.ndarray, anchor: int) -> np.ndarray:
+    r"""Find the rotation matrix for **xyz** that minimizes its deviation from the Cartesian X-axis.
+
+    A set of vectors, :math:`v`, is constructed for all atoms in **xyz**,
+    denoting their deviation from the Cartesian X-axis.
+    Subsequently, the rotation matrix that minimizes
+    :math:`\sum_{i}^{n} {e^{v_{i}}}` is returned.
+
+    Parameters
+    ----------
+    xyz : :math:`n*3` :class:`numpy.ndarray` [:class:`float`]
+        An array of Cartesian coordinates.
+
+    anchor : :class:`int`, optional
+        The index (0-based) of the anchor atom in **xyz**.
+        Used for defining the origin in **xyz** (*i.e.* :code:`xyz[i] == (0, 0, 0)`).
+
+    Returns
+    -------
+    :math:`3*3` :class:`numpy.ndarray` [:class:`float`]
+        A rotation matrix.
+
+    """
+    # Construct the initial vectors
+    vec1_trial = xyz.mean(axis=0) - xyz[anchor]
+    vec2 = np.array([1, 0, 0], dtype=float)
+
+    # Optimize the trial vector; return the matching rotation matrix
+    output = minimize(_minimize_func, vec1_trial, args=(vec2, xyz, anchor))
+    vec1 = output.x
+    return rotation_matrix(vec1, vec2)
+
+
+def _minimize_func(vec1: np.ndarray, vec2: np.ndarray, xyz: np.ndarray, anchor: int) -> float:
+    """The function whose output is to-be minimized by :func:`scipy.optimize.minimize`."""
+    # Rotate and translate
+    rotmat = rotation_matrix(vec1, vec2)
+    xyz = xyz@rotmat
+    xyz -= xyz[anchor]
+
+    # Apply the cost function: e^(|yz|)
+    yz = xyz[:, 1:]
+    distance = np.linalg.norm(yz, axis=1)
+    return np.exp(distance).sum()
 
 
 def _get_anchor_idx(mol: Molecule) -> int:

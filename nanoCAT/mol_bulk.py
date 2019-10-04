@@ -162,8 +162,8 @@ def get_V(radius_array: np.ndarray) -> float:
     .. math::
         V_{bulk} = \frac{1}{n} \sum_{i}^{n} {e^{r_{i}}}
 
-    :math:`V_{bulk}` represents the mean repulsion with a cylindrical potential,
-    the potential being of exponential form.
+    :math:`V_{bulk}` represents the mean repulsion of all atoms with a
+    cylindrical external potential, the potential being of exponential form.
 
     .. _`array-like`: https://docs.scipy.org/doc/numpy/glossary.html#term-array-like
 

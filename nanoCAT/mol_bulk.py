@@ -24,19 +24,21 @@ API
 
 """
 
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
+from scipy.optimize import minimize
 
-from scm.plams import rotation_matrix, Molecule, Units
+from scm.plams import rotation_matrix, Molecule
 
 from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
+from CAT.attachment.optimize_rotmat import optimize_rotmat
 
 __all__ = ['init_lig_bulkiness']
 
 # Aliases for DataFrame column keys
-MOL: Tuple[str, str] = ('MOL', '')
+MOL: Tuple[str, str] = ('mol', '')
 V_BULK: Tuple[str, str] = ('V_bulk', '')
 
 
@@ -68,13 +70,13 @@ def init_lig_bulkiness(ligand_df: SettingsDataFrame) -> None:
         a transition metal complex.
 
     """
-    write = ligand_df.settings.optional.ligand.database.write
+    write = ligand_df.settings.optional.database.write
     V_list = []
     logger.info('Starting ligand bulkiness calculations')
 
     for mol in ligand_df[MOL]:
-        angle_ar = get_cone_angles(mol)
-        V_bulk = get_V(angle_ar)
+        angle_ar, height_ar, radius_ar = get_cone_angles(mol)
+        V_bulk = get_V(radius_ar)
         V_list.append(V_bulk)
 
     logger.info('Finishing ligand bulkiness calculations\n')
@@ -95,20 +97,21 @@ def _export_to_db(ligand_df: SettingsDataFrame) -> None:
     )
 
 
-def get_cone_angles(mol: Molecule) -> np.ndarray:
+def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
     r"""Return all half-cone angles defined according to :math:`\phi = \angle_{ABC}`.
 
     :math:`A` represents a set of all ligand atoms,
     :math:`B` is the ligand anchor atom and
     :math:`C` is the mean position of all ligand atoms (*i.e.* the ligand center).
 
-    The anchor atom should be marked with the |Atom.properties| ``["anchor"]`` key.
-
     Parameters
     ----------
     mol : :math:`n` |plams.Molecule|
         A PLAMS molecule with :math:`n` atoms.
-        One atom marked with the |Atom.properties| ``["anchor"]`` key.
+
+    anchor : :class:`int`, optional
+        The index (0-based) of the anchor atom: :math:`B`.
+        If ``None``, extract it from the |Molecule.properties| ``["anchor"]`` key.
 
     Returns
     -------
@@ -118,15 +121,8 @@ def get_cone_angles(mol: Molecule) -> np.ndarray:
 
     """
     # Find and return the anchor atom
-    i = _get_anchor_idx(mol)
+    i = _get_anchor_idx(mol) if anchor is None else anchor
     xyz = np.array(mol)
-
-    # Reset the origin and allign the ligand with the Cartesian x-axis
-    _initial_vec = xyz.mean(axis=0) - xyz[i]
-    _final_vec = np.array([1, 0, 0], dtype=float)
-    rotmat = rotation_matrix(_initial_vec, _final_vec)
-    xyz[:] = xyz@rotmat.T
-    xyz -= xyz[i]
 
     # Calculate distance the height (h) and radius (r)
     h = xyz[:, 0]
@@ -137,61 +133,52 @@ def get_cone_angles(mol: Molecule) -> np.ndarray:
     # Calculate and return the angles
     with np.errstate(divide='ignore', invalid='ignore'):
         ret = np.arctan(r / h)
-        ret[np.isnan(ret)] = 0.0
-        return ret
+    ret[np.isnan(ret)] = 0.0
+    return ret, h, r
 
 
 def _get_anchor_idx(mol: Molecule) -> int:
-    """Return the index of the atom in **mol** with the |Atom.properties| ``["anchir"]`` key."""
-    for i, at in enumerate(mol):
-        if 'anchor' in at.properties:
-            return i
-    raise ValueError("No atom in 'mol' with the 'properties.anchor' key")
+    """Return the index of the anchor atom specified |Molecule.properties| ``["anchor"]``."""
+    anchor_str = mol.properties.anchor
+    try:  # Is it an integer?
+        return int(anchor_str)
+    except ValueError:
+        pass
+
+    # Is it a string containing an integer?
+    for i, _ in enumerate(anchor_str):
+        try:
+            idx = int(anchor_str[i:])
+        except ValueError:
+            pass
+        else:
+            return idx - 1
+    raise ValueError   # I give up
 
 
-def get_V(angle_array: np.ndarray, unit: str = 'radian') -> float:
-    r"""Calculate the "bulkiness factor", :math:`V_{bulk}`, from an array of angles, :math:`\phi`.
+def get_V(radius_array: np.ndarray) -> float:
+    r"""Calculate the "bulkiness factor", :math:`V_{bulk}`, from an array of radii.
 
     .. math::
-        V_{bulk} = \frac{1}{n} \sum_{i}^{n} e^{\sin \phi_{i}}
+        V_{bulk} = \frac{1}{n} \sum_{i}^{n} {e^{r_{i}}}
 
-    The bulkiness factor, :math:`V_{bulk}`, makes the following two assumptions:
-
-    * The inter-ligand distance is inversely proportional to the angle :math:`\phi_{i}`.
-    * The inter-ligand repulsion (*i.e.* Pauli repulsion) is inversely proportional to the exponent
-      of the inter-ligand distance.
+    :math:`V_{bulk}` represents the mean repulsion of all atoms with a
+    cylindrical external potential, the potential being of exponential form.
 
     .. _`array-like`: https://docs.scipy.org/doc/numpy/glossary.html#term-array-like
 
     Parameters
     ----------
-    angle_array : array-like
-        An `array-like`_ object consisting of angles between :math:`0.0` and :math:`\pi` rad.
-
-    unit : :class:`str`
-        The angle unit used in **angle_array**.
-        Accepted values are ``"degree"``, ``"radian"``, ``"grad"`` and ``"circle"``.
+    radius_array : array-like
+        An `array-like`_ object representing the distance of an atom with respect to vector
+        representing the molecules' orientation.
+        Conceptually equivalent to a set of radii beloning to a cylinder.
 
     Returns
     -------
     :class:`float`
         The bulkiness factor :math:`V_{bulk}`.
 
-    See also
-    --------
-    :class:`plams.Units<scm.plams.tools.units.Units>`
-        A singleton class for unit convertion.
-
     """
-    # Convert into an array if required and change the unit to radian
-    unit = Units.conversion_ratio(unit, 'radian')
-    array = np.array(angle_array, dtype=float, copy=False) * unit
-
-    # Ensure that all angles are between 0.0 and pi
-    if array.min() < 0.0:
-        array[:] = np.abs(array)
-    if array.max() > np.pi:
-        array[array > np.pi] = np.pi
-
-    ret = np.exp(np.sin(array)) / len(array)
-    return ret.sum()
+    radius = np.array(radius_array, dtype=float, ndmin=1, copy=False)
+    return np.exp(radius).mean()

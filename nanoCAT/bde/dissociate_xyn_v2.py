@@ -9,8 +9,8 @@ from scipy.spatial.distance import cdist
 
 from scm.plams import (Molecule, Settings)
 
+from CAT.abc.dataclass import AbstractDataClass
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
-from nanoCAT.dataclass import AbstractDataClass
 
 
 class MolDissociater(AbstractDataClass):
@@ -34,7 +34,7 @@ class MolDissociater(AbstractDataClass):
         on the radial distribution function of **mol**.
 
     topology : |dict|_ [|int|_, |str|_]
-        Optional: A dictionary that maps neighbouring atom count to a user-specified
+        Optional: A dictionary that maps neighbouring atom counts to a user-specified
         topology descriptor.
 
     """
@@ -48,9 +48,9 @@ class MolDissociater(AbstractDataClass):
                  topology: Optional[Dict[int, str]] = None) -> None:
         """Initialize a :class:`MolDissociater` instance."""
         self.mol: Molecule = mol
-        self.core_idx: np.ndarray = np.array(core_index) - 1
+        self.core_idx: np.ndarray = np.array(core_index, dtype=int, copy=False) - 1
         self.ligand_count: int = ligand_count
-        self.max_dist: float = cc_dist if cc_dist is not None else guess_core_core_dist()
+        self.max_dist: float = float(cc_dist) if cc_dist is not None else guess_core_core_dist()
         self.topology: Dict[int, str] = topology if topology is not None else {}
 
         self._coords: np.ndarray = mol.as_array()
@@ -65,7 +65,7 @@ class MolDissociater(AbstractDataClass):
     """################################## Topology assignment ##################################"""
 
     def assign_topology(self) -> None:
-        """Find all atoms (**idx**) in **xyz_array** which are exposed to the surface.
+        """Assign a toology to all atoms in :attr:`MolDissociater.mol`
 
         A topology is assigned to aforementioned atoms based on the number of neighbouring atoms.
 
@@ -103,14 +103,14 @@ class MolDissociater(AbstractDataClass):
 
         # Find all valid core atoms and create a topology indicator
         valid_core, _ = np.where(dist <= max_dist)
-        bincount = np.bincount(valid_core, minlength=len(i))
-        topology = self.get_topology(bincount)
+        neighbour_count = np.bincount(valid_core, minlength=len(i)) - 1
+        topology = self._get_topology(neighbour_count)
 
-        for i, top in zip(self.core_idx, topology):
-            i = 1 + int(i)
-            mol[i].properties.topology = top
+        for j, top in zip(self.core_idx, topology):
+            j = 1 + int(j)
+            mol[j].properties.topology = top
 
-    def get_topology(self, bincount: Iterable[int]) -> List[str]:
+    def _get_topology(self, neighbour_count: Iterable[int]) -> List[str]:
         """Translate the number of neighbouring atoms (**bincount**) into a list of topologies.
 
         If a specific number of neighbours (*i*) is absent from **topology_dict** then that
@@ -118,21 +118,22 @@ class MolDissociater(AbstractDataClass):
 
         Parameters
         ----------
-        bincount : :math:`n` |np.ndarray|_ [|np.int64|_]
-            An array with the number of neighbours per atom for a total of :math:`n` atoms.
-
-        topology_dict : |dict|_ [|int|_, |str|_]
-            Optional: A dictionary which maps the number of neighbours (per atom) to
-            a user-specified topology.
+        neighbour_count : :math:`n` :class:`numpy.ndarray` [:class:`int`]
+            An array representing the number of neighbouring atoms per array-element.
 
         Returns
         -------
-        :math:`n` |list|_
+        :math:`n` :class:`list` [:class:`str`]
             A list of topologies for all :math:`n` atoms in **bincount**.
+
+        See also
+        --------
+        :attr:`MolDissociater.topology`
+            A dictionary that maps neighbouring atom counts to a user-specified topology descriptor.
 
         """
         topology = self.topology
-        return [(topology[i] if i in topology else f'{i}_neighbours') for i in bincount]
+        return [(topology[i] if i in topology else f'{i}_neighbours') for i in neighbour_count]
 
     """############################ core/ligand pair identification ############################"""
 

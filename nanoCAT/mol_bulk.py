@@ -74,11 +74,11 @@ def init_lig_bulkiness(ligand_df: SettingsDataFrame, core_df: SettingsDataFrame)
     logger.info('Starting ligand bulkiness calculations')
 
     core = core_df[MOL].iloc[0]
-    angle = get_core_angle(core)
+    angle, r_ref = get_core_angle(core)
 
     for ligand in ligand_df[MOL]:
         r, h = get_lig_radius(ligand)
-        V_bulk = get_V(r, h, angle)
+        V_bulk = get_V(r, h, r_ref, angle)
         V_list.append(V_bulk)
 
     logger.info('Finishing ligand bulkiness calculations\n')
@@ -150,8 +150,9 @@ def get_core_angle(core: Molecule) -> Tuple[float, float]:
     vec2 /= np.linalg.norm(vec2, axis=1)[..., None]
 
     # Calculate (and average) all the anchor-center-anchor angles
+    r_ref = np.linalg.norm(anchors - anchors[idx], axis=1)
     dot = np.einsum('ij,ij->i', vec1, vec2)
-    return np.arccos(dot).mean()
+    return np.arccos(dot).mean(), r_ref.mean()
 
 
 def _get_anchor_idx(mol: Molecule) -> int:
@@ -173,13 +174,13 @@ def _get_anchor_idx(mol: Molecule) -> int:
     raise ValueError   # I give up
 
 
-def get_V(radius_array: np.ndarray, height_array: np.ndarray, angle: float) -> float:
+def get_V(radius_array: np.ndarray, height_array: np.ndarray,
+          d: float, angle: float) -> float:
     r"""Calculate the :math:`V_{bulk}`, a ligand- and core-sepcific descriptor of a ligands' bulkiness.
 
     .. math::
-        V_{bulk} = \frac{1}{n} \sum_{i}^{n} {e^{r_{i}^{eff}}}
-
-        r_{i}^{eff} = r_{i} - h_{i} * 2 \arctan (\phi / 2)
+        V(r_{i}, h_{i}; d, h_{lim}) =
+        \sum_{i=1}^{n} e^{r_{i}} (\frac{2 r_{i}}{d} - 1)^{+} (1 - \frac{h_{i}}{h_{lim}})^{+}
 
     :math:`r` and :math:`h`, respectively, represent the radius and height of a "cylinder" centered
     around the ligand vector, the ligand anchor being the origin.
@@ -208,14 +209,38 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray, angle: float) -> f
     angle : :class:`float`
         The angle (in radian) between two ligand vectors.
 
+    d : class`float`
+        The average distance between two neighbouring core anchor atoms.
+        Equivalent to the lattice spacing of the core.
+
     Returns
     -------
     :class:`float`
         The bulkiness factor :math:`V_{bulk}`.
 
-    """
+    """  # noqa
     r = np.array(radius_array, dtype=float, ndmin=1, copy=True)
     h = np.array(height_array, dtype=float, ndmin=1, copy=False)
-    r_correction = h * 2 * np.arctan(angle / 2)
+
+    d = 5.878
+    step1 = (2 * r) / d - 1
+    step2 = 1 - (h / 10)
+    step1[step1 < 0] = 0
+    step2[step2 < 0] = 0
+    ret = step1 * step2 * np.exp(r)
+
+    """
+    .. math::
+        V_{bulk} = \frac{1}{n} \sum_{i}^{n} (e^{r_{i}^{eff}} - 1)^{+}
+
+        r_{i}^{eff} = r_{i} - d / 2 - h_{i} \arctan (\phi / 2)
+
+    r_correction = h * np.arctan(angle / 2)
     r -= r_correction
-    return np.exp(r).mean()
+    r -= d / 2
+
+    ret = np.expm1(r)
+    ret[ret < 0] = 0
+    """
+
+    return ret.sum()

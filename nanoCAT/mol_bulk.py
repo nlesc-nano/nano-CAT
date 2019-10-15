@@ -27,13 +27,12 @@ API
 from typing import Tuple, Optional
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.spatial.distance import cdist
 
-from scm.plams import rotation_matrix, Molecule
+from scm.plams import Molecule
 
 from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.attachment.optimize_rotmat import optimize_rotmat
 
 __all__ = ['init_lig_bulkiness']
 
@@ -42,7 +41,8 @@ MOL: Tuple[str, str] = ('mol', '')
 V_BULK: Tuple[str, str] = ('V_bulk', '')
 
 
-def init_lig_bulkiness(ligand_df: SettingsDataFrame) -> None:
+def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
+                       core_df: SettingsDataFrame) -> None:
     r"""Initialize the ligand bulkiness workflow.
 
     Given a set of angles :math:`\phi`, the bulkiness factor :math:`V_{bulk}` is defined below.
@@ -63,7 +63,7 @@ def init_lig_bulkiness(ligand_df: SettingsDataFrame) -> None:
     ligand_df : |CAT.SettingsDataFrame|
         A DataFrame of ligands.
 
-    See also
+    See Also
     --------
     `Ligand cone angle <https://en.wikipedia.org/wiki/Ligand_cone_angle>`_:
         The ligand cone angle is a measure of the steric bulk of a ligand in
@@ -71,33 +71,41 @@ def init_lig_bulkiness(ligand_df: SettingsDataFrame) -> None:
 
     """
     write = ligand_df.settings.optional.database.write
-    V_list = []
     logger.info('Starting ligand bulkiness calculations')
 
-    for mol in ligand_df[MOL]:
-        angle_ar, height_ar, radius_ar = get_cone_angles(mol)
-        V_bulk = get_V(radius_ar)
+    V_list = []
+    for (i, j, k, l) in qd_df.index:
+        # Extract the core and ligand
+        ij = (i, j)
+        kl = (k, l)
+        core = core_df.at[ij, MOL]
+        ligand = ligand_df.at[kl, MOL]
+
+        # Calculate V_bulk
+        angle, r_ref = get_core_angle(core)
+        r, h = get_lig_radius(ligand)
+        V_bulk = get_V(r, h, r_ref, angle)
         V_list.append(V_bulk)
 
     logger.info('Finishing ligand bulkiness calculations\n')
-    ligand_df[V_BULK] = V_list
+    qd_df[V_BULK] = V_list
 
     if 'ligand' in write:
-        _export_to_db(ligand_df)
+        _export_to_db(qd_df)
 
 
-def _export_to_db(ligand_df: SettingsDataFrame) -> None:
+def _export_to_db(qd_df: SettingsDataFrame) -> None:
     """Export the ``"V_bulk"`` column in **ligand_df** to the database."""
-    settings = ligand_df.settings.optional
-    overwrite = 'ligand' in settings.database.overwrite
+    settings = qd_df.settings.optional
+    overwrite = 'qd' in settings.database.overwrite
 
     db = settings.database.db
     db.update_csv(
-        ligand_df, database='ligand', columns=['V_bulk'], overwrite=overwrite
+        qd_df, database='QD', columns=['V_bulk'], overwrite=overwrite
     )
 
 
-def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
+def get_lig_radius(ligand: Molecule, anchor: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
     r"""Return all half-cone angles defined according to :math:`\phi = \angle_{ABC}`.
 
     :math:`A` represents a set of all ligand atoms,
@@ -106,8 +114,8 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
 
     Parameters
     ----------
-    mol : :math:`n` |plams.Molecule|
-        A PLAMS molecule with :math:`n` atoms.
+    ligand : :math:`n` |plams.Molecule|
+        A ligand molecule with :math:`n` atoms.
 
     anchor : :class:`int`, optional
         The index (0-based) of the anchor atom: :math:`B`.
@@ -121,20 +129,36 @@ def get_cone_angles(mol: Molecule, anchor: Optional[int] = None) -> Tuple[np.nda
 
     """
     # Find and return the anchor atom
-    i = _get_anchor_idx(mol) if anchor is None else anchor
-    xyz = np.array(mol)
+    i = _get_anchor_idx(ligand) if anchor is None else anchor
+    xyz = np.array(ligand)
 
     # Calculate distance the height (h) and radius (r)
     h = xyz[:, 0]
     r = np.linalg.norm(xyz[:, 1:], axis=1)
-    r += [at.radius for at in mol]  # Correct for atomic radii
+    r += [at.radius for at in ligand]  # Correct for atomic radii
     r[i] = 0.0
+    return r, h
 
-    # Calculate and return the angles
-    with np.errstate(divide='ignore', invalid='ignore'):
-        ret = np.arctan(r / h)
-    ret[np.isnan(ret)] = 0.0
-    return ret, h, r
+
+def get_core_angle(core: Molecule) -> Tuple[float, float]:
+    """Return the mean."""
+    # Find all nearest anchor neighbours
+    anchors = np.array([at.coords for at in core.properties.dummies])
+    dist = cdist(anchors, anchors)
+    np.fill_diagonal(dist, 10000)
+    idx = np.argmin(dist, axis=0)
+
+    # Construct (and normalize) vectors from the center of mass to the anchor atoms
+    center = np.array(core.get_center_of_mass())
+    vec1 = anchors - center
+    vec2 = anchors[idx] - center
+    vec1 /= np.linalg.norm(vec1, axis=1)[..., None]
+    vec2 /= np.linalg.norm(vec2, axis=1)[..., None]
+
+    # Calculate (and average) all the anchor-center-anchor angles
+    r_ref = np.linalg.norm(anchors - anchors[idx], axis=1)
+    dot = np.einsum('ij,ij->i', vec1, vec2)
+    return np.arccos(dot).mean(), r_ref.mean()
 
 
 def _get_anchor_idx(mol: Molecule) -> int:
@@ -156,14 +180,23 @@ def _get_anchor_idx(mol: Molecule) -> int:
     raise ValueError   # I give up
 
 
-def get_V(radius_array: np.ndarray) -> float:
-    r"""Calculate the "bulkiness factor", :math:`V_{bulk}`, from an array of radii.
+def get_V(radius_array: np.ndarray, height_array: np.ndarray,
+          d: float, angle: float) -> float:
+    r"""Calculate the :math:`V_{bulk}`, a ligand- and core-sepcific descriptor of a ligands' bulkiness.
 
     .. math::
-        V_{bulk} = \frac{1}{n} \sum_{i}^{n} {e^{r_{i}}}
+        V(r_{i}, h_{i}; d, h_{lim}) =
+        \sum_{i=1}^{n} e^{r_{i}} (\frac{2 r_{i}}{d} - 1)^{+} (1 - \frac{h_{i}}{h_{lim}})^{+}
 
-    :math:`V_{bulk}` represents the mean repulsion of all atoms with a
-    cylindrical external potential, the potential being of exponential form.
+    :math:`r` and :math:`h`, respectively, represent the radius and height of a "cylinder" centered
+    around the ligand vector, the ligand anchor being the origin.
+    Due to the conal (rather than cylindrical) shape of the ligand,
+    the radius is substituted for an effective height- and angle-depedant radius: :math:`r^{eff}`.
+    This effective radius reduces the repulsive force of the potential
+    as :math:`h` grows larger, *i.e.* when atoms are positioned further away from
+    the surface of the core.
+    :math:`\phi` is the angle between the vectors of two neighbouring ligands,
+    an angle of 0 reverting back to a cylindrical description of the ligand.
 
     .. _`array-like`: https://docs.scipy.org/doc/numpy/glossary.html#term-array-like
 
@@ -172,13 +205,34 @@ def get_V(radius_array: np.ndarray) -> float:
     radius_array : array-like
         An `array-like`_ object representing the distance of an atom with respect to vector
         representing the molecules' orientation.
-        Conceptually equivalent to a set of radii beloning to a cylinder.
+        Conceptually equivalent to a set of cylinder radii.
+
+    height_array : array-like
+        An `array-like`_ object representing the height of an atom along a vector
+        representing the molecules' orientation.
+        Conceptually equivalent to a set of cylinder heights.
+
+    angle : :class:`float`
+        The angle (in radian) between two ligand vectors.
+
+    d : class`float`
+        The average distance between two neighbouring core anchor atoms.
+        Equivalent to the lattice spacing of the core.
 
     Returns
     -------
     :class:`float`
         The bulkiness factor :math:`V_{bulk}`.
 
-    """
-    radius = np.array(radius_array, dtype=float, ndmin=1, copy=False)
-    return np.exp(radius).mean()
+    """  # noqa
+    r = np.array(radius_array, dtype=float, ndmin=1, copy=True)
+    h = np.array(height_array, dtype=float, ndmin=1, copy=False)
+
+    d = 5.878
+    step1 = (2 * r) / d - 1
+    step2 = 1 - (h / 10)
+    step1[step1 < 0] = 0
+    step2[step2 < 0] = 0
+    ret = step1 * step2 * np.exp(r)
+
+    return ret.sum()

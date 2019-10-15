@@ -41,7 +41,8 @@ MOL: Tuple[str, str] = ('mol', '')
 V_BULK: Tuple[str, str] = ('V_bulk', '')
 
 
-def init_lig_bulkiness(ligand_df: SettingsDataFrame, core_df: SettingsDataFrame) -> None:
+def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
+                       core_df: SettingsDataFrame) -> None:
     r"""Initialize the ligand bulkiness workflow.
 
     Given a set of angles :math:`\phi`, the bulkiness factor :math:`V_{bulk}` is defined below.
@@ -62,7 +63,7 @@ def init_lig_bulkiness(ligand_df: SettingsDataFrame, core_df: SettingsDataFrame)
     ligand_df : |CAT.SettingsDataFrame|
         A DataFrame of ligands.
 
-    See also
+    See Also
     --------
     `Ligand cone angle <https://en.wikipedia.org/wiki/Ligand_cone_angle>`_:
         The ligand cone angle is a measure of the steric bulk of a ligand in
@@ -70,32 +71,37 @@ def init_lig_bulkiness(ligand_df: SettingsDataFrame, core_df: SettingsDataFrame)
 
     """
     write = ligand_df.settings.optional.database.write
-    V_list = []
     logger.info('Starting ligand bulkiness calculations')
 
-    core = core_df[MOL].iloc[0]
-    angle, r_ref = get_core_angle(core)
+    V_list = []
+    for (i, j, k, l) in qd_df.index:
+        # Extract the core and ligand
+        ij = (i, j)
+        kl = (k, l)
+        core = core_df.at[ij, MOL]
+        ligand = ligand_df.at[kl, MOL]
 
-    for ligand in ligand_df[MOL]:
+        # Calculate V_bulk
+        angle, r_ref = get_core_angle(core)
         r, h = get_lig_radius(ligand)
         V_bulk = get_V(r, h, r_ref, angle)
         V_list.append(V_bulk)
 
     logger.info('Finishing ligand bulkiness calculations\n')
-    ligand_df[V_BULK] = V_list
+    qd_df[V_BULK] = V_list
 
     if 'ligand' in write:
-        _export_to_db(ligand_df)
+        _export_to_db(qd_df)
 
 
-def _export_to_db(ligand_df: SettingsDataFrame) -> None:
+def _export_to_db(qd_df: SettingsDataFrame) -> None:
     """Export the ``"V_bulk"`` column in **ligand_df** to the database."""
-    settings = ligand_df.settings.optional
-    overwrite = 'ligand' in settings.database.overwrite
+    settings = qd_df.settings.optional
+    overwrite = 'qd' in settings.database.overwrite
 
     db = settings.database.db
     db.update_csv(
-        ligand_df, database='ligand', columns=['V_bulk'], overwrite=overwrite
+        qd_df, database='QD', columns=['V_bulk'], overwrite=overwrite
     )
 
 
@@ -135,7 +141,7 @@ def get_lig_radius(ligand: Molecule, anchor: Optional[int] = None) -> Tuple[np.n
 
 
 def get_core_angle(core: Molecule) -> Tuple[float, float]:
-    """Return the mean ::"""
+    """Return the mean."""
     # Find all nearest anchor neighbours
     anchors = np.array([at.coords for at in core.properties.dummies])
     dist = cdist(anchors, anchors)
@@ -228,19 +234,5 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
     step1[step1 < 0] = 0
     step2[step2 < 0] = 0
     ret = step1 * step2 * np.exp(r)
-
-    """
-    .. math::
-        V_{bulk} = \frac{1}{n} \sum_{i}^{n} (e^{r_{i}^{eff}} - 1)^{+}
-
-        r_{i}^{eff} = r_{i} - d / 2 - h_{i} \arctan (\phi / 2)
-
-    r_correction = h * np.arctan(angle / 2)
-    r -= r_correction
-    r -= d / 2
-
-    ret = np.expm1(r)
-    ret[ret < 0] = 0
-    """
 
     return ret.sum()

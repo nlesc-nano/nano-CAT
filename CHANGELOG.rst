@@ -9,8 +9,7 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 0.2.3
 *****
 * Moved the ligand bulkiness workflow from the `ligand` to the `qd` block in the CAT input.
-* The ligand bulkiness now accounts for the conal, rather than cylindrical, nature of the ligands populating quantum dot surfaces.
-  By extension, the resulting "ligand bulkiness" is now a property of core/ligand pairs rather than just ligands.
+* Updated the formula for the ligand bulkiness calculation.
 
 
 0.2.2

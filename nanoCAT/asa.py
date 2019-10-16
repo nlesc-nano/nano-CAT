@@ -18,17 +18,19 @@ API
 
 """
 
-from typing import Collection
+from typing import Optional, Union, Iterable, Tuple, List, Any, Type
 
 import numpy as np
 
 from scm.plams import Settings, Molecule
+from scm.plams.core.basejob import Job
 import scm.plams.interfaces.molecule.rdkit as molkit
 
 import rdkit
 from rdkit.Chem import AllChem
 
 from CAT.logger import logger
+from CAT.jobs import job_single_point, job_geometry_opt
 from CAT.settings_dataframe import SettingsDataFrame
 
 __all__ = ['init_asa']
@@ -53,11 +55,12 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
 
     """
     # Unpack arguments
-    settings = qd_df.settings.optional
-    db = settings.database.db
-    overwrite = db and 'qd' in settings.database.overwrite
-    write = db and 'qd' in settings.database.write
-    logger.info('Starting ligand activation strain analysis')
+    db = qd_df.settings.optional.database.db
+    write = db and 'qd' in qd_df.settings.database.write
+
+    # Extract any (optional) custom job types and settings
+    asa = qd_df.settings.optional.qd.activation_strain
+    job_recipe = asa if isinstance(asa, dict) else None
 
     # Prepare columns
     columns = [ASA_INT, ASA_STRAIN, ASA_E]
@@ -65,23 +68,39 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
         qd_df[i] = np.nan
 
     # Fill columns
-    qd_df['ASA'] = get_asa_energy(qd_df[MOL])
+    logger.info('Starting ligand activation strain analysis')
+    qd_df['ASA'] = get_asa_energy(qd_df[MOL], job_recipe)
     logger.info('Finishing ligand activation strain analysis')
-
-    # Calculate E_int, E_strain and E
     if write:
-        recipe = Settings()
-        recipe['ASA 1'] = {'key': 'RDKit_' + rdkit.__version__, 'value': 'UFF'}
-        db.update_csv(
-            qd_df,
-            columns=[SETTINGS1]+columns,
-            job_recipe=recipe,
-            database='QD',
-            overwrite=overwrite
-        )
+        to_db(qd_df)
 
 
-def get_asa_energy(mol_colllection: Collection[Molecule]) -> np.ndarray:
+def to_db(qd_df: SettingsDataFrame, job_recipe: Optional[Settings] = None) -> None:
+    """Export the ASA results to the database."""
+    settings = qd_df.settings.optional
+    db = settings.optional.database.db
+    overwrite = 'qd' in settings.database.overwrite
+
+    # Construct a job recipe
+    if job_recipe is None:
+        recipe = Settings({'ASA 1': {'key': 'RDKit_' + rdkit.__version__, 'value': 'UFF'}})
+    else:
+        recipe = Settings({'ASA 1': {'key': job_recipe.job, 'value': job_recipe.s}})
+
+    # Update the database
+    db.update_csv(
+        qd_df,
+        columns=[SETTINGS1, ASA_INT, ASA_STRAIN, ASA_E],
+        job_recipe=recipe,
+        database='QD',
+        overwrite=overwrite
+    )
+
+
+UFF = AllChem.UFFGetMoleculeForceField
+
+
+def get_asa_energy(mol_list: Iterable[Molecule], job_recipe: Optional[dict] = None) -> np.ndarray:
     """Perform an activation strain analyses (ASA).
 
     The ASA calculates the interaction, strain and total energy.
@@ -89,8 +108,8 @@ def get_asa_energy(mol_colllection: Collection[Molecule]) -> np.ndarray:
 
     Parameters
     ----------
-    mol_series : |pd.Series|_
-        A series of PLAMS molecules.
+    mol_list : :data:`Iterable<typing.Iterable>` [:class:`Molecule`]
+        An iterable consisting of PLAMS molecules.
 
     Returns
     -------
@@ -98,42 +117,140 @@ def get_asa_energy(mol_colllection: Collection[Molecule]) -> np.ndarray:
         An array containing E_int, E_strain and E for all *n* molecules in **mol_series**.
 
     """
-    ret = np.zeros((len(mol_colllection), 4))
+    asa_func = _asa_uff if job_recipe is None else _asa_plams
 
-    for i, mol in enumerate(mol_colllection):
-        logger.info(f'UFFGetMoleculeForceField: {mol.properties.name} activation strain '
-                    'analysis has started')
-
-        ligands = mol.copy()
-        uff = AllChem.UFFGetMoleculeForceField
-
-        # Calculate the total energy of all perturbed ligands in the absence of the core
-        core_atoms = [at for at in ligands if at.properties.pdb_info.ResidueName == 'COR']
-        for atom in core_atoms:
-            ligands.delete_atom(atom)
-
-        rdmol = molkit.to_rdmol(ligands)
-        E_ligands = uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
-
-        # Calculate the total energy of the isolated perturbed ligands in the absence of the core
-        ligand_list = ligands.separate()
-        E_ligand = 0.0
-        for ligand in ligand_list:
-            rdmol = molkit.to_rdmol(ligand)
-            E_ligand += uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
-
-        # Calculate the total energy of the optimized ligand
-        uff(rdmol, ignoreInterfragInteractions=False).Minimize()
-        E_ligand_opt = uff(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
-
-        # Update ret with the new activation strain terms
-        ret[i] = E_ligands, E_ligand, E_ligand_opt, len(ligand_list)
-
-        logger.info(f'UFFGetMoleculeForceField: {mol.properties.name} activation strain '
-                    'analysis is successful')
+    # Perform the activation strain analyses
+    ret = []
+    logger.info(f'Starting activation strain analysis has started')
+    for i, qd in enumerate(mol_list):
+        mol_complete, mol_fragments = _get_asa_fragments(qd)
+        ret += asa_func(mol_complete, mol_fragments, **job_recipe)
+    logger.info(f'Finishing activation strain analysis')
 
     # Post-process and return
+    ret = np.array(ret, dtype=float)
+    ret.shape = -1, 4
     ret[:, 0] -= ret[:, 1]
     ret[:, 1] -= ret[:, 2] * ret[:, 3]
     ret[:, 2] = ret[:, 0] + ret[:, 1]
+
+    # E_int, E_strain & E
     return ret[:, 0:3]
+
+
+def _get_asa_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule]]:
+    """Construct the fragments for an activation strain analyses.
+
+    Parameters
+    ----------
+    qd : |plams.Molecule|
+        A Molecule whose atoms' properties should be marked with `pdb_info.ResidueName`.
+        Atoms in the core should herein be marked with ``"COR"``.
+
+    Returns
+    -------
+    |plams.Molecule| and :class:`list` [|plams.Molecule|]
+        A Molecule with all core atoms removed and a list of molecules,
+        one for each fragment within the molecule.
+        Fragments are defined based on connectivity patterns (or lack thereof).
+
+    """
+    mol_complete = qd.copy()
+    core_atoms = [at for at in mol_complete if at.properties.pdb_info.ResidueName == 'COR']
+    for atom in core_atoms:
+        mol_complete.delete_atom(atom)
+
+    mol_fragments = mol_complete.separate()
+    return mol_complete, mol_fragments
+
+
+Mol = Union[Molecule, AllChem.Mol]
+
+
+def _asa_uff(mol_complete: Mol, mol_fragments: Iterable[Mol],
+             **kwargs: Any) -> Tuple[float, float, float, int]:
+    r"""Perform an activation strain analyses using RDKit UFF.
+
+    Parameters
+    ----------
+    mol_complete : |plams.Molecule|
+        A Molecule representing the (unfragmented) relaxed structure of the system of interest.
+
+    mol_fragments : :data:`Iterable<typing.Iterable>` [|plams.Molecule|]
+        An iterable of Molecules represnting the induvidual moleculair or atomic fragments
+        within **mol_complete**.
+
+    /**kwargs : :data:`Any<typing.Any>`
+        Used for retaining compatbility with the signature of :func:`._asa_plams`.
+
+    Returns
+    -------
+    :class:`float`, :class:`float`, :class:`float` and :class:`int`
+        The energy of **mol_complete**,
+        the energy of **mol_fragments**,
+        the energy of an optimized fragment within **mol_fragments** and
+        the total number of fragments within **mol_fragments**.
+
+    """
+    # Create RDKit molecules
+    mol_complete = molkit.to_rdmol(mol_complete)
+    mol_fragments = (molkit.to_rdmol(mol) for mol in mol_fragments)
+
+    # Calculate the energy of the total system
+    E_complete = UFF(mol_complete, ignoreInterfragInteractions=False).CalcEnergy()
+
+    # Calculate the (summed) energy of each individual fragment in the total system
+    E_fragments = 0.0
+    for frag_count, rdmol in enumerate(mol_fragments, 1):
+        E_fragments += UFF(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+
+    # Calculate the energy of an optimizes fragment
+    UFF(rdmol, ignoreInterfragInteractions=False).Minimize()
+    E_fragment_opt = UFF(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+
+    return E_complete, E_fragments, E_fragment_opt, frag_count
+
+
+def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
+               job: Type[Job], s: Settings) -> Tuple[float, float, float, int]:
+    """Perform an activation strain analyses with custom Job and Settings.
+
+    Parameters
+    ----------
+    mol_complete : |plams.Molecule|
+        A Molecule representing the (unfragmented) relaxed structure of the system of interest.
+
+    mol_fragments : :data:`Iterable<typing.Iterable>` [|plams.Molecule|]
+        An iterable of Molecules represnting the induvidual moleculair or
+        atomic fragments within **mol_complete**.
+
+    job : :data:`Type<typing.Type>` [|plams.Job|]
+        The Job type for the ASA calculations.
+
+    s : |plams.Settings|
+        The Job Settings for the ASA calculations.
+
+    Returns
+    -------
+    :class:`float`, :class:`float`, :class:`float` and :class:`int`
+        The energy of **mol_complete**,
+        the energy of **mol_fragments**,
+        the energy of an optimized fragment within **mol_fragments** and
+        the total number of fragments within **mol_fragments**.
+
+    """
+    # Calculate the energy of the total system
+    mol_complete.job_single_point(job, s)
+    E_complete = mol_complete.properties.energy.E
+
+    # Calculate the (summed) energy of each individual fragment in the total system
+    E_fragments = 0.0
+    for frag_count, mol in enumerate(mol_fragments, 1):
+        mol.job_single_point(job, s)
+        E_fragments += mol.properties.energy.E
+
+    # Calculate the energy of an optimizes fragment
+    mol.job_geometry_opt(job, s)
+    E_fragment_opt = mol.properties.energy.E
+
+    return E_complete, E_fragments, E_fragment_opt, frag_count

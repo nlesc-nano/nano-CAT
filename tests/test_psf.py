@@ -8,8 +8,8 @@ from itertools import zip_longest
 import numpy as np
 
 from scm.plams import readpdb, Molecule
+from assertionlib import assertion
 
-from CAT.assertion.assertion_manager import assertion
 from nanoCAT.ff.psf import PSFContainer
 
 PATH: str = join('tests', 'test_files', 'psf')
@@ -45,8 +45,8 @@ def test_update_atom_charge() -> None:
     condition = psf.atom_type == 'C2O3'
 
     assert (psf.charge[condition] == -5.0).all()
-    assertion.exception(ValueError, psf.update_atom_charge, 'C2O3', 'bob')
-    assertion.exception(KeyError, psf.update_atom_charge, 'bob', -5.0)
+    assertion.assert_(psf.update_atom_charge, 'C2O3', 'bob', exception=ValueError)
+    assertion.assert_(psf.update_atom_charge, 'bob', -5.0, exception=KeyError)
 
 
 def test_update_atom_type() -> None:
@@ -55,7 +55,7 @@ def test_update_atom_type() -> None:
     psf.update_atom_type('C2O3', 'C8')
 
     assertion.contains(psf.atom_type.values, 'C8')
-    assertion.exception(KeyError, psf.update_atom_charge, 'bob', 'C2O3')
+    assertion.assert_(psf.update_atom_charge, 'bob', 'C2O3', exception=KeyError)
 
 
 def test_generate_bonds() -> None:

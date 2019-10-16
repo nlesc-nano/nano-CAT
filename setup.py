@@ -70,9 +70,14 @@ setup(
         'pytest',
         'pytest-cov',
         'pycodestyle',
+        'AssertionLib@git+https://github.com/nlesc-nano/AssertionLib@master'
     ],
     extras_require={
-        'test': ['pytest', 'pytest-cov', 'pytest-mock', 'pycodestyle'],
+        'test': ['pytest',
+                 'pytest-cov',
+                 'pytest-mock',
+                 'pycodestyle',
+                 'AssertionLib@git+https://github.com/nlesc-nano/AssertionLib@master'],
         'doc': ['sphinx', 'sphinx_rtd_theme', 'sphinx-autodoc-typehints']
     }
 )

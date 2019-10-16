@@ -5,7 +5,8 @@ from os.path import join
 import numpy as np
 import pandas as pd
 
-from CAT.assertion.assertion_manager import assertion
+from assertionlib import assertion
+
 from nanoCAT.ff.uff import combine_xi, combine_di, UFF_DF
 
 PATH: str = join('tests', 'test_files')

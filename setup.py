@@ -61,7 +61,8 @@ setup(
         'pandas',
         'plams@git+https://github.com/SCM-NV/PLAMS@master',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
-        'CAT@git+https://github.com/nlesc-nano/CAT@master'
+        'CAT@git+https://github.com/nlesc-nano/CAT@master',
+        'AssertionLib@git+https://github.com/nlesc-nano/AssertionLib@master'
     ],
     setup_requires=[
         'pytest-runner'
@@ -69,15 +70,13 @@ setup(
     tests_require=[
         'pytest',
         'pytest-cov',
-        'pycodestyle',
-        'AssertionLib@git+https://github.com/nlesc-nano/AssertionLib@master'
+        'pycodestyle'
     ],
     extras_require={
         'test': ['pytest',
                  'pytest-cov',
                  'pytest-mock',
-                 'pycodestyle',
-                 'AssertionLib@git+https://github.com/nlesc-nano/AssertionLib@master'],
+                 'pycodestyle'],
         'doc': ['sphinx', 'sphinx_rtd_theme', 'sphinx-autodoc-typehints']
     }
 )

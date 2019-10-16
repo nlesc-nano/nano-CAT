@@ -25,7 +25,8 @@ from itertools import chain
 
 import pandas as pd
 
-from CAT.abc.dataclass import AbstractDataClass
+from assertionlib.dataclass import AbstractDataClass
+
 from CAT.abc.file_container import AbstractFileContainer
 
 __all__ = ['PRMContainer']

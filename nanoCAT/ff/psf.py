@@ -25,14 +25,13 @@ from typing import (
     Dict, Optional, Any, Iterable, Iterator, List, Tuple, FrozenSet, Callable, AnyStr
 )
 
-
 import numpy as np
 import pandas as pd
 
 from scm.plams import Molecule, Atom
+from assertionlib.dataclass import AbstractDataClass
 
 from CAT.frozen_settings import FrozenSettings
-from CAT.abc.dataclass import AbstractDataClass
 from CAT.abc.file_container import AbstractFileContainer
 
 from .mol_topology import (get_bonds, get_angles, get_dihedrals, get_impropers)

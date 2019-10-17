@@ -18,29 +18,35 @@ API
 
 """
 
+from os.path import join
+from shutil import rmtree
 from typing import Optional, Union, Iterable, Tuple, List, Any, Type
 
 import numpy as np
 
-from scm.plams import Settings, Molecule
+from scm.plams import Settings, Molecule, finish
 from scm.plams.core.basejob import Job
 import scm.plams.interfaces.molecule.rdkit as molkit
 
 import rdkit
 from rdkit.Chem import AllChem
 
-from CAT.logger import logger
 from CAT.jobs import job_single_point, job_geometry_opt
+from CAT.utils import restart_init
+from CAT.logger import logger
+from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
+
 
 __all__ = ['init_asa']
 
 # Aliases for pd.MultiIndex columns
-MOL = ('mol', '')
-ASA_INT = ('ASA', 'E_int')
-ASA_STRAIN = ('ASA', 'E_strain')
-ASA_E = ('ASA', 'E')
-SETTINGS1 = ('settings', 'ASA 1')
+MOL: Tuple[str, str] = ('mol', '')
+ASA_INT: Tuple[str, str] = ('ASA', 'E_int')
+ASA_STRAIN: Tuple[str, str] = ('ASA', 'E_strain')
+ASA_E: Tuple[str, str] = ('ASA', 'E')
+SETTINGS1: Tuple[str, str] = ('settings', 'ASA 1')
+JOB_SETTINGS_ASA: Tuple[str, str] = ('job_settings_ASA', '')
 
 
 def init_asa(qd_df: SettingsDataFrame) -> None:
@@ -59,8 +65,11 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     write = db and 'qd' in qd_df.settings.database.write
 
     # Extract any (optional) custom job types and settings
-    asa = qd_df.settings.optional.qd.activation_strain
-    job_recipe = asa if isinstance(asa, dict) else None
+    settings = qd_df.settings.optional.qd
+    asa = settings.asa
+    job_recipe = {'job': asa.job1, 's': asa.s1} if isinstance(settings.asa, dict) else None
+    keep_files = True if not job_recipe else settings.asa.keep_files
+    path = settings.dirname
 
     # Prepare columns
     columns = [ASA_INT, ASA_STRAIN, ASA_E]
@@ -68,11 +77,31 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
         qd_df[i] = np.nan
 
     # Fill columns
-    logger.info('Starting ligand activation strain analysis')
-    qd_df['ASA'] = get_asa_energy(qd_df[MOL], job_recipe)
-    logger.info('Finishing ligand activation strain analysis')
+    if job_recipe is not None:
+        restart_init(path, folder='asa')
+    qd_df[columns] = get_asa_energy(qd_df[MOL], job_recipe)
+    if job_recipe is not None:
+        qd_df[JOB_SETTINGS_ASA] = get_job_settings(qd_df)
+        finish()
+
+    # Export results
     if write:
         to_db(qd_df)
+
+    # Delte files
+    if not keep_files:
+        rmtree(join(path, 'asa'))
+
+
+def get_job_settings(qd_df: SettingsDataFrame) -> List[str]:
+    """Create a nested list of input files for each molecule in **ligand_df**."""
+    job_settings = []
+    for mol in qd_df[MOL]:
+        try:
+            job_settings.append(mol.properties.pop('job_path'))
+        except KeyError:
+            job_settings.append([])
+    return job_settings
 
 
 def to_db(qd_df: SettingsDataFrame, job_recipe: Optional[Settings] = None) -> None:
@@ -84,13 +113,15 @@ def to_db(qd_df: SettingsDataFrame, job_recipe: Optional[Settings] = None) -> No
     # Construct a job recipe
     if job_recipe is None:
         recipe = Settings({'ASA 1': {'key': 'RDKit_' + rdkit.__version__, 'value': 'UFF'}})
+        columns = [SETTINGS1, ASA_INT, ASA_STRAIN, ASA_E]
     else:
         recipe = Settings({'ASA 1': {'key': job_recipe.job, 'value': job_recipe.s}})
+        columns = [SETTINGS1, JOB_SETTINGS_ASA, ASA_INT, ASA_STRAIN, ASA_E]
 
     # Update the database
     db.update_csv(
         qd_df,
-        columns=[SETTINGS1, ASA_INT, ASA_STRAIN, ASA_E],
+        columns=columns,
         job_recipe=recipe,
         database='QD',
         overwrite=overwrite
@@ -117,11 +148,15 @@ def get_asa_energy(mol_list: Iterable[Molecule], job_recipe: Optional[dict] = No
         An array containing E_int, E_strain and E for all *n* molecules in **mol_series**.
 
     """
-    asa_func = _asa_uff if job_recipe is None else _asa_plams
+    if job_recipe is None:
+        asa_func = _asa_uff
+        job_recipe = {}
+    else:
+        asa_func = _asa_plams
 
     # Perform the activation strain analyses
     ret = []
-    logger.info(f'Starting activation strain analysis has started')
+    logger.info(f'Starting activation strain analysis')
     for i, qd in enumerate(mol_list):
         mol_complete, mol_fragments = _get_asa_fragments(qd)
         ret += asa_func(mol_complete, mol_fragments, **job_recipe)
@@ -240,12 +275,14 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
 
     """
     # Calculate the energy of the total system
+    mol_complete.round_coords()
     mol_complete.job_single_point(job, s)
     E_complete = mol_complete.properties.energy.E
 
     # Calculate the (summed) energy of each individual fragment in the total system
     E_fragments = 0.0
     for frag_count, mol in enumerate(mol_fragments, 1):
+        mol.round_coords()
         mol.job_single_point(job, s)
         E_fragments += mol.properties.energy.E
 

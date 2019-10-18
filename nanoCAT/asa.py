@@ -27,9 +27,12 @@ from scm.plams.core.basejob import Job
 import scm.plams.interfaces.molecule.rdkit as molkit
 
 import rdkit
+import qmflows
 from rdkit.Chem import AllChem
 
 from CAT.logger import logger
+from CAT.utils import type_to_string
+from CAT.workflows.workflow import WorkFlow
 from CAT.jobs import job_single_point, job_geometry_opt
 from CAT.settings_dataframe import SettingsDataFrame
 
@@ -41,6 +44,8 @@ ASA_INT = ('ASA', 'E_int')
 ASA_STRAIN = ('ASA', 'E_strain')
 ASA_E = ('ASA', 'E')
 SETTINGS1 = ('settings', 'ASA 1')
+
+UFF = AllChem.UFFGetMoleculeForceField
 
 
 def init_asa(qd_df: SettingsDataFrame) -> None:
@@ -54,54 +59,31 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
         A dataframe of quantum dots.
 
     """
-    # Unpack arguments
-    db = qd_df.settings.optional.database.db
-    write = db and 'qd' in qd_df.settings.database.write
+    workflow = WorkFlow.from_template(qd_df, name='asa')
 
-    # Extract any (optional) custom job types and settings
-    asa = qd_df.settings.optional.qd.activation_strain
-    job_recipe = asa if isinstance(asa, dict) else None
+    idx = workflow.from_db(qd_df)
+    workflow(get_asa_energy, qd_df, index=idx)
 
-    # Prepare columns
-    columns = [ASA_INT, ASA_STRAIN, ASA_E]
-    for i in columns:
-        qd_df[i] = np.nan
-
-    # Fill columns
-    logger.info('Starting ligand activation strain analysis')
-    qd_df['ASA'] = get_asa_energy(qd_df[MOL], job_recipe)
-    logger.info('Finishing ligand activation strain analysis')
-    if write:
-        to_db(qd_df)
+    job_recipe = _asa_job_recipe(workflow)
+    workflow.to_db(qd_df, job_recipe=job_recipe)
 
 
-def to_db(qd_df: SettingsDataFrame, job_recipe: Optional[Settings] = None) -> None:
-    """Export the ASA results to the database."""
-    settings = qd_df.settings.optional
-    db = settings.optional.database.db
-    overwrite = 'qd' in settings.database.overwrite
-
-    # Construct a job recipe
-    if job_recipe is None:
-        recipe = Settings({'ASA 1': {'key': 'RDKit_' + rdkit.__version__, 'value': 'UFF'}})
+def _asa_job_recipe(workflow) -> Settings:
+    """Return a job recipe for :func:`.init_asa`."""
+    if not workflow.jobs:
+        return Settings({'ASA 1': {'key': f'RDKit_{rdkit.__version__}',
+                                   'value': f'{UFF.__module__}.{UFF.__name__}'}})
     else:
-        recipe = Settings({'ASA 1': {'key': job_recipe.job, 'value': job_recipe.s}})
-
-    # Update the database
-    db.update_csv(
-        qd_df,
-        columns=[SETTINGS1, ASA_INT, ASA_STRAIN, ASA_E],
-        job_recipe=recipe,
-        database='QD',
-        overwrite=overwrite
-    )
+        key = workflow.jobs[0]
+        value = workflow.settings[0]
+        settings = qmflows.geometry['specific'][type_to_string(key)].copy()
+        value.soft_update(settings)
+        return Settings({'ASA 1': {'key': key, 'value': value}})
 
 
-UFF = AllChem.UFFGetMoleculeForceField
-
-
-def get_asa_energy(mol_list: Iterable[Molecule], job_recipe: Optional[dict] = None) -> np.ndarray:
-    """Perform an activation strain analyses (ASA).
+def get_asa_energy(mol_list: Iterable[Molecule], jobs: Optional[Tuple[Job, ...]] = None,
+                   settings: Optional[Tuple[Settings, ...]] = None, **kwargs: Any) -> np.ndarray:
+    r"""Perform an activation strain analyses (ASA).
 
     The ASA calculates the interaction, strain and total energy.
     The ASA is performed on all ligands in the absence of the core at the UFF level (RDKit).
@@ -111,28 +93,45 @@ def get_asa_energy(mol_list: Iterable[Molecule], job_recipe: Optional[dict] = No
     mol_list : :data:`Iterable<typing.Iterable>` [:class:`Molecule`]
         An iterable consisting of PLAMS molecules.
 
+    jobs : :class:`tuple` [|plams.Job|], optional
+        A tuple that may or may not contain |plams.Job| types.
+        Will default to RDKits' implementation of UFF if ``None``.
+
+    settings : :class:`tuple` [|plams.Settings|], optional
+        A tuple that may or may not contain job |plams.Settings|.
+        Will default to RDKits' implementation of UFF if ``None``.
+
+    \**kwargs : :data:`Any<typing.Any>`
+        Further keyword arguments for ensuring signature compatiblity.
+
     Returns
     -------
     :math:`n*3` |np.ndarray|_ [|np.float64|_]
         An array containing E_int, E_strain and E for all *n* molecules in **mol_series**.
 
     """
-    asa_func = _asa_uff if job_recipe is None else _asa_plams
+    if not jobs:
+        asa_func = _asa_uff
+        job = settings = None
+    else:
+        asa_func = _asa_plams
+        job = jobs[0]
+        settings = settings[0]
 
     # Perform the activation strain analyses
     ret = []
-    logger.info(f'Starting activation strain analysis has started')
     for i, qd in enumerate(mol_list):
         mol_complete, mol_fragments = _get_asa_fragments(qd)
-        ret += asa_func(mol_complete, mol_fragments, **job_recipe)
-    logger.info(f'Finishing activation strain analysis')
+        ret += asa_func(mol_complete, mol_fragments, job=job, settings=settings)
 
-    # Post-process and return
-    ret = np.array(ret, dtype=float)
+    # Cast into an array and reshape
+    ret = np.array(ret, dtype=float, ndmin=2)
     ret.shape = -1, 4
-    ret[:, 0] -= ret[:, 1]
-    ret[:, 1] -= ret[:, 2] * ret[:, 3]
-    ret[:, 2] = ret[:, 0] + ret[:, 1]
+
+    # Calclate the ASA terms
+    ret[:, 0] -= ret[:, 1]  # E_int
+    ret[:, 1] -= ret[:, 2] * ret[:, 3]  # E_train
+    ret[:, 2] = ret[:, 0] + ret[:, 1]  # E_tot
 
     # E_int, E_strain & E
     return ret[:, 0:3]

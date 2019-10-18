@@ -43,7 +43,7 @@ from typing import (Optional, Sequence, Callable, Container, Tuple, List, Iterab
 import numpy as np
 import pandas as pd
 
-from scm.plams import (Settings, Molecule, Results)
+from scm.plams import (Settings, Molecule, Results, CRSJob, CRSResults)
 from scm.plams.core.jobrunner import JobRunner
 from scm.plams.core.functions import finish
 from scm.plams.interfaces.adfsuite.adf import ADFJob
@@ -56,8 +56,6 @@ from CAT.utils import (type_to_string, get_template, restart_init)
 from CAT.logger import logger
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
-
-from .crs import CRSJob, CRSResults
 
 try:
     from dataCAT import Database

@@ -18,11 +18,13 @@ API
 
 """
 
+from os.path import join
+from shutil import rmtree
 from typing import Optional, Union, Iterable, Tuple, List, Any, Type
 
 import numpy as np
 
-from scm.plams import Settings, Molecule
+from scm.plams import Settings, Molecule, finish
 from scm.plams.core.basejob import Job
 import scm.plams.interfaces.molecule.rdkit as molkit
 
@@ -34,16 +36,21 @@ from CAT.logger import logger
 from CAT.utils import type_to_string
 from CAT.workflows.workflow import WorkFlow
 from CAT.jobs import job_single_point, job_geometry_opt
+from CAT.utils import restart_init
+from CAT.logger import logger
+from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
+
 
 __all__ = ['init_asa']
 
 # Aliases for pd.MultiIndex columns
-MOL = ('mol', '')
-ASA_INT = ('ASA', 'E_int')
-ASA_STRAIN = ('ASA', 'E_strain')
-ASA_E = ('ASA', 'E')
-SETTINGS1 = ('settings', 'ASA 1')
+MOL: Tuple[str, str] = ('mol', '')
+ASA_INT: Tuple[str, str] = ('ASA', 'E_int')
+ASA_STRAIN: Tuple[str, str] = ('ASA', 'E_strain')
+ASA_E: Tuple[str, str] = ('ASA', 'E')
+SETTINGS1: Tuple[str, str] = ('settings', 'ASA 1')
+JOB_SETTINGS_ASA: Tuple[str, str] = ('job_settings_ASA', '')
 
 UFF = AllChem.UFFGetMoleculeForceField
 
@@ -239,12 +246,14 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
 
     """
     # Calculate the energy of the total system
+    mol_complete.round_coords()
     mol_complete.job_single_point(job, s)
     E_complete = mol_complete.properties.energy.E
 
     # Calculate the (summed) energy of each individual fragment in the total system
     E_fragments = 0.0
     for frag_count, mol in enumerate(mol_fragments, 1):
+        mol.round_coords()
         mol.job_single_point(job, s)
         E_fragments += mol.properties.energy.E
 

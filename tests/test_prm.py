@@ -5,7 +5,8 @@ from os.path import join
 from tempfile import TemporaryFile
 from itertools import zip_longest
 
-from CAT.assertion.assertion_manager import assertion
+from assertionlib import assertion
+
 from nanoCAT.ff.prm import PRMContainer
 
 PATH: str = join('tests', 'test_files')

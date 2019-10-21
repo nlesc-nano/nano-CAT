@@ -5,8 +5,8 @@ from os.path import join
 import numpy as np
 
 from scm.plams import Molecule, readpdb
+from assertionlib import assertion
 
-from CAT.assertion.assertion_manager import assertion
 from nanoCAT.mol_bulk import get_cone_angles, get_V
 
 PATH: str = join('tests', 'test_files')

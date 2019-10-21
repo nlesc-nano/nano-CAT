@@ -30,7 +30,6 @@ import rdkit
 import qmflows
 from rdkit.Chem import AllChem
 
-from CAT.utils import type_to_string
 from CAT.workflows.workflow import WorkFlow
 from CAT.jobs import job_single_point, job_geometry_opt
 from CAT.mol_utils import round_coords
@@ -65,28 +64,14 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     idx = workflow.from_db(qd_df)
     workflow(get_asa_energy, qd_df, index=idx)
 
-    job_recipe = _asa_job_recipe(workflow)
+    job_recipe = workflow.get_recipe()
     workflow.to_db(qd_df, job_recipe=job_recipe)
-
-
-def _asa_job_recipe(workflow: WorkFlow) -> Settings:
-    """Return a job recipe for :func:`.init_asa`."""
-    if not workflow.jobs:
-        return Settings({'ASA 1': {'key': f'RDKit_{rdkit.__version__}',
-                                   'value': f'{UFF.__module__}.{UFF.__name__}'}})
-    else:
-        key = workflow.jobs[0]
-        value = workflow.settings[0]
-        if workflow.read_template:
-            settings = qmflows.geometry['specific'][type_to_string(key)].copy()
-            value.soft_update(settings)
-        return Settings({'ASA 1': {'key': key, 'value': value}})
 
 
 def get_asa_energy(mol_list: Iterable[Molecule],
                    read_template: bool = True,
-                   jobs: Optional[Tuple[Job, ...]] = None,
-                   settings: Optional[Tuple[Settings, ...]] = None,
+                   jobs: Tuple[Optional[Job], ...] = (None,),
+                   settings: Tuple[Optional[Settings], ...] = (None,),
                    **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA).
 
@@ -114,7 +99,7 @@ def get_asa_energy(mol_list: Iterable[Molecule],
         An array containing E_int, E_strain and E for all *n* molecules in **mol_series**.
 
     """
-    if not jobs:
+    if jobs == (None,):
         asa_func = _asa_uff
         job = settings = None
     else:

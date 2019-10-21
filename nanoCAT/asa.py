@@ -30,13 +30,11 @@ import rdkit
 import qmflows
 from rdkit.Chem import AllChem
 
-from CAT.logger import logger
 from CAT.utils import type_to_string
 from CAT.workflows.workflow import WorkFlow
 from CAT.jobs import job_single_point, job_geometry_opt
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
-
 
 __all__ = ['init_asa']
 
@@ -71,7 +69,7 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     workflow.to_db(qd_df, job_recipe=job_recipe)
 
 
-def _asa_job_recipe(workflow) -> Settings:
+def _asa_job_recipe(workflow: WorkFlow) -> Settings:
     """Return a job recipe for :func:`.init_asa`."""
     if not workflow.jobs:
         return Settings({'ASA 1': {'key': f'RDKit_{rdkit.__version__}',
@@ -79,17 +77,20 @@ def _asa_job_recipe(workflow) -> Settings:
     else:
         key = workflow.jobs[0]
         value = workflow.settings[0]
-        settings = qmflows.geometry['specific'][type_to_string(key)].copy()
-        value.soft_update(settings)
+        if workflow.read_template:
+            settings = qmflows.geometry['specific'][type_to_string(key)].copy()
+            value.soft_update(settings)
         return Settings({'ASA 1': {'key': key, 'value': value}})
 
 
-def get_asa_energy(mol_list: Iterable[Molecule], jobs: Optional[Tuple[Job, ...]] = None,
-                   settings: Optional[Tuple[Settings, ...]] = None, **kwargs: Any) -> np.ndarray:
+def get_asa_energy(mol_list: Iterable[Molecule],
+                   read_template: bool = True,
+                   jobs: Optional[Tuple[Job, ...]] = None,
+                   settings: Optional[Tuple[Settings, ...]] = None,
+                   **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA).
 
     The ASA calculates the interaction, strain and total energy.
-    The ASA is performed on all ligands in the absence of the core at the UFF level (RDKit).
 
     Parameters
     ----------
@@ -125,7 +126,8 @@ def get_asa_energy(mol_list: Iterable[Molecule], jobs: Optional[Tuple[Job, ...]]
     ret = []
     for i, qd in enumerate(mol_list):
         mol_complete, mol_fragments = _get_asa_fragments(qd)
-        ret += asa_func(mol_complete, mol_fragments, job=job, settings=settings)
+        ret += asa_func(mol_complete, mol_fragments, read_template=read_template,
+                        job=job, settings=settings)
 
     # Cast into an array and reshape
     ret = np.array(ret, dtype=float, ndmin=2)
@@ -214,7 +216,7 @@ def _asa_uff(mol_complete: Mol, mol_fragments: Iterable[Mol],
 
 
 def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
-               job: Type[Job], s: Settings) -> Tuple[float, float, float, int]:
+               read_template: bool, job: Type[Job], s: Settings) -> Tuple[float, float, float, int]:
     """Perform an activation strain analyses with custom Job and Settings.
 
     Parameters
@@ -225,6 +227,9 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     mol_fragments : :data:`Iterable<typing.Iterable>` [|plams.Molecule|]
         An iterable of Molecules represnting the induvidual moleculair or
         atomic fragments within **mol_complete**.
+
+    read_template : :class:`bool`
+        Whether or not to use the QMFlows template system.
 
     job : :data:`Type<typing.Type>` [|plams.Job|]
         The Job type for the ASA calculations.

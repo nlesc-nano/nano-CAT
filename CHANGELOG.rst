@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.2.4
+*****
+* Custom Job types and Job Settings can now be specified for the ligand
+  Activation Strain workflow.
+* Removed ``CRSJob()`` and ``CRSResults()``; import them from PLAMS instead.
+* Import assertions from AssertionLib_ rather than CAT_.
+* WiP: Introduction of a new CAT template system (``WorkFlow()``).
+
+
 0.2.3
 *****
 * Moved the ligand bulkiness workflow from the `ligand` to the `qd` block in the CAT input.
@@ -29,8 +38,6 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 * Updated the handling of assertions, see ``CAT.assertions.assertion_manager``.
 * A couple of bug fixes to the ligand dissociation module(s).
 * Added tests.
-
-.. _MATCH: http://brooks.chem.lsa.umich.edu/index.php?page=match&subdir=articles/resources/software
 
 
 0.1.4
@@ -58,3 +65,8 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 [Unreleased]
 ************
 * Empty Python project directory structure.
+
+
+.. _AssertionLib: https://github.com/nlesc-nano/AssertionLib
+.. _CAT: https://github.com/nlesc-nano/CAT
+.. _MATCH: http://brooks.chem.lsa.umich.edu/index.php?page=match&subdir=articles/resources/software

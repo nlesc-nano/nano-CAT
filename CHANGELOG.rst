@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.3.0
+*****
+* Finalize the introduction of a new CAT template system (``WorkFlow()``).
+
+
 0.2.4
 *****
 * Custom Job types and Job Settings can now be specified for the ligand

@@ -26,8 +26,6 @@ from scm.plams import Settings, Molecule
 from scm.plams.core.basejob import Job
 import scm.plams.interfaces.molecule.rdkit as molkit
 
-import rdkit
-import qmflows
 from rdkit.Chem import AllChem
 
 from CAT.workflows.workflow import WorkFlow

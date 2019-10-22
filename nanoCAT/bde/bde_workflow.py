@@ -28,7 +28,7 @@ API
 
 """
 
-from typing import Iterable, Type, List, Tuple, Optional
+from typing import Iterable, Type, List, Tuple
 from itertools import product
 
 import numpy as np

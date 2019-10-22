@@ -86,7 +86,8 @@ def init_solv(ligand_df: SettingsDataFrame,
     columns = get_solvent_columns(solvent_list)
 
     # Create new import and export columns
-    import_columns = {k: np.nan for k in columns}.update(workflow.import_columns)
+    import_columns = {k: np.nan for k in columns}
+    import_columns.update(workflow.import_columns)
     export_columns = columns + list(workflow.import_columns)
 
     # Create index slices and run the workflow
@@ -116,8 +117,8 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
         coskf = get_surface_charge(mol, job=j1, s=s1)
 
         # Perform the actual COSMO-RS calculation
-        e_and_gamma = get_solv(mol, solvent_list, coskf, jobs=j2, s=s2)
-        ret.append(chain.from_iterable(e_and_gamma))
+        e, gamma = get_solv(mol, solvent_list, coskf, job=j2, s=s2)
+        ret.append(e + gamma)
 
     return ret
 
@@ -190,6 +191,7 @@ def get_surface_charge(mol: Molecule, job: Type[Job], s: Settings) -> Optional[s
         Optional: The path+filename of a file containing COSMO surface charges.
 
     """
+    s = Settings(s)
     # Special procedure for ADF jobs
     # Use the gas-phase electronic structure as a fragment for the COSMO single point
     if job is ADFJob:
@@ -242,6 +244,7 @@ def get_solv(mol: Molecule, solvent_list: Iterable[str],
         return ret, ret
 
     # Prepare a list of job settings
+    s = Settings(s)
     s.input.Compound._h = coskf
     s.ignore_molecule = True
     s_list = []

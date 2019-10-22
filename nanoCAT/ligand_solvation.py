@@ -35,7 +35,6 @@ API
 """
 
 import os
-from itertools import chain
 from itertools import product
 from os.path import join
 from typing import Optional, Sequence, Collection, Tuple, List, Iterable, Any, Type, Iterator
@@ -96,7 +95,7 @@ def init_solv(ligand_df: SettingsDataFrame,
 
     # Export results back to the database
     job_recipe = workflow.get_recipe()
-    ligand_df[JOB_SETTINGS_CRS] = get_job_settings(ligand_df[MOL])
+    ligand_df[JOB_SETTINGS_CRS] = workflow.pop_job_settings(ligand_df[MOL])
     workflow.to_db(ligand_df, index=idx, columns=export_columns, job_recipe=job_recipe)
 
 
@@ -157,17 +156,6 @@ def get_solvent_list(solvent_list: Optional[Sequence[str]] = None) -> Sequence[s
         return sorted(solvent_list)
     else:
         return solvent_list
-
-
-def get_job_settings(mol_list: Iterable[Molecule]) -> List[List[str]]:
-    """Create a nested list of input files for each molecule in **ligand_df**."""
-    job_settings = []
-    for mol in mol_list:
-        try:
-            job_settings.append(mol.properties.pop('job_path'))
-        except KeyError:
-            job_settings.append([])
-    return job_settings
 
 
 def get_surface_charge(mol: Molecule, job: Type[Job], s: Settings) -> Optional[str]:

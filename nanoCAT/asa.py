@@ -65,7 +65,7 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
     workflow(get_asa_energy, qd_df, index=idx)
 
     job_recipe = workflow.get_recipe()
-    workflow.to_db(qd_df, job_recipe=job_recipe)
+    workflow.to_db(qd_df, index=idx, job_recipe=job_recipe)
 
 
 def get_asa_energy(mol_list: Iterable[Molecule],

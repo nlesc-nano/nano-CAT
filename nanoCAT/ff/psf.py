@@ -22,7 +22,7 @@ import inspect
 import reprlib
 from itertools import chain
 from typing import (
-    Dict, Optional, Any, Iterable, Iterator, List, Tuple, FrozenSet, Callable, AnyStr
+    Dict, Optional, Any, Iterable, Iterator, List, Set, Callable, AnyStr
 )
 
 import numpy as np
@@ -169,7 +169,7 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
     #: A :class:`frozenset` with the names of private instance attributes.
     #: These attributes will be excluded whenever calling :meth:`PSF.as_dict`.
-    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_pd_printoptions', '_np_printoptions'})
+    _PRIVATE_ATTR: Set[str] = frozenset({'_pd_printoptions', '_np_printoptions'})
 
     #: A dictionary containg array shapes among other things
     _SHAPE_DICT = FrozenSettings({
@@ -202,6 +202,8 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
                  angles=None, dihedrals=None, impropers=None, donors=None,
                  acceptors=None, no_nonbonded=None) -> None:
         """Initialize a :class:`PSFContainer` instance."""
+        super().__init__()
+
         self.filename = filename
         self.title = title
         self.atoms = atoms
@@ -239,11 +241,9 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
         return value
 
     @AbstractDataClass.inherit_annotations()
-    def __str__(self):
+    def __repr__(self):
         with np.printoptions(**self.np_printoptions), pd.option_context(*self.pd_printoptions):
-            return super().__str__()
-
-    __repr__ = __str__
+            return super().__repr__()
 
     @AbstractDataClass.inherit_annotations()
     def _str_iterator(self):

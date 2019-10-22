@@ -24,21 +24,21 @@ API
 
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any
 
 import numpy as np
+import pandas as pd
 from scipy.spatial.distance import cdist
 
 from scm.plams import Molecule
 
-from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
+from CAT.workflows.workflow import WorkFlow
 
 __all__ = ['init_lig_bulkiness']
 
 # Aliases for DataFrame column keys
 MOL: Tuple[str, str] = ('mol', '')
-V_BULK: Tuple[str, str] = ('V_bulk', '')
 
 
 def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
@@ -52,7 +52,8 @@ def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
     :math:`C` is the mean position of all ligand atoms (*i.e.* the ligand center).
 
     .. math::
-        W_{bulk} = \frac{1}{n} \sum_{i}^{n} e^{\sin \phi_{i}}
+        V(r_{i}, h_{i}; d, h_{lim}) =
+        \sum_{i=1}^{n} e^{r_{i}} (\frac{2 r_{i}}{d} - 1)^{+} (1 - \frac{h_{i}}{h_{lim}})^{+}
 
     Conceptually, the bulkiness factor :math:`V_{bulk}` is related to ligand (half-)cones angles,
     with the key difference that :math:`V_{bulk}` builds on top of it,
@@ -70,39 +71,33 @@ def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
         a transition metal complex.
 
     """
-    write = ligand_df.settings.optional.database.write
-    logger.info('Starting ligand bulkiness calculations')
+    workflow = WorkFlow.from_template(qd_df, name='bulkiness')
+    workflow.keep_files = False
 
+    # Import from the database and start the calculation
+    idx = workflow.from_db(qd_df)
+    workflow(qd_df, index=idx, lig_series=ligand_df[MOL], core_series=core_df[MOL])
+
+    # Export to the database
+    workflow.to_db(qd_df, index=idx)
+
+
+def start_lig_bulkiness(qd_series: pd.Series, lig_series: pd.Series, core_series: pd.Series,
+                        **kwargs: Any) -> None:
+    """Start the main loop for the ligand bulkiness calculation."""
     V_list = []
-    for (i, j, k, l) in qd_df.index:
+    for (i, j, k, l) in qd_series.index:
         # Extract the core and ligand
-        ij = (i, j)
-        kl = (k, l)
-        core = core_df.at[ij, MOL]
-        ligand = ligand_df.at[kl, MOL]
+        ij, kl = (i, j), (k, l)
+        core = core_series[ij]
+        ligand = lig_series[kl]
 
         # Calculate V_bulk
         angle, r_ref = get_core_angle(core)
         r, h = get_lig_radius(ligand)
         V_bulk = get_V(r, h, r_ref, angle)
         V_list.append(V_bulk)
-
-    logger.info('Finishing ligand bulkiness calculations\n')
-    qd_df[V_BULK] = V_list
-
-    if 'ligand' in write:
-        _export_to_db(qd_df)
-
-
-def _export_to_db(qd_df: SettingsDataFrame) -> None:
-    """Export the ``"V_bulk"`` column in **ligand_df** to the database."""
-    settings = qd_df.settings.optional
-    overwrite = 'qd' in settings.database.overwrite
-
-    db = settings.database.db
-    db.update_csv(
-        qd_df, database='QD', columns=['V_bulk'], overwrite=overwrite
-    )
+    return V_list
 
 
 def get_lig_radius(ligand: Molecule, anchor: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
@@ -158,7 +153,7 @@ def get_core_angle(core: Molecule) -> Tuple[float, float]:
     # Calculate (and average) all the anchor-center-anchor angles
     r_ref = np.linalg.norm(anchors - anchors[idx], axis=1)
     dot = np.einsum('ij,ij->i', vec1, vec2)
-    return np.arccos(dot).mean(), r_ref.mean()
+    return np.arccos(dot).mean(), r_ref.mean()  # Theta and d
 
 
 def _get_anchor_idx(mol: Molecule) -> int:
@@ -181,7 +176,7 @@ def _get_anchor_idx(mol: Molecule) -> int:
 
 
 def get_V(radius_array: np.ndarray, height_array: np.ndarray,
-          d: float, angle: float) -> float:
+          d: float, angle: float, h_lim: float = 10.0) -> float:
     r"""Calculate the :math:`V_{bulk}`, a ligand- and core-sepcific descriptor of a ligands' bulkiness.
 
     .. math::
@@ -219,6 +214,9 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
         The average distance between two neighbouring core anchor atoms.
         Equivalent to the lattice spacing of the core.
 
+    h_lim : :class:`float`
+        The maximum to-be considered height.
+
     Returns
     -------
     :class:`float`
@@ -228,11 +226,10 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
     r = np.array(radius_array, dtype=float, ndmin=1, copy=True)
     h = np.array(height_array, dtype=float, ndmin=1, copy=False)
 
-    d = 5.878
     step1 = (2 * r) / d - 1
-    step2 = 1 - (h / 10)
+    step2 = 1 - (h / h_lim)
     step1[step1 < 0] = 0
     step2[step2 < 0] = 0
-    ret = step1 * step2 * np.exp(r)
 
+    ret = step1 * step2 * np.exp(r)
     return ret.sum()

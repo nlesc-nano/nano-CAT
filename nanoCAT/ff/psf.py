@@ -701,17 +701,11 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         Raises
         ------
-        KeyError
-            Raised if no atom type by the name of **atom_type** is available.
-
         ValueError
             Raised if **charge** cannot be converted into a :class:`float`.
 
         """
         condition = self.atom_type == atom_type
-        if not condition.any():
-            raise KeyError(f'No atom type {repr(atom_type)} in this instance; '
-                           f'available atom types: {reprlib.repr(set(self.atom_type))}')
         self.atoms.loc[condition, 'charge'] = float(charge)
 
     def update_atom_type(self, atom_type_old: str, atom_type_new: str) -> None:
@@ -726,16 +720,8 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
             The new atom type to-be assigned to **atom_type**.
             See :attr:`PSFContainer.atoms` ``["atom type"]``.
 
-        Raises
-        ------
-        KeyError
-            Raised if no atom type by the name of **atom_type_old** is available.
-
         """
         condition = self.atom_type == atom_type_old
-        if not condition.any():
-            raise KeyError(f'No atom type {repr(atom_type_old)} in this instance; '
-                           f'available atom types: {reprlib.repr(set(self.atom_type))}')
         self.atoms.loc[condition, 'atom type'] = atom_type_new
 
     def generate_bonds(self, mol: Molecule) -> None:

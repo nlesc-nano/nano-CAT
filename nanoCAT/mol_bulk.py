@@ -76,7 +76,8 @@ def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
 
     # Import from the database and start the calculation
     idx = workflow.from_db(qd_df)
-    workflow(qd_df, index=idx, lig_series=ligand_df[MOL], core_series=core_df[MOL])
+    workflow(start_lig_bulkiness, qd_df, index=idx,
+             lig_series=ligand_df[MOL], core_series=core_df[MOL])
 
     # Export to the database
     workflow.to_db(qd_df, index=idx)

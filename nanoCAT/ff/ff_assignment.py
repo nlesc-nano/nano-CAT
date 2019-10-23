@@ -18,37 +18,30 @@ API
 
 """
 
-from typing import Tuple, NoReturn
+from typing import Tuple, NoReturn, Iterable, Any, Type
 
-from scm.plams import Molecule, Settings, ResultsError, finish, Results
+from scm.plams import Molecule, Settings, ResultsError, Results
+from scm.plams.core.basejob import Job
 
 from CAT.logger import logger
-from CAT.utils import restart_init
 from CAT.settings_dataframe import SettingsDataFrame
+from CAT.workflows.workflow import WorkFlow
 
 from .match_job import MatchJob
 from .prm import PRMContainer
 
 __all__ = ['init_ff_assignment', 'run_match_job']
 
-# Aliases for pd.MultiIndex columns
-MOL: Tuple[str, str] = ('mol', '')
 
-
-def init_ff_assignment(df: SettingsDataFrame, mol_type: str,
-                       forcefield: str = 'top_all36_cgenff') -> None:
+def init_ff_assignment(ligand_df: SettingsDataFrame, forcefield: str = 'top_all36_cgenff') -> None:
     """Initialize the forcefield assignment procedure using MATCH_.
 
     .. _MATCH: http://brooks.chem.lsa.umich.edu/index.php?page=match&subdir=articles/resources/software
 
     Parameters
     ----------
-    df : |CAT.SettingsDataFrame|_
-        A DataFrame of molecules.
-
-    mol_type : str
-        The type of molecules in **df**.
-        Accepted values are ``"core"``, ``"ligand"`` and ``"qd"``.
+    ligand_df : |CAT.SettingsDataFrame|_
+        A DataFrame of ligands.
 
     forcefield : str
         The type of to-be assigned forcefield atom types.
@@ -77,20 +70,22 @@ def init_ff_assignment(df: SettingsDataFrame, mol_type: str,
         A :class:`Job` subclass for interfacing with MATCH_: Multipurpose Atom-Typer for CHARMM.
 
     """  # noqa
-    path = df.settings.optional[mol_type].dirname
-
-    s = Settings()
-    s.input.forcefield = forcefield
-
-    logger.info(f'Starting {mol_type} forcefield parameter assignment ({forcefield})')
-    restart_init(path, 'MATCH')
-    for mol in df[MOL]:
-        run_match_job(mol, s)
-    finish()
-    logger.info(f'Finishing {mol_type} forcefield parameter assignment ({forcefield})\n')
+    workflow = WorkFlow.from_template(ligand_df, name='forcefield')
+    workflow.jobs = (MatchJob, )
+    workflow.settings = (Settings({'input': {'forcefield': forcefield}}), )
+    workflow(start_ff_assignment, ligand_df, columns=[])
 
 
-def run_match_job(mol: Molecule, s: Settings) -> None:
+def start_ff_assignment(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
+                        settings: Tuple[Settings, ...], **kwargs: Any) -> None:
+    """Start the forcefield assignment."""
+    job = jobs[0]
+    s = settings[0]
+    for mol in mol_list:
+        run_match_job(mol, s, job)
+
+
+def run_match_job(mol: Molecule, s: Settings, job_type: Type[Job] = MatchJob) -> None:
     """Assign atom types and charges to **mol** based on the results of MATCH_.
 
     Performs an inplace update of :attr:`Atom.properties` ``["symbol"]``,
@@ -100,11 +95,14 @@ def run_match_job(mol: Molecule, s: Settings) -> None:
 
     Parameters
     ----------
-    mol : |plams.Molecule|_
+    mol : |plams.Molecule|
         A PLAMS molecule.
 
-    s : |plams.Settings|_
+    s : |plams.Settings|
         Job settings for the to-be constructed :class:`.MatchJob` instance.
+
+    job_type : :class:`type` [|plams.Job|]
+        The type of Job.
 
     See also
     --------
@@ -112,7 +110,7 @@ def run_match_job(mol: Molecule, s: Settings) -> None:
         A :class:`Job` subclass for interfacing with MATCH_: Multipurpose Atom-Typer for CHARMM.
 
     """  # noqa
-    job = MatchJob(molecule=mol, settings=s, name='ff_assignment')
+    job = job_type(molecule=mol, settings=s, name='ff_assignment')
 
     # Run the job
     try:

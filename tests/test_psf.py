@@ -46,16 +46,13 @@ def test_update_atom_charge() -> None:
 
     assert (psf.charge[condition] == -5.0).all()
     assertion.assert_(psf.update_atom_charge, 'C2O3', 'bob', exception=ValueError)
-    assertion.assert_(psf.update_atom_charge, 'bob', -5.0, exception=KeyError)
 
 
 def test_update_atom_type() -> None:
     """Tests for :meth:`PSFContainer.update_atom_type`."""
     psf = PSF.copy()
     psf.update_atom_type('C2O3', 'C8')
-
     assertion.contains(psf.atom_type.values, 'C8')
-    assertion.assert_(psf.update_atom_charge, 'bob', 'C2O3', exception=KeyError)
 
 
 def test_generate_bonds() -> None:

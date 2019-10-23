@@ -35,33 +35,22 @@ API
 """
 
 import os
-from shutil import rmtree
 from itertools import product
-from os.path import (join, dirname)
-from typing import (Optional, Sequence, Callable, Container, Tuple, List, Iterable)
+from os.path import join
+from typing import Optional, Sequence, Collection, Tuple, List, Iterable, Any, Type, Iterator
 
 import numpy as np
-import pandas as pd
 
-from scm.plams import (Settings, Molecule, Results, CRSJob, CRSResults)
-from scm.plams.core.jobrunner import JobRunner
-from scm.plams.core.functions import finish
-from scm.plams.interfaces.adfsuite.adf import ADFJob
-
-import qmflows
+from scm.plams import Settings, Molecule, Results, CRSJob, CRSResults, JobRunner, ADFJob
+from scm.plams.core.basejob import Job
 
 import CAT
-from CAT.jobs import (job_single_point, _get_name)
-from CAT.utils import (type_to_string, get_template, restart_init)
+from CAT.jobs import job_single_point, _get_name
+from CAT.utils import get_template
 from CAT.logger import logger
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
-
-try:
-    from dataCAT import Database
-    DATA_CAT = True
-except ImportError:
-    DATA_CAT = False
+from CAT.workflows.workflow import WorkFlow
 
 __all__ = ['init_solv']
 
@@ -89,58 +78,37 @@ def init_solv(ligand_df: SettingsDataFrame,
         If ``None``, use the default .coskf files distributed with CAT (see :mod:`CAT.data.coskf`).
 
     """
-    # Unpack arguments
-    settings = ligand_df.settings.optional
-    overwrite = DATA_CAT and 'ligand' in settings.database.overwrite
-    read = DATA_CAT and 'ligand' in settings.database.read
-    write = DATA_CAT and 'ligand' in settings.database.write
-    data = Database(path=settings.database.dirname, **settings.database.mongodb)
+    workflow = WorkFlow.from_template(ligand_df, name='crs')
 
-    # Prepare the job settings and solvent list
+    # Create column slices
     solvent_list = get_solvent_list(solvent_list)
+    columns = get_solvent_columns(solvent_list)
 
-    # Update the columns of **ligand_df**
-    columns = update_columns(ligand_df, solvent_list)
+    # Create new import and export columns
+    import_columns = {k: np.nan for k in columns}
+    import_columns.update(workflow.import_columns)
+    export_columns = columns + list(workflow.import_columns)
 
-    # Check if the calculation has been done already
-    if not overwrite and read:
-        logger.info('Pulling ligand solvation energies and activity coefficients from the database')
-        data.from_csv(ligand_df, database='ligand', get_mol=False)
+    # Create index slices and run the workflow
+    idx = workflow.from_db(ligand_df, columns=import_columns)
+    workflow(start_crs_jobs, ligand_df, index=idx, columns=columns, solvent_list=solvent_list)
 
-    # Run COSMO-RS
-    idx = ligand_df[['E_solv', 'gamma']].isna().all(axis='columns')
-    if idx.any():
-        logger.info('Starting ligand solvation calculations')
-        start_crs_jobs(ligand_df, idx, solvent_list)
-        ligand_df[JOB_SETTINGS_CRS] = get_job_settings(ligand_df)
-        logger.info('Finishing ligand solvation calculations\n')
-    else:
-        logger.info('No new ligands found for ligand solvation calculations\n')
-        return None  # No new molecules here; move along
-
-    # Update the database
-    if write:
-        with pd.option_context('mode.chained_assignment', None):
-            _ligand_to_db(ligand_df, idx, columns)
-    return None
+    # Export results back to the database
+    job_recipe = workflow.get_recipe()
+    ligand_df[JOB_SETTINGS_CRS] = workflow.pop_job_settings(ligand_df[MOL])
+    workflow.to_db(ligand_df, index=idx, columns=export_columns, job_recipe=job_recipe)
 
 
-def start_crs_jobs(ligand_df: SettingsDataFrame,
-                   idx: pd.Series,
-                   solvent_list: Iterable[str]) -> None:
-    """Loop over all molecules in ``ligand_df.loc[idx]`` and perform COSMO-RS calculations."""
-    # Unpack arguments
-    settings = ligand_df.settings.optional
-    keep_files = settings.ligand.crs.keep_files
-    path = settings.ligand.dirname
-    j1 = settings.ligand.crs.job1
-    j2 = settings.ligand.crs.job2
-    s1 = settings.ligand.crs.s1
-    s2 = settings.ligand.crs.s2
+def start_crs_jobs(mol_list: Iterable[Molecule],
+                   jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
+                   solvent_list: Iterable[str] = (), **kwargs: Any) -> List[Iterator[float]]:
+    """Loop over all molecules in **mol_list** and perform COSMO-RS calculations."""
+    j1, j2 = jobs
+    s1, s2 = settings
 
     # Start the main loop
-    restart_init(path=path, folder='ligand_solvation')
-    for i, mol in ligand_df[MOL][idx].iteritems():
+    ret = []
+    for mol in mol_list:
         mol.round_coords()
         mol.properties.job_path = []
 
@@ -148,75 +116,49 @@ def start_crs_jobs(ligand_df: SettingsDataFrame,
         coskf = get_surface_charge(mol, job=j1, s=s1)
 
         # Perform the actual COSMO-RS calculation
-        e_and_gamma = get_solv(mol, solvent_list, coskf, job=j2, s=s2)
-        ligand_df.loc[i, 'E_solv'], ligand_df.loc[i, 'gamma'] = e_and_gamma
-    finish()
+        e, gamma = get_solv(mol, solvent_list, coskf, job=j2, s=s2)
+        ret.append(e + gamma)
 
-    if not keep_files:
-        rmtree(join(path, 'ligand_solvation'))
+    return ret
 
 
-def update_columns(ligand_df: SettingsDataFrame,
-                   solvent_list: Iterable[str]) -> List[Tuple[str, str]]:
-    """Add all COSMO-RS related columns to **ligand_df**."""
-    clm_tups = [i.rsplit('.', 1)[0].rsplit('/', 1)[-1] for i in solvent_list]
-    columns = list(product(('E_solv', 'gamma'), clm_tups))
-    for item in columns:
-        ligand_df[item] = np.nan
-    return columns
+def get_solvent_columns(solvent_list: Iterable[str]) -> List[Tuple[str, str]]:
+    """Create a list of column names from an iterable containing .coskf names.
+
+    Parameters
+    ----------
+    solvent_list : :data:`Iterable<typing.Iterable>` [:class:`str`]
+        An iterable of strings representing solvent .coskf files.
+
+    Returns
+    -------
+    :class:`list` [:class:`tuple` [:class:`str`, :class:`str`]]
+        A list of 2-tuples twice as long as **solvent_list**.
+        The first element of each tuple is either ``"E_solv"`` or ``"gamma"``;
+        the second element is taken from **solvent_list**.
+
+    """
+    # Use filenames without extensions are absolute paths
+    clm_tups = [os.path.basename(i).rsplit('.', maxsplit=1)[0] for i in solvent_list]
+    return list(product(('E_solv', 'gamma'), clm_tups))
 
 
 def get_solvent_list(solvent_list: Optional[Sequence[str]] = None) -> Sequence[str]:
-    """Construct the list of solvents."""
+    """Construct a sorted list of solvents; pull them from ``CAT.data.coskf`` if ``None``."""
     if solvent_list is None:
-        coskf_path = join(CAT.__path__[0], 'data', 'coskf')
-        solvent_list = [join(coskf_path, solv) for solv in os.listdir(coskf_path) if
-                        solv not in ('__init__.py', 'README.rst')]
-    solvent_list.sort()
-    return solvent_list
+        exclude = ('__init__.py', 'README.rst')
+        base = join(CAT.__path__[0], 'data', 'coskf')
+        solvent_list = [join(base, solv) for solv in os.listdir(base) if solv not in exclude]
+
+    try:
+        solvent_list.sort()
+    except AttributeError:  # It's not a list but a generic iterable
+        return sorted(solvent_list)
+    else:
+        return solvent_list
 
 
-def get_job_settings(ligand_df: SettingsDataFrame) -> List[str]:
-    """Create a nested list of input files for each molecule in **ligand_df**."""
-    job_settings = []
-    for mol in ligand_df[MOL]:
-        try:
-            job_settings.append(mol.properties.pop('job_path'))
-        except KeyError:
-            job_settings.append([])
-    return job_settings
-
-
-def _ligand_to_db(ligand_df: SettingsDataFrame,
-                  idx: pd.Series,
-                  columns: Sequence) -> None:
-    """Export all COSMO-RS results to the database."""
-    settings = ligand_df.settings.optional
-    data = Database(path=settings.database.dirname)
-    overwrite = DATA_CAT and 'ligand' in settings.database.overwrite
-    j1 = settings.ligand.crs.job1
-    j2 = settings.ligand.crs.job2
-    s1 = settings.ligand.crs.s1
-    s2 = settings.ligand.crs.s2
-
-    value1 = qmflows.singlepoint['specific'][type_to_string(j1)].copy()
-    value1.update(s1)
-    recipe = Settings()
-    recipe['solv 1'] = {'key': j1, 'value': value1}
-    recipe['solv 2'] = {'key': j2, 'value': s2}
-
-    data.update_csv(
-        ligand_df.loc[idx],
-        database='ligand',
-        columns=[SETTINGS1, SETTINGS2, JOB_SETTINGS_CRS]+columns,
-        overwrite=overwrite,
-        job_recipe=recipe
-    )
-
-
-def get_surface_charge(mol: Molecule,
-                       job: Callable,
-                       s: Settings) -> Optional[str]:
+def get_surface_charge(mol: Molecule, job: Type[Job], s: Settings) -> Optional[str]:
     """Construct the COSMO surface of the **mol**.
 
     Parameters
@@ -237,6 +179,7 @@ def get_surface_charge(mol: Molecule,
         Optional: The path+filename of a file containing COSMO surface charges.
 
     """
+    s = Settings(s)
     # Special procedure for ADF jobs
     # Use the gas-phase electronic structure as a fragment for the COSMO single point
     if job is ADFJob:
@@ -247,8 +190,7 @@ def get_surface_charge(mol: Molecule,
     return get_coskf(results)
 
 
-def _crs_run(job: CRSJob,
-             name: str) -> CRSResults:
+def _crs_run(job: CRSJob, name: str) -> CRSResults:
     """Call the :meth:`CRSJob.run` on **job**, returning a :class:`CRSResults` instance."""
     _name = _get_name(job.name)
     logger.info(f'{job.__class__.__name__}: {name} activity coefficient calculation '
@@ -256,12 +198,8 @@ def _crs_run(job: CRSJob,
     return job.run(jobrunner=JobRunner(parallel=True))
 
 
-def get_solv(mol: Molecule,
-             solvent_list: Iterable[str],
-             coskf: str,
-             job: Callable,
-             s: Settings,
-             keep_files: bool = True) -> Tuple[List[float], List[float]]:
+def get_solv(mol: Molecule, solvent_list: Iterable[str],
+             coskf: Optional[str], job: Type[Job], s: Settings) -> Tuple[List[float], List[float]]:
     """Calculate the solvation energy of *mol* in various *solvents*.
 
     Parameters
@@ -272,7 +210,7 @@ def get_solv(mol: Molecule,
     solvent_list : |List|_ [|str|_]
         A list of solvent molecules (*i.e.* .coskf files).
 
-    coskf : str
+    coskf : str, optional
         The path+filename of the .coskf file of **mol**.
 
     job : |Callable|_
@@ -282,9 +220,6 @@ def get_solv(mol: Molecule,
     s : |plams.Settings|_
         The settings for **job**.
 
-    keep_files : bool
-        Whether or not files should be deleted after the calculations are done.
-
     Returns
     -------
     |list|_ [|float|_] & |list|_ [|float|_]
@@ -293,9 +228,11 @@ def get_solv(mol: Molecule,
     """
     # Return 2x np.nan if no coskf is None (i.e. the COSMO-surface construction failed)
     if coskf is None:
-        return np.nan, np.nan
+        ret = [np.nan] * len(solvent_list)
+        return ret, ret
 
     # Prepare a list of job settings
+    s = Settings(s)
     s.input.Compound._h = coskf
     s.ignore_molecule = True
     s_list = []
@@ -326,24 +263,16 @@ def get_solv(mol: Molecule,
             E_solv.append(np.nan)
             Gamma.append(np.nan)
 
-    # Delete all mopac and cosmo-rs files if keep_files=False
-    if not keep_files:
-        mopac = dirname(s.input.Compound._h)
-        rmtree(mopac)
-        for job in job_list:
-            rmtree(job.path)
-
-    if 'job_path' not in mol.properties:
-        mol.properties.job_path = []
-    mol.properties.job_path += [join(job.path, job.name + '.in') for job in job_list]
+    try:
+        mol.properties.job_path += [join(job.path, job.name + '.in') for job in job_list]
+    except IndexError:  # The 'job_path' key is not available
+        mol.properties.job_path = [join(job.path, job.name + '.in') for job in job_list]
 
     # Return the solvation energies and activity coefficients as dict
     return E_solv, Gamma
 
 
-def get_surface_charge_adf(mol: Molecule,
-                           job: Callable,
-                           s: Settings) -> Settings:
+def get_surface_charge_adf(mol: Molecule, job: Type[Job], s: Settings) -> Settings:
     """Perform a gas-phase ADF single point and return settings for a COSMO-ADF single point.
 
     The previous gas-phase calculation as moleculair fragment.
@@ -379,8 +308,7 @@ def get_surface_charge_adf(mol: Molecule,
     return s
 
 
-def get_coskf(results: Results,
-              extensions: Container[str] = ('.coskf', '.t21')) -> Optional[str]:
+def get_coskf(results: Results, extensions: Collection[str] = ('.coskf', '.t21')) -> Optional[str]:
     """Return the file in **results** containing the COSMO surface.
 
     Parameters

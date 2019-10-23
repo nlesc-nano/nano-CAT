@@ -20,7 +20,7 @@ API
 """
 
 import inspect
-from typing import (Any, Iterator, Dict, Tuple, FrozenSet)
+from typing import Any, Iterator, Dict, Tuple, Set
 from itertools import chain
 
 import pandas as pd
@@ -45,7 +45,7 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
 
     #: A :class:`frozenset` with the names of private instance attributes.
     #: These attributes will be excluded whenever calling :meth:`PRMContainer.as_dict`.
-    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_pd_printoptions'})
+    _PRIVATE_ATTR: Set[str] = frozenset({'_pd_printoptions'})
 
     #: A tuple of supported .psf headers.
     HEADERS: Tuple[str] = (
@@ -56,6 +56,8 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
                  impropers=None, nonbonded=None, nonbonded_header=None, nbfix=None,
                  hbond=None) -> None:
         """Initialize a :class:`PRMContainer` instance."""
+        super().__init__()
+
         self.filename: str = filename
         self.atoms: pd.DataFrame = atoms
         self.bonds: pd.DataFrame = bonds
@@ -86,11 +88,9 @@ class PRMContainer(AbstractDataClass, AbstractFileContainer):
         return value
 
     @AbstractDataClass.inherit_annotations()
-    def __str__(self):
+    def __repr__(self):
         with pd.option_context(*self.pd_printoptions):
-            return super().__str__()
-
-    __repr__ = __str__
+            return super().__repr__()
 
     @AbstractDataClass.inherit_annotations()
     def __eq__(self, value):

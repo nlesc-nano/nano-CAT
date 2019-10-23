@@ -43,7 +43,7 @@ from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 __all__ = ['dissociate_ligand']
 
 
-def dissociate_ligand(mol: Molecule, settings: Settings) -> List[Molecule]:
+def dissociate_ligand(mol: Molecule, workflow: 'WorkFlow') -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -61,11 +61,11 @@ def dissociate_ligand(mol: Molecule, settings: Settings) -> List[Molecule]:
 
     """
     # Unpack arguments
-    atnum = settings.qd.dissociate.core_atom
-    l_count = settings.qd.dissociate.lig_count
-    cc_dist = settings.qd.dissociate.core_core_dist
-    lc_dist = settings.qd.dissociate.lig_core_dist
-    top_dict = settings.qd.dissociate.topology
+    atnum = workflow.core_atom
+    l_count = workflow.lig_count
+    cc_dist = workflow.core_core_dist
+    lc_dist = workflow.lig_core_dist
+    top_dict = workflow.topology
 
     # Parameter not provided, just guess it
     if not cc_dist:
@@ -98,7 +98,7 @@ def dissociate_ligand(mol: Molecule, settings: Settings) -> List[Molecule]:
     return remove_ligands(mol, combinations_dict, indices)
 
 
-def dissociate_ligand2(mol: Molecule, settings: Settings) -> List[Molecule]:
+def dissociate_ligand2(mol: Molecule, workflow: 'WorkFlow') -> List[Molecule]:
     """Create all XYn dissociated quantum dots.
 
     Parameter
@@ -116,10 +116,10 @@ def dissociate_ligand2(mol: Molecule, settings: Settings) -> List[Molecule]:
 
     """
     # Unpack arguments
-    l_count = settings.qd.dissociate.lig_count
-    cc_dist = settings.qd.dissociate.core_core_dist
-    idx_c_old = np.array(settings.qd.dissociate.core_index) - 1
-    top_dict = settings.qd.dissociate.topology
+    l_count = workflow.lig_count
+    cc_dist = workflow.core_core_dist
+    idx_c_old = np.array(workflow.core_index) - 1
+    top_dict = workflow.topology
 
     # Convert **mol** to an XYZ array
     mol.set_atoms_id()
@@ -129,7 +129,7 @@ def dissociate_ligand2(mol: Molecule, settings: Settings) -> List[Molecule]:
     _, topology = filter_core(xyz_array, idx_c_old, top_dict, cc_dist)
 
     # Mark the core atoms with their topologies
-    for i, top in zip(settings.qd.dissociate.core_index, topology):
+    for i, top in zip(workflow.core_index, topology):
         mol[i].properties.topology = top
 
     # Create a dictionary with core indices as keys and all combinations of 2 ligands as values

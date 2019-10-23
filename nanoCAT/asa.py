@@ -26,15 +26,14 @@ from scm.plams import Settings, Molecule
 from scm.plams.core.basejob import Job
 import scm.plams.interfaces.molecule.rdkit as molkit
 
-import rdkit
-import qmflows
 from rdkit.Chem import AllChem
 
-from CAT.utils import type_to_string
-from CAT.workflows.workflow import WorkFlow
+from CAT.logger import logger
 from CAT.jobs import job_single_point, job_geometry_opt
 from CAT.mol_utils import round_coords
+from CAT.workflows.workflow import WorkFlow
 from CAT.settings_dataframe import SettingsDataFrame
+from CAT.attachment.qd_opt_ff import qd_opt_ff
 
 __all__ = ['init_asa']
 
@@ -61,33 +60,24 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
 
     """
     workflow = WorkFlow.from_template(qd_df, name='asa')
+    if getattr(workflow, 'use_ff', False):
+        logger.critical('NotImplementedError: The ligand activation strain workflow is not yet '
+                        'possible in combination with custom forcefields')
+        return
 
     idx = workflow.from_db(qd_df)
     workflow(get_asa_energy, qd_df, index=idx)
 
-    job_recipe = _asa_job_recipe(workflow)
-    workflow.to_db(qd_df, job_recipe=job_recipe)
-
-
-def _asa_job_recipe(workflow: WorkFlow) -> Settings:
-    """Return a job recipe for :func:`.init_asa`."""
-    if not workflow.jobs:
-        return Settings({'ASA 1': {'key': f'RDKit_{rdkit.__version__}',
-                                   'value': f'{UFF.__module__}.{UFF.__name__}'}})
-    else:
-        key = workflow.jobs[0]
-        value = workflow.settings[0]
-        if workflow.read_template:
-            settings = qmflows.geometry['specific'][type_to_string(key)].copy()
-            value.soft_update(settings)
-        return Settings({'ASA 1': {'key': key, 'value': value}})
+    job_recipe = workflow.get_recipe()
+    workflow.to_db(qd_df, index=idx, job_recipe=job_recipe)
 
 
 def get_asa_energy(mol_list: Iterable[Molecule],
                    read_template: bool = True,
-                   jobs: Optional[Tuple[Job, ...]] = None,
-                   settings: Optional[Tuple[Settings, ...]] = None,
-                   **kwargs: Any) -> np.ndarray:
+                   jobs: Tuple[Optional[Job], ...] = (None,),
+                   settings: Tuple[Optional[Settings], ...] = (None,),
+                   use_ff: bool = False,
+                   **kwargs: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     r"""Perform an activation strain analyses (ASA).
 
     The ASA calculates the interaction, strain and total energy.
@@ -111,14 +101,15 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     Returns
     -------
     :math:`n*3` |np.ndarray|_ [|np.float64|_]
-        An array containing E_int, E_strain and E for all *n* molecules in **mol_series**.
+        A tuple of 3 arrays containing E_int, E_strain and E for
+        all *n* molecules in **mol_series**.
 
     """
-    if not jobs:
+    if jobs == (None,):
         asa_func = _asa_uff
         job = settings = None
     else:
-        asa_func = _asa_plams
+        asa_func = _asa_plams if not use_ff else _asa_plams_ff
         job = jobs[0]
         settings = settings[0]
 
@@ -134,12 +125,12 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     ret.shape = -1, 4
 
     # Calclate the ASA terms
-    ret[:, 0] -= ret[:, 1]  # E_int
-    ret[:, 1] -= ret[:, 2] * ret[:, 3]  # E_train
-    ret[:, 2] = ret[:, 0] + ret[:, 1]  # E_tot
+    E_int = ret[:, 0] - ret[:, 1]
+    E_strain = ret[:, 1] - ret[:, 2] * ret[:, 3]
+    E_tot = E_int + E_strain
 
     # E_int, E_strain & E
-    return ret[:, 0:3]
+    return E_int, E_strain, E_tot
 
 
 def _get_asa_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule]]:
@@ -216,7 +207,8 @@ def _asa_uff(mol_complete: Mol, mol_fragments: Iterable[Mol],
 
 
 def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
-               read_template: bool, job: Type[Job], s: Settings) -> Tuple[float, float, float, int]:
+               read_template: bool, job: Type[Job],
+               settings: Settings) -> Tuple[float, float, float, int]:
     """Perform an activation strain analyses with custom Job and Settings.
 
     Parameters
@@ -246,6 +238,8 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
         the total number of fragments within **mol_fragments**.
 
     """
+    s = settings
+
     # Calculate the energy of the total system
     mol_complete.round_coords()
     mol_complete.job_single_point(job, s)
@@ -260,6 +254,65 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
 
     # Calculate the energy of an optimizes fragment
     mol.job_geometry_opt(job, s)
-    E_fragment_opt = mol.properties.energy.E
 
+    E_fragment_opt = mol.properties.energy.E
+    return E_complete, E_fragments, E_fragment_opt, frag_count
+
+
+def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
+                  read_template: bool, job: Type[Job],
+                  settings: Settings) -> Tuple[float, float, float, int]:
+    """Perform an activation strain analyses with custom Job, Settings and forcefield.
+
+    Parameters
+    ----------
+    mol_complete : |plams.Molecule|
+        A Molecule representing the (unfragmented) relaxed structure of the system of interest.
+
+    mol_fragments : :data:`Iterable<typing.Iterable>` [|plams.Molecule|]
+        An iterable of Molecules represnting the individual moleculair or
+        atomic fragments within **mol_complete**.
+
+    job : :data:`Type<typing.Type>` [|plams.Job|]
+        The Job type for the ASA calculations.
+
+    s : |plams.Settings|
+        The Job Settings for the ASA calculations.
+
+    Returns
+    -------
+    :class:`float`, :class:`float`, :class:`float` and :class:`int`
+        The energy of **mol_complete**,
+        the energy of **mol_fragments**,
+        the energy of an optimized fragment within **mol_fragments** and
+        the total number of fragments within **mol_fragments**.
+
+    """
+    s = settings
+
+    # Calculate the energy of the total system
+    mol_complete.round_coords()
+    mol_complete.properties.name += '_ligands'
+    qd_opt_ff(mol_complete, job, s, 'ASA_sp', job_func=Molecule.job_single_point)
+    E_complete = mol_complete.properties.energy.E
+
+    # Calculate the (summed) energy of each individual fragment in the total system
+    E_fragments = 0.0
+    for frag_count, mol in enumerate(mol_fragments, 1):
+        mol.round_coords()
+        mol.properties.name = mol_complete.properties.name[:-1]
+        mol.properties.path = mol_complete.properties.path
+        mol.properties.prm = mol_complete.properties.prm
+        qd_opt_ff(mol, job, s, 'ASA_sp', job_func=Molecule.job_single_point)
+        E_fragments += mol.properties.energy.E
+
+    # Calculate the energy of an optimizes fragment
+    s = Settings(s)
+    s.input.motion.geo_opt.soft_update({
+        'type': 'minimization', 'optimizer': 'LBFGS', 'max_iter': 200
+    })
+    s.input['global'].run_type = 'geometry_optimization'
+    qd_opt_ff(mol, job, s, 'ASA_opt')
+
+    E_fragment_opt = mol.properties.energy.E
     return E_complete, E_fragments, E_fragment_opt, frag_count

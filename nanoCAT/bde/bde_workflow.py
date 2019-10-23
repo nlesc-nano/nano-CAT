@@ -28,25 +28,20 @@ API
 
 """
 
-from shutil import rmtree
-from typing import (Optional, Iterable, Type)
-from os.path import join
+from typing import Iterable, Type, List, Tuple
 from itertools import product
 
 import numpy as np
-import pandas as pd
 
-from scm.plams import AMSJob, Molecule, finish, Settings, Cp2kJob
+from scm.plams import AMSJob, Molecule, Settings, Cp2kJob
 from scm.plams.core.basejob import Job
 
-import qmflows
-
 from CAT.jobs import (job_single_point, job_geometry_opt, job_freq)
-from CAT.utils import (type_to_string, restart_init)
 from CAT.logger import logger
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
 from CAT.attachment.qd_opt_ff import qd_opt_ff
+from CAT.workflows.workflow import WorkFlow
 
 from .construct_xyn import get_xyn
 from .dissociate_xyn import (dissociate_ligand, dissociate_ligand2)
@@ -61,261 +56,84 @@ SETTINGS2 = ('settings', 'BDE 2')
 
 
 def init_bde(qd_df: SettingsDataFrame) -> None:
-    r"""Initialize the bond dissociation energy calculation; involves 4 distinct steps.
+    workflow = WorkFlow.from_template(qd_df, name='bde')
 
-    * Take :math:`n` ligands (:math:`X`) and another atom from the core (:math:`Y`, *e.g.* Cd)
-      and create :math:`YX_{n}`.
-    * Given a radius :math:`r`, dissociate all possible :math:`YX_{n}` pairs.
-    * Calculate :math:`\Delta E`: the "electronic" component of the bond dissociation energy (BDE).
-    * (Optional) Calculate :math:`\Delta \Delta G`: the thermal and entropic component of the BDE.
+    # Pull from the database; push unoptimized structures
+    idx = workflow.from_db(qd_df)
+    columns = _construct_columns(workflow, qd_df[MOL])
+    import_columns = {(i, j): (np.nan if i != 'label' else None) for i, j in columns}
+    workflow(start_bde, qd_df, columns=import_columns, index=idx, workflow=workflow)
 
-    Parameters
-    ----------
-    qd_df : |CAT.SettingsDataFrame|_
-        A dataframe of quantum dots.
+    # Convert the datatype from object back to float
+    qd_df['BDE dE'] = qd_df['BDE dE'].astype(float)
+    qd_df['BDE ddG'] = qd_df['BDE ddG'].astype(float)
+    qd_df['BDE dG'] = qd_df['BDE dG'].astype(float)
 
-    """
-    # Unpack arguments
-    settings = qd_df.settings.optional
-    db = settings.database.db
-    overwrite = db and 'qd' in settings.database.overwrite
-    read = db and 'qd' in settings.database.read
-    job2 = settings.qd.dissociate.job2
-    s2 = settings.qd.dissociate.s2
+    # Sets a nested list with the filenames of .in files
+    # This cannot be done with loc is it will try to expand the list into a 2D array
+    qd_df[JOB_SETTINGS_BDE] = workflow.pop_job_settings(qd_df[MOL])
 
-    # Check if the calculation has been done already
-    if not overwrite and read:
-        logger.info('Pulling ligand dissociation energies from the database')
-        with db.csv_qd.open(write=False) as db_df:
-            key_ar = np.array(['BDE label', 'BDE dE', 'BDE dG', 'BDE ddG'])
-            bool_ar = np.isin(key_ar, db_df.columns.levels[0])
-            for i in db_df[key_ar[bool_ar]]:
-                qd_df[i] = np.nan
-            db.from_csv(qd_df, database='QD', get_mol=False)
+    # Push the optimized structures to the database
+    job_recipe = workflow.get_recipe()
+    workflow.to_db(qd_df, index=idx, job_recipe=job_recipe)
 
-        qd_df.dropna(axis='columns', how='all', inplace=True)
 
-    # Calculate the BDEs with thermochemical corrections
-    if job2 and s2:
-        _bde_w_dg(qd_df)
-
-    # Calculate the BDEs without thermochemical corrections
+def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List[Tuple[str, str]]:
+    """Construct BDE columns for :func:`init_bde`."""
+    if workflow.core_index:
+        stop = len(workflow.core_index)
     else:
-        _bde_wo_dg(qd_df)
-
-
-def _bde_w_dg(qd_df: SettingsDataFrame) -> None:
-    """Calculate the BDEs with thermochemical corrections.
-
-    Parameters
-    ----------
-    qd_df : |CAT.SettingsDataFrame|_
-        A dataframe of quantum dots.
-
-    """
-    # Unpack arguments
-    settings = qd_df.settings.optional
-    keep_files = settings.qd.dissociate.keep_files
-    path = settings.qd.dirname
-    job1 = settings.qd.dissociate.job1
-    job2 = settings.qd.dissociate.job2
-    s1 = settings.qd.dissociate.s1
-    s2 = settings.qd.dissociate.s2
-    ion = settings.qd.dissociate.core_atom
-    lig_count = settings.qd.dissociate.lig_count
-    core_index = settings.qd.dissociate.core_index
-    write = settings.database.db and 'qd' in settings.database.write
-    forcefield = bool(settings.qd.dissociate.use_ff)
-
-    # Identify previously calculated results
-    try:
-        has_na = qd_df[['BDE dE', 'BDE dG']].isna().all(axis='columns')
-        if not has_na.any():
-            logger.info('No new ligand dissociation jobs found\n')
-            return
-        logger.info('Starting ligand dissociation workflow')
-    except KeyError:
-        has_na = pd.Series(True, index=qd_df.index)
-
-    df_slice = qd_df.loc[has_na, MOL]
-    restart_init(path=path, folder='BDE')
-    for idx, mol in df_slice.iteritems():
-        # Create XYn and all XYn-dissociated quantum dots
-        mol.round_coords()
-        xyn = get_xyn(mol, lig_count, ion)
-        if not core_index:
-            mol_wo_xyn = dissociate_ligand(mol, settings)
-        else:
-            mol_wo_xyn = dissociate_ligand2(mol, settings)
-
-        # Construct new columns for **qd_df**
-        labels = [m.properties.df_index for m in mol_wo_xyn]
-        sub_idx = np.arange(len(labels)).astype(str, copy=False)
         try:
-            n = qd_df['BDE label'].shape[1]
-        except KeyError:
-            n = 0
-        if len(labels) > n:
-            for i in sub_idx[n:]:
-                qd_df[('BDE label', i)] = qd_df[('BDE dE', i)] = qd_df[('BDE ddG', i)] = np.nan
+            mol = next(mol_list)
+        except TypeError:
+            mol = next(iter(mol_list))
 
-        # Prepare slices
-        label_slice = idx, list(product(['BDE label'], sub_idx))
-        dE_slice = idx, list(product(['BDE dE'], sub_idx))
-        ddG_slice = idx, list(product(['BDE ddG'], sub_idx))
+        qd_list = dissociate_ligand(mol, workflow)
+        stop = len(qd_list)
+
+    super_keys = ('BDE label', 'BDE dE', 'BDE ddG', 'BDE dG')
+    sub_keys = np.arange(stop).astype(dtype=str)
+    return list(product(super_keys, sub_keys))
+
+
+def start_bde(mol_list: Iterable[Molecule], workflow: WorkFlow,
+              jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
+              forcefield=None, core_index=None, lig_count=None, ion=None) -> List[np.ndarray]:
+    """Calculate the BDEs with thermochemical corrections. """
+    job1, job2 = jobs
+    s1, s2 = settings
+
+    ret = []
+    for qd_complete in mol_list:
+        # Dissociate a XYn molecule from the quantum dot surface
+        qd_complete.round_coords()
+        XYn: Molecule = get_xyn(qd_complete, lig_count, ion)
+
+        # Create all possible quantum dots where XYn is dissociated
+        if not core_index:
+            qd_list: List[Molecule] = dissociate_ligand(qd_complete, workflow)
+        else:
+            qd_list: List[Molecule] = dissociate_ligand2(qd_complete, workflow)
+
+        # Construct labels describing the topology of all XYn-dissociated quantum dots
+        labels = [qd.properties.df_index for qd in qd_list]
 
         # Run the BDE calculations
-        mol.properties.job_path = []
-        qd_df.loc[label_slice] = labels
-        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job1, s1, forcefield)
-        qd_df.loc[ddG_slice] = get_bde_ddG(mol, xyn, mol_wo_xyn, job2, s2)
-        mol.properties.job_path += xyn.properties.pop('job_path')
-        for m in mol_wo_xyn:
-            mol.properties.job_path += m.properties.pop('job_path')
-    logger.info('Finishing ligand dissociation workflow\n')
-    finish()
-    if not keep_files:
-        rmtree(join(path, 'BDE'))
+        dE = get_bde_dE(qd_complete, XYn, qd_list, job1, s1, forcefield)
+        ddG = get_bde_ddG(qd_complete, XYn, qd_list, job2, s2)
+        dG = dE + ddG
 
-    qd_df['BDE dG'] = qd_df['BDE dE'] + qd_df['BDE ddG']
+        # Append the to-be returned list
+        value = np.concatenate([labels, dE, ddG, dG])  # This is now, unfortunetly, a str array
+        ret.append(value)
 
-    job_settings = []
-    for mol in qd_df[MOL]:
+        # Update the list with all .in files
         try:
-            job_settings.append(mol.properties.pop('job_path'))
-        except KeyError:
-            job_settings.append([])
-    qd_df[JOB_SETTINGS_BDE] = job_settings
-
-    # Update the database
-    if write:
-        with pd.option_context('mode.chained_assignment', None):
-            _qd_to_db(qd_df, has_na, with_dg=True)
-
-
-def _bde_wo_dg(qd_df: SettingsDataFrame) -> None:
-    """ Calculate the BDEs without thermochemical corrections.
-
-    Parameters
-    ----------
-    qd_df : |CAT.SettingsDataFrame|_
-        A dataframe of quantum dots.
-
-    """
-    # Unpack arguments
-    settings = qd_df.settings.optional
-    keep_files = settings.qd.dissociate.keep_files
-    path = settings.qd.dirname
-    job1 = settings.qd.dissociate.job1
-    s1 = settings.qd.dissociate.s1
-    ion = settings.qd.dissociate.core_atom
-    lig_count = settings.qd.dissociate.lig_count
-    core_index = settings.qd.dissociate.core_index
-    write = settings.database.db and 'qd' in settings.database.write
-    forcefield = bool(settings.qd.dissociate.use_ff)
-
-    # Identify previously calculated results
-    try:
-        has_na = qd_df['BDE dE'].isna().all(axis='columns')
-        if not has_na.any():
-            logger.info('No new ligand dissociation jobs found\n')
-            return
-        logger.info('Starting ligand dissociation workflow')
-    except KeyError:
-        has_na = pd.Series(True, index=qd_df.index)
-
-    df_slice = qd_df.loc[has_na, MOL]
-    restart_init(path=path, folder='BDE')
-    for idx, mol in df_slice.iteritems():
-        # Create XYn and all XYn-dissociated quantum dots
-        mol.round_coords()
-        xyn = get_xyn(mol, lig_count, ion)
-
-        if not core_index:
-            mol_wo_xyn = dissociate_ligand(mol, settings)
-        else:
-            mol_wo_xyn = dissociate_ligand2(mol, settings)
-
-        # Construct new columns for **qd_df**
-        labels = [m.properties.df_index for m in mol_wo_xyn]
-        sub_idx = np.arange(len(labels)).astype(str)
-        try:
-            n = qd_df['BDE label'].shape[1]
-        except KeyError:
-            n = 0
-        if len(labels) > n:
-            for i in sub_idx[n:]:
-                qd_df[('BDE label', i)] = qd_df[('BDE dE', i)] = np.nan
-
-        # Prepare slices
-        label_slice = idx, list(product(['BDE label'], sub_idx))
-        dE_slice = idx, list(product(['BDE dE'], sub_idx))
-
-        # Run the BDE calculations
-        mol.properties.job_path = []
-        qd_df.loc[label_slice] = labels
-        qd_df.loc[dE_slice] = get_bde_dE(mol, xyn, mol_wo_xyn, job1, s1, forcefield)
-        mol.properties.job_path += xyn.properties.pop('job_path')
-        for m in mol_wo_xyn:
-            mol.properties.job_path += m.properties.pop('job_path')
-
-    logger.info('Finishing ligand dissociation workflow\n')
-    finish()
-    if not keep_files:
-        rmtree(join(path, 'BDE'))
-
-    job_settings = []
-    for mol in qd_df[MOL]:
-        try:
-            job_settings.append(mol.properties.pop('job_path'))
-        except KeyError:
-            job_settings.append([])
-    qd_df[JOB_SETTINGS_BDE] = job_settings
-
-    # Update the database
-    if write:
-        with pd.option_context('mode.chained_assignment', None):
-            _qd_to_db(qd_df, has_na, with_dg=False)
-
-
-def _qd_to_db(qd_df: SettingsDataFrame, idx: pd.Series,
-              with_dg: bool = True) -> None:
-    # Unpack arguments
-    settings = qd_df.settings.optional
-    db = settings.database.db
-    overwrite = db and 'qd' in settings.database.overwrite
-    j1 = settings.qd.dissociate.job1
-    s1 = settings.qd.dissociate.s1
-
-    qd_df.sort_index(axis='columns', inplace=True)
-    kwarg = {'database': 'QD', 'overwrite': overwrite}
-    if with_dg:
-        j2 = settings.qd.dissociate.job2
-        s2 = settings.qd.dissociate.s2
-        kwarg['job_recipe'] = get_recipe(j1, s1, j2, s2)
-        kwarg['columns'] = [JOB_SETTINGS_BDE, SETTINGS1, SETTINGS2]
-        column_tup = ('BDE label', 'BDE dE', 'BDE ddG', 'BDE dG')
-    else:
-        kwarg['job_recipe'] = get_recipe(j1, s1)
-        kwarg['columns'] = [JOB_SETTINGS_BDE, SETTINGS1]
-        column_tup = ('BDE label', 'BDE dE')
-    kwarg['columns'] += [(i, j) for i, j in qd_df.columns if i in column_tup]
-
-    db.update_csv(qd_df[idx], **kwarg)
-
-
-def get_recipe(job1: Type[Job], s1: Settings,
-               job2: Optional[Type[Job]] = None, s2: Optional[Settings] = None) -> Settings:
-    """Return the a dictionary with job types and job settings."""
-    ret = Settings()
-    value1 = qmflows.singlepoint['specific'][type_to_string(job1)].copy()
-    value1.update(s1)
-    ret['BDE 1'] = {'key': job1, 'value': value1}
-
-    if job2 is not None and s2 is not None:
-        value2 = qmflows.freq['specific'][type_to_string(job2)].copy()
-        value2.update(s2)
-        ret['BDE 2'] = {'key': job2, 'value': value2}
+            qd_complete.properties.job_path += XYn.properties.pop('job_path')
+        except IndexError:
+            qd_complete.properties.job_path = XYn.properties.pop('job_path')
+        for mol in qd_list:
+            qd_complete.properties.job_path += mol.properties.pop('job_path')
 
     return ret
 
@@ -343,7 +161,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
 
     """
     # Optimize XYn
-    if job == AMSJob:
+    if job is AMSJob:
         s_cp = s.copy()
         s_cp.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
         lig.job_geometry_opt(job, s_cp, name='E_XYn_opt')

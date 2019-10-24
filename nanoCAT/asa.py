@@ -19,7 +19,7 @@ API
 """
 
 from typing import Optional, Union, Iterable, Tuple, List, Any, Type
-from itertools import cycle, chain
+from itertools import cycle, chain, islice
 from collections import abc
 
 import numpy as np
@@ -101,8 +101,8 @@ def get_asa_energy(mol_list: Iterable[Molecule],
 
     Returns
     -------
-    Three :math:`n` |np.ndarray|_ [|np.float64|_]
-        A tuple of 3 arrays containing :math:`E_{int}`, :math:`E_{strain}` and :math:`E`
+    Three :math:`n*3` |np.ndarray|_ [|np.float64|_]
+        A 2D array containing :math:`E_{int}`, :math:`E_{strain}` and :math:`E`
         for all *n* molecules in **mol_series**.
 
     """
@@ -132,7 +132,7 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     E_tot = E_int + E_strain
 
     # E_int, E_strain & E
-    return E_int, E_strain, E_tot
+    return np.array([E_int, E_strain, E_tot]).T
 
 
 def _get_asa_fragments(qd: Molecule, use_ff: bool = False) -> Tuple[Molecule, List[Molecule]]:
@@ -188,19 +188,19 @@ def _get_asa_ff_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule]]:
 
     # Cap the anchor atoms with hydrogen and construct a new set of ff parameters
     atom_list = [at for at in mol_complete if at.properties.anchor]
-    if atom_list[0].properties.charge == -1:  # Skip neutral atoms
+    if atom_list[0].properties.charge == -1:
         _cap_atoms(atom_list)
-        mol_complete.properties.name += '_frag'
+        mol_complete.properties.name += '_frags'
+    else:  # Skip neutral atoms
+        return mol_complete, mol_complete.separate()
 
     # Fragment the molecule and return
     mol_fragments = mol_complete.separate()
-
-    # Only anionic ligands are supported
-    if atom_list[0].properties.charge != -1:
-        return mol_complete, mol_fragments
+    mol_frag = mol_fragments[0]
+    mol_frag.properties.path = mol_complete.properties.path
+    mol_frag.properties.name = mol_complete.properties.name[:-1]
 
     # Construct new forcefield parameters for the capped ligands
-    mol_frag = mol_fragments[0]
     run_match_job(mol_frag, s=Settings({'input': {'forcefield': 'top_all36_cgenff'}}))
 
     # Apply the new parameters to all atoms in the to-be returned molecules
@@ -212,7 +212,11 @@ def _get_asa_ff_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule]]:
     # Set the prm parameter which points to the created .prm file
     mol_complete.properties.prm = mol_frag.properties.prm
     for mol in mol_fragments[1:]:
+        mol.properties.name = mol_frag.properties.name
+        mol.properties.path = mol_frag.properties.path
         mol.properties.prm = mol_frag.properties.prm
+
+    return mol_complete, mol_fragments
 
 
 Mol = Union[Molecule, AllChem.Mol]
@@ -227,7 +231,7 @@ def _asa_uff(mol_complete: Mol, mol_fragments: Iterable[Mol],
     mol_complete : |plams.Molecule|
         A Molecule representing the (unfragmented) relaxed structure of the system of interest.
 
-    mol_fragments : :data:`Iterable<typing.Iterable>` [|plams.Molecule|]
+    mol_fragments : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
         An iterable of Molecules represnting the induvidual moleculair or atomic fragments
         within **mol_complete**.
 
@@ -272,14 +276,14 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     mol_complete : |plams.Molecule|
         A Molecule representing the (unfragmented) relaxed structure of the system of interest.
 
-    mol_fragments : :data:`Iterable<typing.Iterable>` [|plams.Molecule|]
+    mol_fragments : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
         An iterable of Molecules represnting the induvidual moleculair or
         atomic fragments within **mol_complete**.
 
     read_template : :class:`bool`
         Whether or not to use the QMFlows template system.
 
-    job : :data:`Type<typing.Type>` [|plams.Job|]
+    job : :class:`type` [|plams.Job|]
         The Job type for the ASA calculations.
 
     s : |plams.Settings|
@@ -328,11 +332,11 @@ def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     mol_complete : |plams.Molecule|
         A Molecule representing the (unfragmented) relaxed structure of the system of interest.
 
-    mol_fragments : :data:`Iterable<typing.Iterable>` [|plams.Molecule|]
+    mol_fragments : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
         An iterable of Molecules represnting the individual moleculair or
         atomic fragments within **mol_complete**.
 
-    job : :data:`Type<typing.Type>` [|plams.Job|]
+    job : :class:`type` [|plams.Job|]
         The Job type for the ASA calculations.
 
     s : |plams.Settings|
@@ -351,16 +355,14 @@ def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
 
     # Calculate the energy of the total system
     mol_complete.round_coords()
-    qd_opt_ff(mol_complete, job, s, name='ASA_sp', job_func=Molecule.job_single_point)
+    qd_opt_ff(mol_complete, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
     E_complete = mol_complete.properties.energy.E
 
     # Calculate the (summed) energy of each individual fragment in the total system
     E_fragments = 0.0
     for frag_count, mol in enumerate(mol_fragments, 1):
         mol.round_coords()
-        mol.properties.name = mol_complete.properties.name[:-1]
-        mol.properties.path = mol_complete.properties.path
-        qd_opt_ff(mol, job, s, name='ASA_sp', job_func=Molecule.job_single_point)
+        qd_opt_ff(mol, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
         E_fragments += mol.properties.energy.E
 
     # Calculate the energy of an optimized fragment
@@ -373,6 +375,11 @@ def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
 
     E_fragment_opt = mol.properties.energy.E
     return E_complete, E_fragments, E_fragment_opt, frag_count
+
+
+def _by_pdb(atom: Atom) -> Tuple[int, int, str]:
+    """Sort by residue number, (inverted) atomic number and finally the atom name."""
+    return atom.properties.pdb_info.ResidueNumber, atom.atnum**-1, atom.properties.pdb_info.Name
 
 
 def _cap_atoms(atom_list: Iterable[Atom]) -> None:
@@ -393,19 +400,32 @@ def _cap_atoms(atom_list: Iterable[Atom]) -> None:
         for at in atom_list:
             at.properties.charge = 0
     except AttributeError as ex:
-        err = "The 'atom_list' parameter contains an object of invalid type: {repr(type(at))}"
+        if not isinstance(at, Atom):
+            err = f"The 'atom_list' parameter contains an object of invalid type: {type(at)}"
+        else:
+            err = str(ex)
         raise TypeError(err).with_traceback(ex.__traceback__)
 
     # Cap the molecule with hydrogens
+    # The molkti.add_Hs function unfortunately gets stuck when calling AllChem.EmbedMolecule
     mol = at.mol
-    rdmol = molkit.add_Hs(mol, forcefield='uff', return_rdmol=True)
+    _rdmol = molkit.to_rdmol(mol)
+    rdmol = AllChem.AddHs(_rdmol, addCoords=True)
     conf = rdmol.GetConformer()
 
     # Add the new (and only the new!) rdkit capping atoms to the initial plams molecule
-    iterator = zip(atom_list, rdmol.GetAtoms()[-len(atom_list):])
-    for atom_adjacent, rd_atom in iterator:
+    rd_atoms = islice(rdmol.GetAtoms(), len(mol), None)
+    for atom_adjacent, rd_atom in zip(atom_list, rd_atoms):
         coords = tuple(conf.GetAtomPosition(rd_atom.GetIdx()))
         atom_new = Atom(atnum=rd_atom.GetAtomicNum(), coords=coords)
+        mol.add_atom(atom_new, adjacent=[atom_adjacent])
+
         atom_new.properties = atom_adjacent.properties.copy()
         atom_new.properties.anchor = False
-        mol.add_atom(atom_new, adjacent=atom_adjacent)
+        atom_new.properties.pdb_info.Name = 'Hxx '
+        atom_new.properties.pdb_info.IsHeteroAtom = False
+        del atom_new.properties.charge_float
+        del atom_new.properties.symbol
+
+    # Resort all atoms
+    mol.atoms.sort(key=_by_pdb)

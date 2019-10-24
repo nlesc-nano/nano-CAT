@@ -56,7 +56,7 @@ def init_ff_assignment(ligand_df: SettingsDataFrame, forcefield: str = 'top_all3
         * ``"top_all36_cgenff_new"``
         * ``"top_all36_lipid"``
 
-    See also
+    See Also
     --------
     MATCH publication:
         `MATCH: An atom-typing toolset for molecular mechanics force fields,
@@ -104,7 +104,7 @@ def run_match_job(mol: Molecule, s: Settings, job_type: Type[Job] = MatchJob) ->
     job_type : :class:`type` [|plams.Job|]
         The type of Job.
 
-    See also
+    See Also
     --------
     :class:`.MatchJob`
         A :class:`Job` subclass for interfacing with MATCH_: Multipurpose Atom-Typer for CHARMM.

@@ -28,7 +28,7 @@ API
 
 """
 
-from typing import Iterable, Type, List, Tuple
+from typing import Iterable, Type, List, Tuple, Optional
 from itertools import product
 
 import numpy as np
@@ -200,27 +200,33 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
 
 
 def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
-                job: Type[Job], s: Settings) -> np.ndarray:
+                job: Optional[Type[Job]] = None, s: Optional[Settings] = None) -> np.ndarray:
     """Calculate the bond dissociation energy: dG = dE(lvl1) + (dG(lvl2) - dE(lvl2)).
 
     Parameters
     ----------
-    tot : |plams.Molecule|_
+    tot : |plams.Molecule|
         The complete intact quantum dot.
 
-    lig : |plams.Molecule|_
+    lig : |plams.Molecule|
         A ligand dissociated from the surface of the quantum dot
 
-    core : |list|_ [|plams.Molecule|_]
-        A list with one or more quantum dots (*i.e.* **tot**) with **lig** removed.
+    core : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
+        An iterable with one or more quantum dots (*i.e.* **tot**) with **lig** removed.
 
-    job : |plams.Job|_
+    job : |plams.Job|
         A :class:`.Job` subclass.
+        The dG will be skipped if ``None``.
 
-    s : |plams.Settings|_
+    s : |plams.Settings|
         The settings for **job**.
+        The dG will be skipped if ``None``.
 
     """
+    # The calculation of dG has been disabled by the user
+    if job is None:
+        return np.full(len(core), np.nan)
+
     # Optimize XYn
     s.input.ams.Constraints.Atom = lig.properties.indices
     lig.job_freq(job, s, name='G_XYn_freq')

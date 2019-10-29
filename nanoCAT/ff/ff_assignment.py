@@ -112,6 +112,9 @@ def run_match_job(mol: Molecule, s: Settings, job_type: Type[Job] = MatchJob) ->
     """  # noqa
     job = job_type(molecule=mol, settings=s, name='ff_assignment')
 
+    # Pickling MatchJob instances has a habit of crashing hard-crashing python
+    job.settings.pickle = False
+
     # Run the job
     try:
         results = job.run()

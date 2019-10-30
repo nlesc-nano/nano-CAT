@@ -18,7 +18,7 @@ API
 
 """
 
-from typing import Tuple, NoReturn, Iterable, Any, Type
+from typing import Tuple, Iterable, Any, Type
 
 from scm.plams import Molecule, Settings, ResultsError, Results
 from scm.plams.core.basejob import Job
@@ -119,7 +119,7 @@ def run_match_job(mol: Molecule, s: Settings, job_type: Type[Job] = MatchJob) ->
     try:
         results = job.run()
         if job.status != 'successful':
-            _raise_results_error(results)
+            raise _get_results_error(results)
 
         symbol_list = results.get_atom_types()
         charge_list = results.get_atom_charges()
@@ -147,8 +147,10 @@ def post_proccess_prm(filename: str) -> None:
     prm.write(filename)
 
 
-def _raise_results_error(results: Results) -> NoReturn:
+def _get_results_error(results: Results) -> ResultsError:
     """Raise a :exc:`ResultsError` with the content of ``results['$JN.err']`` as error mesage."""
     filename = results['$JN.err']
     with open(filename, 'r') as f:
-        raise ResultsError(f.read().rstrip('\n'))
+        raise ResultsError(
+            f.read().split('\n', maxsplit=1)[0]
+        )

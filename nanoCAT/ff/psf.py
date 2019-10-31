@@ -796,18 +796,18 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         """  # noqa
         def get_res_id(at: Atom) -> int:
-            return at.properties.pdb_info.ResidueNumber if 'ResidueNumber' in at.properties.pdb_info else 1  # noqa
+            return at.properties.pdb_info.ResidueNumber or 1  # noqa
 
         def get_res_name(at: Atom) -> str:
-            return at.properties.pdb_info.ResidueName if 'ResidueName' in at.properties.pdb_info else 'COR'  # noqa
+            return at.properties.pdb_info.ResidueName or 'COR'  # noqa
 
         def get_at_type(at: Atom) -> str:
-            return at.properties.symbol if 'symbol' in at.properties else at.symbol
+            return at.properties.symbol or at.symbol
 
         def get_charge(at: Atom) -> float:
-            if 'charge_float' in at.properties:
+            if at.properties.charge_float:
                 return float(at.properties.charge_float)
-            elif 'charge' in at.properties:
+            elif at.properties.charge:
                 return float(at.properties.charge)
             return 0.0
 

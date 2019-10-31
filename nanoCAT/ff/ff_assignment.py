@@ -20,9 +20,10 @@ API
 
 from typing import Tuple, Iterable, Any, Type
 
-from scm.plams import Molecule, Settings, ResultsError, Results
+from scm.plams import Molecule, Settings
 from scm.plams.core.basejob import Job
 
+from CAT.jobs import _get_results_error
 from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
 from CAT.workflows.workflow import WorkFlow
@@ -145,12 +146,3 @@ def post_proccess_prm(filename: str) -> None:
     """Move the ``"IMPROPERS"`` block to the bottom of the .prm file so CP2K doesnt complain."""
     prm = PRMContainer.read(filename)
     prm.write(filename)
-
-
-def _get_results_error(results: Results) -> ResultsError:
-    """Raise a :exc:`ResultsError` with the content of ``results['$JN.err']`` as error mesage."""
-    filename = results['$JN.err']
-    with open(filename, 'r') as f:
-        raise ResultsError(
-            f.read().split('\n', maxsplit=1)[0]
-        )

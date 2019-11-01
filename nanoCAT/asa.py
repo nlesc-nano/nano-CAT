@@ -345,7 +345,7 @@ def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
 
     # Calculate the energy of an optimized fragment
     s.input.motion.geo_opt.soft_update({
-        'type': 'minimization', 'optimizer': 'LBFGS', 'max_iter': 1000
+        'type': 'minimization', 'optimizer': 'CG', 'max_iter': 1000
     })
     s.input['global'].run_type = 'geometry_optimization'
     qd_opt_ff(mol_min, job, s, name='ASA_opt')

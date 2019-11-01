@@ -136,7 +136,7 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     return ret
 
 
-def _get_asa_fragments(qd: Molecule, use_ff: bool = False) -> Tuple[Molecule, List[Molecule]]:
+def _get_asa_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule], Molecule]:
     """Construct the fragments for an activation strain analyses.
 
     Parameters
@@ -147,9 +147,9 @@ def _get_asa_fragments(qd: Molecule, use_ff: bool = False) -> Tuple[Molecule, Li
 
     Returns
     -------
-    |plams.Molecule| and :class:`list` [|plams.Molecule|]
-        A Molecule with all core atoms removed and a list of molecules,
-        one for each fragment within the molecule.
+    :class:`list` [|plams.Molecule|] and |plams.Molecule|
+        A Molecule with all core atoms removed, a list of molecules,
+        one for each fragment within the molecule and the core.
         Fragments are defined based on connectivity patterns (or lack thereof).
 
     """
@@ -167,14 +167,13 @@ def _get_asa_fragments(qd: Molecule, use_ff: bool = False) -> Tuple[Molecule, Li
     mol_complete.properties.name += '_frags'
     core.properties.name += '_core'
 
-    # Fragment the molecule and return
-    mol_fragments = mol_complete.separate()
+    # Fragment the molecule
+    ligand_list = mol_complete.separate()
 
-    iterator = zip(chain(*mol_fragments), mol_complete)
-    for at1, at2 in iterator:
+    # Set atomic properties
+    for at1, at2 in zip(chain(*ligand_list), mol_complete):
         at1.properties.symbol = at2.properties.symbol
         at1.properties.charge_float = at2.properties.charge_float
-
     for at1, at2 in zip(core, qd):
         at1.properties.symbol = at2.properties.symbol
         at1.properties.charge_float = at2.properties.charge_float
@@ -183,19 +182,15 @@ def _get_asa_fragments(qd: Molecule, use_ff: bool = False) -> Tuple[Molecule, Li
     name = mol_complete.properties.name[:-1]
     path = mol_complete.properties.path
     prm = mol_complete.properties.prm
-    for mol in mol_fragments:
+    for mol in ligand_list:
         mol.properties.name = name
         mol.properties.path = path
         mol.properties.prm = prm
 
-    mol_fragments.append(core)
-    return qd, mol_fragments
+    return ligand_list, core
 
 
-Mol = Union[Molecule, AllChem.Mol]
-
-
-def _asa_uff(mol_complete: Mol, mol_fragments: Iterable[Mol],
+def _asa_uff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
              **kwargs: Any) -> Tuple[float, float, float, int]:
     r"""Perform an activation strain analyses using RDKit UFF.
 
@@ -239,9 +234,9 @@ def _asa_uff(mol_complete: Mol, mol_fragments: Iterable[Mol],
     return E_complete, E_fragments, 0.0, E_fragment_opt, frag_count
 
 
-def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
+def _asa_plams(mol_complete: Molecule, ligands: Iterable[Molecule], core: Molecule,
                read_template: bool, job: Type[Job],
-               settings: Settings) -> Tuple[float, float, float, int]:
+               settings: Settings) -> Tuple[float, float, float, float, int]:
     """Perform an activation strain analyses with custom Job and Settings.
 
     Parameters
@@ -249,26 +244,26 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     mol_complete : |plams.Molecule|
         A Molecule representing the (unfragmented) relaxed structure of the system of interest.
 
-    mol_fragments : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
-        An iterable of Molecules represnting the induvidual moleculair or
-        atomic fragments within **mol_complete**.
+    ligands : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
+        An iterable of Molecules containing all ligands in mol_complete.
 
-    read_template : :class:`bool`
-        Whether or not to use the QMFlows template system.
+    core : |plams.Molecule|, optional
+        The core molecule from **mol_complete**.
 
     job : :class:`type` [|plams.Job|]
         The Job type for the ASA calculations.
 
-    s : |plams.Settings|
+    settings : |plams.Settings|
         The Job Settings for the ASA calculations.
 
     Returns
     -------
-    :class:`float`, :class:`float`, :class:`float` and :class:`int`
+    :class:`float`, :class:`float`, :class:`float`, :class:`float` and :class:`int`
         The energy of **mol_complete**,
-        the energy of **mol_fragments**,
-        the energy of an optimized fragment within **mol_fragments** and
-        the total number of fragments within **mol_fragments**.
+        the energy of **ligands**,
+        the energy of **core**,
+        the energy of an optimized fragment within **ligands** and
+        the total number of fragments within **ligands**.
 
     """
     s = settings
@@ -281,7 +276,7 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
 
     # Calculate the (summed) energy of each individual fragment in the total system
     E_fragments = 0.0
-    for frag_count, mol in enumerate(mol_fragments, 1):
+    for frag_count, mol in enumerate(ligands, 1):
         mol.round_coords()
         mol.properties.name += '_frag'
         mol.properties.path = mol_complete.properties.path
@@ -292,10 +287,10 @@ def _asa_plams(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     mol.job_geometry_opt(job, s)
 
     E_fragment_opt = mol.properties.energy.E
-    return E_complete, E_fragments, 0.0, E_fragment_opt, frag_count
+    return E_complete, E_ligands, E_core, E_ligand_opt, ligand_count
 
 
-def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
+def _asa_plams_ff(mol_complete: Molecule, ligands: Iterable[Molecule], core: Molecule,
                   read_template: bool, job: Type[Job],
                   settings: Settings) -> Tuple[float, float, float, float, int]:
     """Perform an activation strain analyses with custom Job, Settings and forcefield.
@@ -305,43 +300,51 @@ def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     mol_complete : |plams.Molecule|
         A Molecule representing the (unfragmented) relaxed structure of the system of interest.
 
-    mol_fragments : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
-        An iterable of Molecules represnting the individual moleculair or
-        atomic fragments within **mol_complete**.
+    ligands : :class:`Iterable<collections.abc.Iterable>` [|plams.Molecule|]
+        An iterable of Molecules containing all ligands in mol_complete.
+
+    core : |plams.Molecule|, optional
+        The core molecule from **mol_complete**.
 
     job : :class:`type` [|plams.Job|]
         The Job type for the ASA calculations.
 
-    s : |plams.Settings|
+    settings : |plams.Settings|
         The Job Settings for the ASA calculations.
 
     Returns
     -------
-    :class:`float`, :class:`float`, :class:`float` and :class:`int`
+    :class:`float`, :class:`float`, :class:`float`, :class:`float` and :class:`int`
         The energy of **mol_complete**,
-        the energy of **mol_fragments**,
-        the energy of an optimized fragment within **mol_fragments** and
-        the total number of fragments within **mol_fragments**.
+        the energy of **ligands**,
+        the energy of **core**,
+        the energy of an optimized fragment within **ligands** and
+        the total number of fragments within **ligands**.
 
     """
     s = Settings(settings)
 
-    E_fragments = 0.0
-    E_core = 0.0
+    E_ligands = 0.0
     E_min = np.inf
     mol_min = None
 
-    # Calculate the (summed) energy of each individual fragment in the total system
-    for frag_count, mol in enumerate(mol_fragments, 0):
+    # Calculate the (summed) energy of each individual ligand fragment in the total system
+    for ligand_count, mol in enumerate(ligands, 1):
         mol.round_coords()
         qd_opt_ff(mol, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
         E = mol.properties.energy.E
-        if mol.properties.name.endswith('_core'):
-            E_core += E
-        else:
-            E_fragments += E
-            if E < E_min:
-                E_min, mol_min = E, mol
+        E_ligands += E
+        if E < E_min:
+            E_min, mol_min = E, mol
+
+    # One of the calculations failed; better stop now
+    if np.isnan(E_ligands):
+        return np.nan, np.nan, np.nan, np.nan, ligand_count
+
+    # Calculate the energy of the core fragment
+    core.round_coords()
+    qd_opt_ff(core, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
+    E_core = mol.properties.energy.E
 
     # Calculate the energy of an optimized fragment
     s.input.motion.geo_opt.soft_update({
@@ -349,11 +352,11 @@ def _asa_plams_ff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     })
     s.input['global'].run_type = 'geometry_optimization'
     qd_opt_ff(mol_min, job, s, name='ASA_opt')
-    E_fragment_opt = mol_min.properties.energy.E
+    E_ligand_opt = mol_min.properties.energy.E
 
     # Calculate the energy of the total system
     mol_complete.round_coords()
     qd_opt_ff(mol_complete, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
     E_complete = mol_complete.properties.energy.E
 
-    return E_complete, E_fragments, E_core, E_fragment_opt, frag_count
+    return E_complete, E_ligands, E_core, E_ligand_opt, ligand_count

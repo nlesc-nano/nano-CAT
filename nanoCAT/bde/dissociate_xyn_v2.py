@@ -1,94 +1,114 @@
-from itertools import (chain, combinations)
-from collections import OrderedDict
+import collections
+from itertools import chain, combinations, product
 from typing import (
-    Any, Iterable, Tuple, Dict, List, Optional, Hashable, FrozenSet, Callable, Iterator, Generator
+    Union, Mapping, Iterable, Tuple, Dict, List, Optional, Hashable, FrozenSet, Generator, Iterator,
+    Callable, Any
 )
 
 import numpy as np
 from scipy.spatial.distance import cdist
 
-from scm.plams import (Molecule, Settings)
+from scm.plams import Molecule, Atom
 
-from CAT.abc.dataclass import AbstractDataClass
+from assertionlib.dataclass import AbstractDataClass
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 
 
 class MolDissociater(AbstractDataClass):
-    """
+    """MolDissociater.
 
     Parameters
     ----------
-    mol : |plams.Molecule|_
+    mol : |plams.Molecule|
         A PLAMS molecule consisting of cores and ligands.
 
-    core_idx : |Iterable|_ [|int|_]
-        An iterable with atomic indices of all core atoms valid for dissociation.
+    core_idx : :class:`int` or :class:`Iterable<colelctions.abc.Iterable>` [:class:`int`]
+        An iterable with (1-based) atomic indices of all core atoms valid for dissociation.
 
-    ligand_count : int
+    ligand_count : :class:`int`
         The number of ligands to-be dissociation with a single atom from
         :attr:`MolDissociater.core_idx`.
 
-    max_dist : float
+    max_dist : :class:`float`, optional
         Optional: The maximum distance between core atoms for them to-be considered neighbours.
-        If ``None``, this value will be guessed based
-        on the radial distribution function of **mol**.
+        If ``None``, this value will be guessed based on the radial distribution function of
+        **mol**.
 
-    topology : |dict|_ [|int|_, |str|_]
-        Optional: A dictionary that maps neighbouring atom counts to a user-specified
-        topology descriptor.
+    topology : :class:`dict` [:class:`int`, :class:`str`], optional
+        A mapping of neighbouring atom counts to a user-specified topology descriptor.
 
     """
+
+    """####################################### Properties #######################################"""
+
+    @property
+    def core_idx(self) -> np.ndarray: return self._core_idx
+
+    @core_idx.setter
+    def core_idx(self, value: Union[int, Iterable[int]]) -> None:
+        if isinstance(value, collections.abc.Iterator):
+            self._core_idx = np.fromiter(value, dtype=int)
+        else:
+            self._core_idx = np.array(value, dtype=int, ndmin=1)
+        self._core_idx -= 1
+
+    @property
+    def max_dist(self) -> float: return self._max_dist
+
+    @max_dist.setter
+    def max_dist(self, value: Optional[float]) -> None:
+        if value is not None:
+            self._max_dist = float(value)
+        else:
+            idx = 1 + int(self.core_idx[0])
+            self._max_dist = guess_core_core_dist(self.mol, self.mol[idx])
+
+    @property
+    def topology(self) -> Mapping[int, str]: return self._topology
+
+    @topology.setter
+    def topology(self, value: Optional[Mapping[int, str]]) -> None:
+        self._topology = value if value is not None else {}
 
     _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords', '_partition_dict'})
 
     def __init__(self, mol: Molecule,
-                 core_index: Iterable[int],
+                 core_idx: Union[int, Iterable[int]],
                  ligand_count: int,
-                 cc_dist: Optional[float] = None,
-                 topology: Optional[Dict[int, str]] = None) -> None:
+                 max_dist: Optional[float] = None,
+                 topology: Optional[Mapping[int, str]] = None) -> None:
         """Initialize a :class:`MolDissociater` instance."""
+        super().__init__()
+
         self.mol: Molecule = mol
-        self.core_idx: np.ndarray = np.array(core_index, dtype=int, copy=False) - 1
+        self.core_idx: np.ndarray = core_idx
         self.ligand_count: int = ligand_count
-        self.max_dist: float = float(cc_dist) if cc_dist is not None else guess_core_core_dist()
-        self.topology: Dict[int, str] = topology if topology is not None else {}
+        self.max_dist: float = max_dist
+        self.topology: Mapping[int, str] = topology
 
+        # Private instance variables
         self._coords: np.ndarray = mol.as_array()
-        self._partition_dict: Optional[OrderedDict] = None
+        self._partition_dict: Optional[Mapping[int, List[Atom]]] = None
 
-    def run(self) -> Generator:
-        self.assign_topology()
-        cor_lig_pairs = self.filter_lig_core()
-        cor_lig_combinations = self.get_combinations(cor_lig_pairs)
-        return self.dissociate(cor_lig_combinations)
+    @AbstractDataClass.inherit_annotations()
+    def _str_iterator(self):
+        return ((k.strip('_'), v) for k, v in super()._str_iterator())
 
     """################################## Topology assignment ##################################"""
 
     def assign_topology(self) -> None:
-        """Assign a toology to all atoms in :attr:`MolDissociater.mol`
+        """Assign a topology to all core atoms in :attr:`MolDissociater.core_idx`.
 
-        A topology is assigned to aforementioned atoms based on the number of neighbouring atoms.
+        The topology descriptor is based on:
+        * The number of neighbours within a radius defined by :attr:`MolDissociater.max_dist`.
+        * The mapping defined in :attr:`MolDissociater.topology`,
+          which maps the number of neighbours to a user-defined topology description.
 
-        Parameters
-        ----------
-        xyz_array : :math:`n*3` |np.ndarray|_ [|np.float64|_]
-            An array with the cartesian coordinates of a molecule with :math:`n` atoms.
+        If no topology description is available for a particular neighbouring atom count,
+        then a generic :code:`str(i) + "_neighbours"` descriptor is used
+        (where `i` is the neighbouring atom count).
 
-        idx : |np.ndarray|_ [|np.int64|_]
-            An array of atomic indices in **xyz_array**.
-
-        topology_dict : |dict|_ [|int|_, |str|_]
-            A dictionary which maps the number of neighbours (per atom) to a
-            user-specified topology.
-
-        max_dist : float
-            The radius (Angstrom) for determining if an atom counts as a neighbour or not.
-
-        Returns
-        -------
-        |np.ndarray|_ [|np.int64|_] and |np.ndarray|_ [|np.int64|_]
-            The indices of all atoms in **xyz_array[idx]** exposed to the surface and
-            the topology of atoms in **xyz_array[idx]**.
+        Performs an inplace update of all |Atom.properties| ``["topology"]`` values.
 
         """
         # Extract variables
@@ -103,18 +123,19 @@ class MolDissociater(AbstractDataClass):
 
         # Find all valid core atoms and create a topology indicator
         valid_core, _ = np.where(dist <= max_dist)
-        neighbour_count = np.bincount(valid_core, minlength=len(i)) - 1
-        topology = self._get_topology(neighbour_count)
+        neighbour_count = np.bincount(valid_core, minlength=len(i))
+        neighbour_count -= 1
+        topology: List[str] = self._get_topology(neighbour_count)
 
         for j, top in zip(self.core_idx, topology):
-            j = 1 + int(j)
+            j = 1 + int(j)  # Switch from 0-based to 1-based indices
             mol[j].properties.topology = top
 
     def _get_topology(self, neighbour_count: Iterable[int]) -> List[str]:
         """Translate the number of neighbouring atoms (**bincount**) into a list of topologies.
 
         If a specific number of neighbours (*i*) is absent from **topology_dict** then that
-        particular element is set to a generic str(*i*) + '_neighbours'.
+        particular element is set to a generic :code:`str(i) + '_neighbours'`.
 
         Parameters
         ----------
@@ -123,32 +144,36 @@ class MolDissociater(AbstractDataClass):
 
         Returns
         -------
-        :math:`n` :class:`list` [:class:`str`]
+        :math:`n` :class:`Iterator` [:class:`str`]
             A list of topologies for all :math:`n` atoms in **bincount**.
 
-        See also
+        See Also
         --------
         :attr:`MolDissociater.topology`
             A dictionary that maps neighbouring atom counts to a user-specified topology descriptor.
 
         """
-        topology = self.topology
-        return [(topology[i] if i in topology else f'{i}_neighbours') for i in neighbour_count]
+        topology: Mapping[int, str] = self.topology
+        return [topology.get(i, f'{i}_neighbours') for i in neighbour_count]
 
     """############################ core/ligand pair identification ############################"""
 
-    def filter_lig_core(self, anchor_marker: Hashable = 'anchor') -> np.ndarray:
-        """Create and return the indices of all possible ligand/core atom pairs.
+    def get_pairs_closest(self, anchor_getter: Optional[Callable[[Atom], Any]] = None
+                          ) -> np.ndarray:
+        """Create and return the indices of each core atom and the :math:`n` closest ligands.
+
+        :math:`n` is defined according to :attr:`MolDissociater.ligand_count`.
 
         Parameters
         ----------
-
-        idx_lig : |np.ndarray|_ [|np.int64|_]
-            An array of all ligand anchor atoms (Y).
+        anchor_getter : :data:`Callable<typing.Callable>`, optional
+            A callable which takes an Atom as argument and returns an object for truth-testing.
+            Atoms whose return-value evaluates to ``True`` will be treated as anchor atoms.
+            If ``None``, use the |Atom.properties| ``["anchor"]`` attribute.
 
         Returns
         -------
-        :math:`m*2` |np.ndarray|_ [|np.int64|_]
+        :math:`m*n` |np.ndarray|_ [|np.int64|_]
             An array with the indices of all :math:`m` valid ligand/core pairs
             (as determined by **max_dist**).
 
@@ -156,7 +181,7 @@ class MolDissociater(AbstractDataClass):
         # Extract instance variables
         xyz: np.ndarray = self._coords
         i: np.ndarray = self.core_idx
-        j: np.ndarray = self._gather_anchors(anchor_marker)
+        j: np.ndarray = self._gather_anchors(anchor_getter)
         n: int = self.ligand_count
 
         # Find all core atoms within a radius **max_dist** from a ligand
@@ -166,98 +191,138 @@ class MolDissociater(AbstractDataClass):
         # The first column contains all core indices
         # The remaining n columns contain the n closest ligands for their respective cores
         cor_lig_pairs = np.empty((len(dist), 1+n), dtype=int)
-        cor_lig_pairs[:, 0] = np.arange(len(dist))
-        for i in range(1, 1+n):
-            cor_lig_pairs[i] = np.nanargmin(cor_lig_pairs, axis=0)
+        cor_lig_pairs[:, 0] = i
+        row = np.arange(len(dist))
+        for k in range(1, 1+n):
+            cor_lig_pairs[:, k] = np.nanargmin(dist, axis=1)
 
-            # Replace the min dist with nan;
-            # the next iteration will now return the second most min dist etc..
-            idx2nan = tuple(cor_lig_pairs[:, (0, i)].tolist())
+            # Replace the min dist with nan
+            # The time np.nanargmin(dist, axis=1) is called it will return the 2nd min dist etc.
+            idx2nan = row, cor_lig_pairs[:, k]
             dist[idx2nan] = np.nan
 
-        # Find np.nan values; np.nan values appear if a particular core atom has
-        # less than n ligand neighbours
-        invalid = np.isnan(cor_lig_pairs).any(axis=0)
-        valid = np.invert(invalid)[None, :]
-        return cor_lig_pairs[valid]
+        return cor_lig_pairs
 
-    def get_combinations(self, cor_lig_pairs: np.ndarray,
-                         key_tup: Iterable[Hashable] = ('properties', 'pdb_info', 'ResidueNumber'),
-                         getter: Callable = getattr) -> Dict[int, Iterator[Tuple[Tuple[int]]]]:
-        self.partition_mol(key_tup, getter)
+    def get_pairs_distance(self, anchor_getter: Optional[Callable[[Atom], Any]] = None,
+                           max_dist: float = 5.0) -> np.ndarray:
+        """Create and return the indices of each core atom and all ligand pairs with **radius**.
 
+        :math:`n` is defined according to :attr:`MolDissociater.ligand_count`.
+
+        Parameters
+        ----------
+        anchor_getter : :data:`Callable<typing.Callable>`, optional
+            A callable which takes an Atom as argument and returns an object for truth-testing.
+            Atoms whose return-value evaluates to ``True`` will be treated as anchor atoms.
+            If ``None``, use the |Atom.properties| ``["anchor"]`` attribute.
+
+        max_dist : :class:`float`
+            The radius used as cutoff.
+
+        Returns
+        -------
+        :math:`m*n` |np.ndarray|_ [|np.int64|_]
+            An array with the indices of all :math:`m` valid ligand/core pairs
+            (as determined by **max_dist**).
+
+        """
         # Extract instance variables
-        mol: Molecule = self.mol
+        xyz: np.ndarray = self._coords
+        i: np.ndarray = self.core_idx
+        j: np.ndarray = self._gather_anchors(anchor_getter)
         n: int = self.ligand_count
 
+        # Find all core atoms within a radius **max_dist** from a ligand
+        dist = cdist(xyz[i], xyz[j])
+        np.fill_diagonal(dist, max_dist)
+
+        # Construct a mapping with core atoms and keys and all matching ligands as values
+        idx = np.where(dist < max_dist)
+        pair_mapping: Dict[int, List[int]] = {}
+        for x, y in zip(*idx):
+            try:
+                pair_mapping[x].append(y)
+            except KeyError:
+                pair_mapping[x] = [y]
+
+        # Return a 2D array with all valid core/ligand pairs
+        iterator = pair_mapping.items()
+        cor_lig_pairs = list(chain.from_iterable(
+            ((k,) + item for item in combinations(v, n)) for k, v in iterator if len(v) >= n
+        ))
+
+        return np.array(cor_lig_pairs)
+
+    def get_combinations(self, cor_lig_pairs: np.ndarray) -> Dict[int, Iterator[Tuple[Tuple[int]]]]:
+        """Create a dictionary with combinations."""
+        # Extract instance variables
+        n: int = self.ligand_count
+
+        self._partition_dict: Mapping[int, List[Atom]] = self.partition_mol()
         partition_dict = self._partition_dict
-        ret: Dict[int, Iterator[Tuple[int]]] = {}
 
         # Change the ligand anchor index into a residue ResidueNumber
         cor_res_pairs = cor_lig_pairs + 1
+        cor_res_pairs[:, 1:] += 1
 
         # Fill the to-be returned dictionary
-        for core, (_, *row) in enumerate(cor_res_pairs):
-            res_number = (self._recursive_get(mol[i], key_tup, getter) for i in row.tolist())
-            lig_indices = (partition_dict[i] for i in res_number)
+        ret: Dict[int, Iterator[Tuple[List[int], ...]]] = {}
+        for core, *row in cor_res_pairs.tolist():
+            lig_indices = (partition_dict[i] for i in row)
             ret[core] = combinations(lig_indices, n)
 
         return ret
 
-    def _gather_anchors(self, key_tup: Iterable[Hashable] = ('properties', 'anchor'),
-                        getter: Callable = getattr) -> np.ndarray:
-        """Construct an array with the atomic indices (0-based) of all ligand anchor atoms."""
-        return np.array([
-            i for i, at in enumerate(self.mol) if self._recursive_get(at, key_tup, getter)
-        ])
+    def _gather_anchors(self, anchor_getter: Optional[Callable[[Atom], Any]] = None) -> np.ndarray:
+        """Return an array with the (0-based) indices of all anchor atoms."""
+        def _default_getter(at: Atom) -> Any: return at.properties.anchor
+
+        func = anchor_getter if anchor_getter is not None else _default_getter
+        return np.array([i for i, at in enumerate(self.mol) if func(at)])
 
     """################################# Molecule dissociation #################################"""
 
-    def dissociate(self, combinations: Dict[int, Iterator[Tuple[Tuple[int]]]]):
+    def __call__(self, combinations: Dict[int, Iterator[Tuple[List[int], ...]]]) -> Generator:
+        """Get this party started."""
         # Extract instance variables
         mol: Molecule = self.mol
 
         # Construct new indices
-        properties = mol.properties
         indices = self._get_new_indices()
 
-        for _core, iterator in combinations.items():
+        for core_idx, iterator in combinations.items():
             for lig_pair in iterator:
                 # Create a new molecule
                 mol_new = mol.copy()
-                mol_new.properties = s = Settings()
+                s = mol_new.properties
 
                 # Create a list of to-be removed atoms
-                core = mol_new[_core]
+                core: Atom = mol_new[core_idx]
                 delete_at = [core]
                 delete_at += [mol_new[i] for i in chain.from_iterable(lig_pair)]
 
                 # Update the Molecule.properties attribute of the new molecule
-                s.name = properties.name
-                s.path = properties.path
-                s.prm = properties.prm
                 s.indices = indices
                 s.job_path = []
-                s.core_topology = f'{str(mol[core].properties.topology)}_{core}'
+                s.core_topology = f'{core.properties.topology}_{core_idx}'
                 s.lig_residue = sorted(
-                    [mol[i[0]].properties.pdb_info.ResidueNumber for i in lig_pair]
+                    [mol_new[i[0]].properties.pdb_info.ResidueNumber for i in lig_pair]
                 )
-                s.df_index = (mol_new.properties.core_topology +
-                              ' '.join(str(i) for i in mol_new.properties.lig_residue))
-
-                # if core.bonds:
-                #     raise NotImplementedError
+                s.df_index: str = s.core_topology + ' '.join(str(i) for i in s.lig_residue)
 
                 for at in delete_at:
                     mol_new.delete_atom(at)
-
                 yield mol_new
 
     def _get_new_indices(self) -> List[int]:
         """Return an updated version of :attr:`MolDissociater.mol` ``.properties.indices``."""
         n: int = self.ligand_count
         mol: Molecule = self.mol
-        partition_dict: OrderedDict = self._partition_dict
+        partition_dict: Mapping[int, List[Atom]] = self._partition_dict
+
+        if not mol.properties.indices:
+            mol.properties.indices = indices = []
+            return indices
 
         # Delete the indices of the last n ligands
         ret = mol.properties.indices.copy()
@@ -276,13 +341,28 @@ class MolDissociater(AbstractDataClass):
 
     """########################################## Misc ##########################################"""
 
-    def partition_mol(self,
-                      key_tup: Iterable[Hashable] = ('properties', 'pdb_info', 'ResidueNumber'),
-                      getter: Callable = getattr) -> OrderedDict:
-        """Partition the atoms within a molecule based on a list of user specified keys."""
-        ret = OrderedDict()
+    def partition_mol(self, key_getter: Optional[Callable[[Atom], Hashable]] = None
+                      ) -> Dict[int, List[int]]:
+        """Partition the atoms within a molecule based on a user-specified criteria.
+
+        Parameters
+        ----------
+        key_getter : :data:`Callable<typing.Callable>`, optional
+            A callable which takes an Atom as argument and
+            returns a :class:`Hashable<collections.abc.Hashable>` object.
+            If ``None``, use the |Atom.properties| ``["pdb_info"]["ResidueNumber"]`` attribute.
+
+        Returns
+        -------
+        :class:`dict` [:class:`int`, :class:`list` [:class:`int`]]
+            A dictionary with keys construcetd by **key_getter** and values consisting of
+            lists with matching atomic indices.
+
+        """
+        _key_getter = key_getter if key_getter is not None else self._get_residue_number
+        ret = {}
         for i, at in enumerate(self.mol, 1):
-            key = self._recursive_get(at, key_tup, getter)
+            key = _key_getter(at)
             try:
                 ret[key].append(i)
             except KeyError:
@@ -290,9 +370,27 @@ class MolDissociater(AbstractDataClass):
         return ret
 
     @staticmethod
-    def _recursive_get(obj: Any, key_tup: Iterable[Hashable], getter: Callable = getattr):
-        """Recursivelly call **getter** on **obj** untill all keys in **key_tup** are exhausted."""
-        ret = obj
-        for k in key_tup:
-            ret = getter(ret, k)
-        return ret
+    def _get_residue_number(atom: Atom) -> Hashable: return atom.properties.pdb_info.ResidueNumber
+
+
+from scm.plams import readpdb
+
+filename = '/Users/basvanbeek/Downloads/Cd68Cl26Se55__26_C#CCNCC[=O][O-]@O8.pdb'
+mol = readpdb(filename)
+for at in mol:
+    if at.properties.charge == -1:
+        at.properties.anchor = True
+
+
+def workflow(mol, max_dist=None, topology=None):
+    # Construct parameters
+    core_idx = (i for i, at in enumerate(mol, 1) if at.symbol == 'Cd')
+    lig_count = 2
+
+    # Construct a MolDissociater instance
+    dissociate = MolDissociater(mol, core_idx, lig_count, max_dist, topology)
+
+    dissociate.assign_topology()
+    cor_lig_pairs = dissociate.get_pairs()
+    cor_lig_combinations = dissociate.get_combinations(cor_lig_pairs)
+    return dissociate(cor_lig_combinations)

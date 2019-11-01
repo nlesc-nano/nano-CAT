@@ -18,7 +18,7 @@ API
 
 """
 
-from typing import Optional, Union, Iterable, Tuple, List, Any, Type
+from typing import Optional, Iterable, Tuple, List, Any, Type
 from itertools import chain
 
 import numpy as np
@@ -114,9 +114,10 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     # Perform the activation strain analyses
     E_intermediate = []
     for qd in mol_list:
-        mol_complete, mol_fragments = _get_asa_fragments(qd)
-        E_intermediate += asa_func(mol_complete, mol_fragments, read_template=read_template,
-                                   job=job, settings=settings)
+        ligand_list, core = _get_asa_fragments(qd)
+        E_intermediate += asa_func(
+            qd, ligand_list, core, read_template=read_template, job=job, settings=settings
+        )
 
     # Cast into an array and reshape into n*4
     E_intermediate = np.array(E_intermediate, dtype=float)
@@ -136,7 +137,7 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     return ret
 
 
-def _get_asa_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule], Molecule]:
+def _get_asa_fragments(qd: Molecule) -> Tuple[List[Molecule], Molecule]:
     """Construct the fragments for an activation strain analyses.
 
     Parameters
@@ -148,8 +149,7 @@ def _get_asa_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule], Molecule
     Returns
     -------
     :class:`list` [|plams.Molecule|] and |plams.Molecule|
-        A Molecule with all core atoms removed, a list of molecules,
-        one for each fragment within the molecule and the core.
+        A list of ligands and the core.
         Fragments are defined based on connectivity patterns (or lack thereof).
 
     """
@@ -190,8 +190,9 @@ def _get_asa_fragments(qd: Molecule) -> Tuple[Molecule, List[Molecule], Molecule
     return ligand_list, core
 
 
-def _asa_uff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
-             **kwargs: Any) -> Tuple[float, float, float, int]:
+def _asa_uff(mol_complete: Molecule, ligands: Iterable[Molecule], core: Molecule,
+             read_template: bool, job: Type[Job],
+             settings: Settings) -> Tuple[float, float, float, float, int]:
     r"""Perform an activation strain analyses using RDKit UFF.
 
     Parameters
@@ -217,21 +218,31 @@ def _asa_uff(mol_complete: Molecule, mol_fragments: Iterable[Mol],
     """
     # Create RDKit molecules
     mol_complete = molkit.to_rdmol(mol_complete)
-    mol_fragments = (molkit.to_rdmol(mol) for mol in mol_fragments)
+    rd_ligands = (molkit.to_rdmol(mol) for mol in ligands)
 
     # Calculate the energy of the total system
     E_complete = UFF(mol_complete, ignoreInterfragInteractions=False).CalcEnergy()
 
     # Calculate the (summed) energy of each individual fragment in the total system
-    E_fragments = 0.0
-    for frag_count, rdmol in enumerate(mol_fragments, 1):
-        E_fragments += UFF(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+    E_ligands = 0.0
+    E_min = np.inf
+    mol_min = None
+    for ligand_count, rdmol in enumerate(rd_ligands, 1):
+        E = UFF(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+        E_ligands += E
+        if E < E_min:
+            E_min, mol_min = E, rdmol
+
+    # One of the calculations failed; better stop now
+    if np.isnan(E_ligands):
+        return np.nan, np.nan, np.nan, np.nan, ligand_count
 
     # Calculate the energy of an optimizes fragment
-    UFF(rdmol, ignoreInterfragInteractions=False).Minimize()
-    E_fragment_opt = UFF(rdmol, ignoreInterfragInteractions=False).CalcEnergy()
+    UFF(mol_min, ignoreInterfragInteractions=False).Minimize()
+    E_ligand_opt = UFF(mol_min, ignoreInterfragInteractions=False).CalcEnergy()
 
-    return E_complete, E_fragments, 0.0, E_fragment_opt, frag_count
+    E_core = UFF(molkit.to_rdmol(core), ignoreInterfragInteractions=False).CalcEnergy()
+    return E_complete, E_ligands, E_core, E_ligand_opt, ligand_count
 
 
 def _asa_plams(mol_complete: Molecule, ligands: Iterable[Molecule], core: Molecule,
@@ -275,18 +286,29 @@ def _asa_plams(mol_complete: Molecule, ligands: Iterable[Molecule], core: Molecu
     E_complete = mol_complete.properties.energy.E
 
     # Calculate the (summed) energy of each individual fragment in the total system
-    E_fragments = 0.0
-    for frag_count, mol in enumerate(ligands, 1):
+    E_ligands = 0.0
+    E_min = np.inf
+    mol_min = None
+    for ligand_count, mol in enumerate(ligands, 1):
         mol.round_coords()
-        mol.properties.name += '_frag'
-        mol.properties.path = mol_complete.properties.path
         mol.job_single_point(job, s)
-        E_fragments += mol.properties.energy.E
+        E = mol.properties.energy.E
+        E_ligands += E
+        if E < E_min:
+            E_min, mol_min = E, mol
+
+    # One of the calculations failed; better stop now
+    if np.isnan(E_ligands):
+        return np.nan, np.nan, np.nan, np.nan, ligand_count
+
+    # Calculate the energy of the core
+    core.job_single_point(job, s)
+    E_core = mol.properties.energy.E
 
     # Calculate the energy of an optimizes fragment
-    mol.job_geometry_opt(job, s)
+    mol_min.job_geometry_opt(job, s)
+    E_ligand_opt = mol_min.properties.energy.E
 
-    E_fragment_opt = mol.properties.energy.E
     return E_complete, E_ligands, E_core, E_ligand_opt, ligand_count
 
 
@@ -324,39 +346,40 @@ def _asa_plams_ff(mol_complete: Molecule, ligands: Iterable[Molecule], core: Mol
     """
     s = Settings(settings)
 
+    # Calculate the (summed) energy of each individual ligand fragment in the total system
     E_ligands = 0.0
     E_min = np.inf
     mol_min = None
-
-    # Calculate the (summed) energy of each individual ligand fragment in the total system
     for ligand_count, mol in enumerate(ligands, 1):
         mol.round_coords()
         qd_opt_ff(mol, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
         E = mol.properties.energy.E
-        E_ligands += E
+        E_ligands += E if E is not None else np.nan
         if E < E_min:
             E_min, mol_min = E, mol
-
-    # One of the calculations failed; better stop now
-    if np.isnan(E_ligands):
-        return np.nan, np.nan, np.nan, np.nan, ligand_count
 
     # Calculate the energy of the core fragment
     core.round_coords()
     qd_opt_ff(core, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
-    E_core = mol.properties.energy.E
-
-    # Calculate the energy of an optimized fragment
-    s.input.motion.geo_opt.soft_update({
-        'type': 'minimization', 'optimizer': 'CG', 'max_iter': 1000
-    })
-    s.input['global'].run_type = 'geometry_optimization'
-    qd_opt_ff(mol_min, job, s, name='ASA_opt')
-    E_ligand_opt = mol_min.properties.energy.E
+    E_core = core.properties.energy.E
 
     # Calculate the energy of the total system
     mol_complete.round_coords()
     qd_opt_ff(mol_complete, job, s, name='ASA_sp', new_psf=True, job_func=Molecule.job_single_point)
     E_complete = mol_complete.properties.energy.E
+
+    # One of the calculations failed; better stop now
+    if np.isnan(E_ligands):
+        return np.nan, np.nan, np.nan, np.nan, ligand_count
+
+    # Calculate the energy of an optimized fragment
+    s.input.motion.geo_opt.soft_update({
+        'type': 'minimization',
+        'optimizer': 'BFGS',
+        'max_iter': 1000
+    })
+    s.input['global'].run_type = 'geometry_optimization'
+    qd_opt_ff(mol_min, job, s, name='ASA_opt')
+    E_ligand_opt = mol_min.properties.energy.E
 
     return E_complete, E_ligands, E_core, E_ligand_opt, ligand_count

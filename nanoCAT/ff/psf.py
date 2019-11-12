@@ -285,7 +285,8 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
     @property
     def filename(self) -> str:
         """Get :attr:`PSFContainer.filename` as string or assign an array-like object as a 1D array."""  # noqa
-        return str(self._filename[0])
+        filename = self._filename
+        return str(filename[0]) if len(filename) else str(filename)
 
     @filename.setter
     def filename(self, value: Iterable): self._set_nd_array('_filename', value, 1, str)
@@ -397,8 +398,13 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         """
         _value = [] if value is None else value
+
         try:
             array = np.array(_value, dtype=dtype, ndmin=ndmin, copy=False)
+        except TypeError:  # Value is an iterator
+            array = np.fromiter(_value, dtype=dtype)
+
+        try:
             setattr(self, name, array)
         except ValueError as ex:
             _name = name.strip('_')

@@ -1,8 +1,7 @@
-from collections import abc
-from itertools import chain, combinations, groupby, repeat
+from itertools import chain, combinations, repeat
 from typing import (
     Union, Mapping, Iterable, Tuple, Dict, List, Optional, FrozenSet, Generator, Iterator,
-    Callable, Any, TypeVar, Hashable
+    Callable, Any, TypeVar, Hashable, Sequence
 )
 
 import numpy as np
@@ -19,17 +18,18 @@ from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 __all__ = ['MolDissociater']
 
 T = TypeVar('T')
-CombinationsTuple = Tuple[List[int], List[int]]
+CombinationsTuple = Tuple[Sequence[int], Iterator[int]]
+IdxMapping = Mapping[int, Sequence[int]]
 
 
 def start_dissociate(mol: Molecule,
                      lig_count: int,
                      lig_pairs: int = 1,
+                     lig_dist: Optional[float] = None,
                      core_idx: Union[None, int, Iterable[int]] = None,
                      core_atom: Union[None, int, str] = None,
                      core_smiles: Optional[str] = None,
                      max_core_dist: Optional[float] = None,
-                     max_lig_dist: Optional[float] = None,
                      topology: Optional[Mapping[int, str]] = None,
                      **kwargs: Any) -> Generator[Molecule, None, None]:
     r"""Remove :math:`XY_{n}` from **mol** with the help of the :class:`MolDissociater` class.
@@ -80,7 +80,11 @@ def start_dissociate(mol: Molecule,
     lig_pairs : :class:`int`
         The number of to-be dissociated core/ligand pairs per core atom.
         Core/ligand pairs are picked based on whichever ligands are closest to each core atom.
-        This option is irrelevant if a distance based criterium is used (see **max_lig_dist**).
+        This option is irrelevant if a distance based criterium is used (see **lig_dist**).
+
+    lig_dist : :class:`float`, optional
+        Instead of dissociating a given number of core/ligand pairs (see **lig_pairs**) dissociate
+        all pairs within a given distance from a core atom.
 
     core_idx : :class:`int` or :class:`Iterable<collections.abc.Iterable>` [:class:`int`], optional
         An index or set of indices with all to-be dissociated core atoms.
@@ -100,10 +104,6 @@ def start_dissociate(mol: Molecule,
         If ``None``, guess this value based on the radial distribution function of **mol**
         (this is generally recomended).
 
-    max_lig_dist : :class:`float`, optional
-        Instead of dissociating a given number of core/ligand pairs (see **lig_pairs**) dissociate
-        all pairs within a given distance from a core atom.
-
     topology : :class:`Mapping<collections.abc.Mapping>` [:class:`int`, :class:`str`], optional
         A mapping neighbouring of atom counts to a user specified topology descriptor
         (*e.g.* ``"edge"``, ``"vertice"`` or ``"face"``).
@@ -122,8 +122,8 @@ def start_dissociate(mol: Molecule,
 
     # Set **core_idx** to all atoms within **mol** matching **core_atom**
     if core_atom is not None:
-        core_atom = to_atnum(core_atom)
-        core_idx = [i for i, at in enumerate(mol, 1) if at.atnum == core_atom]
+        atnum = to_atnum(core_atom)
+        core_idx = (i for i, at in enumerate(mol, 1) if at.atnum == atnum)
 
     # Construct a MolDissociater instance
     diss = MolDissociater(mol, core_idx, lig_count, max_core_dist, topology)
@@ -132,46 +132,58 @@ def start_dissociate(mol: Molecule,
     diss.assign_topology()
 
     # Construct an array with all core/ligand pairs
-    lig_idx = [i for i, at in enumerate(mol, 1) if at.properties.anchor]
-    if max_lig_dist is None:
+    lig_idx_gen = (i for i, at in enumerate(mol, 1) if at.properties.anchor)
+    lig_idx = np.fromiter(lig_idx_gen, dtype=int)
+    if lig_dist is None:  # Create n pairs regardless of any radius
         cl_pairs = diss.get_pairs_closest(lig_idx, n_pairs=lig_pairs)
-    else:
-        cl_pairs = diss.get_pairs_distance(lig_idx, max_dist=max_lig_dist)
+    else:  # Create all pairs within a given radius
+        cl_pairs = diss.get_pairs_distance(lig_idx, max_dist=lig_dist)
 
     # Dissociate the ligands
-    lig_mapping = _get_lig_mapping(mol, lig_idx)
-    core_mapping = _get_core_mapping(mol, diss.core_idx)
+    lig_mapping = _lig_mapping(mol, lig_idx)
+    core_mapping = _core_mapping(mol, diss.core_idx+1, core_smiles) if core_smiles else None
     cl_combinations = diss.combinations(cl_pairs, lig_mapping, core_mapping)
     return diss(cl_combinations)
 
 
-def _get_lig_mapping(mol: Molecule, idx: Iterable[int],
-                     key: Optional[Callable[[Atom], int]] = None):
+def _lig_mapping(mol: Molecule, idx: Iterable[int],
+                 key: Optional[Callable[[Atom], int]] = None) -> IdxMapping:
+    """Map **idx** to all atoms with the same residue number."""
     key = key if key is not None else lambda at: at.properties.pdb_info.ResidueNumber
+    idx = as_array(idx, dtype=int).tolist()
 
     iterator = ((i, key(at)) for i, at in enumerate(mol, 1))
-    lig_mapping: Dict[int, List[int]] = group_by_values(iterator)
+    lig_mapping = group_by_values(iterator)
 
     valid_keys = (key(mol[i]) for i in idx)
     return {i: lig_mapping[k] for i, k in zip(idx, valid_keys)}
 
 
-def _get_core_mapping(mol: Molecule, idx: np.ndarray, smiles: Optional[str] = None):
-    if smiles is not None:
-        rdmol = molkit.to_rdmol(mol)
-        rd_smiles = _smiles_to_rdmol(smiles)
+def _core_mapping(mol: Molecule, idx: Iterable[int], smiles: str) -> IdxMapping:
+    """Map **idx** to all atoms part of the same substructure (see **smiles**)."""
+    idx = as_array(idx, dtype=int)
 
-        values: np.ndarray = np.array(rdmol.GetSubstructMatches(rd_smiles, useChirality=True))
-        keys = np.intersect1d(idx, values)
-        values += 1
-        keys += 1
-    else:
-        keys = idx
-        values = np.array(keys+1, ndmin=2)
-        values.shape = -1, 1
+    rdmol = molkit.to_rdmol(mol)
+    rd_smiles = _smiles_to_rdmol(smiles)
+
+    values: np.ndarray = np.array(rdmol.GetSubstructMatches(rd_smiles, useChirality=True))
+    values += 1
+    keys = np.intersect1d(idx, values)
+    len_keys, len_values = len(keys), len(values)
+    if len_keys != len_values:
+        raise ValueError("Keys and values are of non-equal length: {len_keys} & {len(values)}")
 
     iterator = zip(keys, values.tolist())
     return dict(iterator)
+
+
+class DummyGetter:
+    """A mapping placeholder; calling `__getitem__` will return the supplied key embedded within a tuple."""  # noqa
+
+    def __getitem__(self, key: T) -> Tuple[T]: return (key,)
+
+
+_DUMMY_GETTER = DummyGetter()
 
 
 class MolDissociater(AbstractDataClass):
@@ -226,7 +238,7 @@ class MolDissociater(AbstractDataClass):
 
     @topology.setter
     def topology(self, value: Optional[Mapping[int, str]]) -> None:
-        self._topology = value if value is not None else {}
+        self._topology = value or {}
 
     _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords', '_partition_dict'})
 
@@ -247,7 +259,6 @@ class MolDissociater(AbstractDataClass):
 
         # Private instance variables
         self._coords: np.ndarray = mol.as_array()
-        self._partition_dict: Mapping[int, List[int]] = self.partition_mol()
 
     @AbstractDataClass.inherit_annotations()
     def _str_iterator(self):
@@ -281,24 +292,23 @@ class MolDissociater(AbstractDataClass):
         dist = cdist(xyz[i], xyz[i])
         np.fill_diagonal(dist, max_dist)
 
-        xy = np.array(np.where(dist <= max_dist))
-        bincount = np.bincount(xy[0], minlength=len(i))
+        x, y = np.where(dist <= max_dist)
+        bincount = np.bincount(x, minlength=len(i))
 
         # Slice xyz_array, creating arrays of reference atoms and neighbouring atoms
-        x = xyz[i]
-        y = xyz[i[xy[1]]]
+        ref_at = xyz[i]
+        neighbour_at = xyz[i[y]]
 
         # Calculate the vector length from each reference atom to the mean position
         # of its neighbours
         # A vector length close to 0.0 implies that a reference atom is surrounded by neighbours in
         # a more or less spherical pattern:
         # i.e. the reference atom is in the bulk and not on the surface
-        vec = np.empty((bincount.shape[0], 3), dtype=float)
-        start = 0
-        for j, step in enumerate(bincount):
-            k = slice(start, start+step)
-            vec[j] = x[j] - np.average(y[k], axis=0)
-            start += step
+        indices = np.zeros(len(bincount), dtype=int)
+        indices[1:] = np.cumsum(bincount[:-1])
+        average = np.add.reduceat(neighbour_at, indices)
+        average /= bincount[:, None]
+        vec = ref_at - average
 
         vec_norm = np.linalg.norm(vec, axis=1)
         norm_accept, *_ = np.where(vec_norm > max_vec_len)
@@ -337,8 +347,8 @@ class MolDissociater(AbstractDataClass):
         neighbour_count -= 1
         topology: List[str] = self._get_topology(neighbour_count)
 
-        for j, top in zip(self.core_idx, topology):
-            j = 1 + int(j)  # Switch from 0-based to 1-based indices
+        core_idx = (1 + self.core_idx).tolist()  # Switch from 0-based to 1-based indices
+        for j, top in zip(core_idx, topology):
             mol[j].properties.topology = top
 
     def _get_topology(self, neighbour_count: Iterable[int]) -> List[str]:
@@ -354,7 +364,7 @@ class MolDissociater(AbstractDataClass):
 
         Returns
         -------
-        :math:`n` :class:`Iterator` [:class:`str`]
+        :math:`n` :class:`list` [:class:`str`]
             A list of topologies for all :math:`n` atoms in **bincount**.
 
         See Also
@@ -373,6 +383,8 @@ class MolDissociater(AbstractDataClass):
         """Create and return the indices of each core atom and the :math:`n` closest ligands.
 
         :math:`n` is defined according to :attr:`MolDissociater.ligand_count`.
+        Pairs are chosen based on the norm of the :math:`n` core/ligand distances;
+        *i.e.* the :math:`n` pairs with the :math:`n` lowest norms are are returned.
 
         Parameters
         ----------
@@ -386,9 +398,9 @@ class MolDissociater(AbstractDataClass):
 
         Returns
         -------
-        :math:`m*(n+1)` |np.ndarray|_ [|np.int64|_]
+        :math:`(m*i) * (n+1)` |np.ndarray|_ [|np.int64|_]
             An array with the indices of all :math:`m` valid ligand/core pairs
-            and with :code:`n=self.ligand_count`.
+            with :code:`n=self.ligand_count` and :math:`i=n_pairs`.
 
         """
         if n_pairs <= 0:
@@ -402,7 +414,6 @@ class MolDissociater(AbstractDataClass):
 
         # Find all core atoms within a radius **max_dist** from a ligand
         dist = cdist(xyz[i], xyz[j])
-
         if n_pairs == 1:
             lig_idx = np.argsort(dist, axis=1)[:, :2]
             core_idx = i[:, None]
@@ -419,10 +430,11 @@ class MolDissociater(AbstractDataClass):
         # Accept the n_pair entries (per row) based on the norm
         norm = np.linalg.norm(dist_smallest[:, combine], axis=2)
         idx_accept = combine[np.argsort(norm, axis=1)[:, :n_pairs]]
+        idx_accept.shape = len(idx_accept), -1
 
         # Create an array with all core/ligand pairs
-        lig_idx = np.array([k[l] for k, l in zip(idx_small, idx_accept)])
-        lig_idx.shape = -1, lig_idx.shape[-1]
+        lig_idx = np.take_along_axis(idx_small, idx_accept, axis=1)
+        lig_idx.shape = -1, n
         core_idx = np.fromiter(iter_repeat(i, n_pairs), dtype=int)[:, None]
         return np.hstack([core_idx, j[lig_idx]])
 
@@ -454,25 +466,26 @@ class MolDissociater(AbstractDataClass):
         n: int = self.ligand_count
 
         # Find all core atoms within a radius **max_dist** from a ligand
-        dist = cdist(xyz[i], xyz[j])
+        dist = cdist(xyz[j], xyz[i])
         np.fill_diagonal(dist, max_dist)
 
         # Construct a mapping with core atoms and keys and all matching ligands as values
         idx = np.where(dist < max_dist)
-        pair_mapping: Dict[int, List[int]] = {
-            k: list(v) for k, v in groupby(zip(*idx), key=lambda kv: kv[0])
-        }
+        pair_mapping: Dict[int, List[int]] = group_by_values(zip(*idx))
 
         # Return a 2D array with all valid core/ligand pairs
-        iterator = pair_mapping.items()
+        items = pair_mapping.items()
         cor_lig_pairs = list(chain.from_iterable(
-            ((k,) + n_tup for n_tup in combinations(v, n)) for k, v in iterator if len(v) >= n
+            ((k,) + n_tup for n_tup in combinations(v, n)) for k, v in items if len(v) >= n
         ))
 
-        return np.array(cor_lig_pairs)  # 2D array of integers
+        ret = np.array(cor_lig_pairs)
+        ret[:, 1:] = j[ret[:, 1:]]
+        return ret
 
     def combinations(self, cor_lig_pairs: np.ndarray,
-                     core_smiles: Optional[str] = None) -> Iterator[CombinationsTuple]:
+                     lig_mapping: Optional[IdxMapping] = None,
+                     core_mapping: Optional[IdxMapping] = None) -> Iterator[CombinationsTuple]:
         """Create a list with all to-be removed atom combinations.
 
         Parameters
@@ -480,43 +493,38 @@ class MolDissociater(AbstractDataClass):
         cor_lig_pairs : :class:`numpy.ndarray`
             An array with the indices of all core/ligand pairs.
 
-        smiles : :class:`str`, optional
-            A SMILES string representing a substructure of within the core.
-            This entire substructure will be disociated together with ligands
-            (rather than just a single core atom).
-            See :meth:`MolDissociater._core_neighbours`.
+        lig_mapping : :class:`Mapping<collections.abc.Mapping>`, optional
+            A mapping for translating (1-based) atomic indices in `cor_lig_pairs[:, 0]` to
+            lists of (1-based) atomic indices.
+            Used for mapping ligand anchor atoms to the rest of the to-be dissociated ligands.
+
+        core_mapping : :class:`Mapping<collections.abc.Mapping>`, optional
+            A mapping for translating (1-based) atomic indices in `cor_lig_pairs[:, 1:]` to
+            lists of (1-based) atomic indices.
+            Used for mapping core atoms to the to-be dissociated sub structures.
 
         Returns
         -------
-        :class:`list` [:class:`tuple`]
-            A list of 2-tuples.
-            The first element of each tuple is a list with the (1-based) indices of all
-            to-be removed atoms in the core.
+        :class:`Iterator<collections.abc.Iterator>` [:class:`tuple`]
+            An iterator of 2-tuples.
+            The first element of each tuple is a sequence with the (1-based) indices of all
+            to-be removed core atoms.
             The second element contains an iterator with the (1-based) indices of all to-be removed
-            ligands.
+            ligand atoms.
 
         """
-        def _get_value(ligands: Iterable[Iterable[int]]) -> CombinationsTuple:
-            return [chain.from_iterable(partition_dict[lig]) for lig in ligands]
-
-        # Extract instance variables
-        partition_dict: Mapping[int, List[int]] = self._partition_dict
+        lig_mapping_ = lig_mapping if lig_mapping is not None else _DUMMY_GETTER
+        core_mapping_ = core_mapping if core_mapping is not None else _DUMMY_GETTER
 
         # Switch from 0-based to 1-based indices
-        cor_lig_pairs1 = cor_lig_pairs + 1
+        cor_lig_pairs_ = cor_lig_pairs + 1
 
-        # Fill the to-be returned list
-        ligand_list = cor_lig_pairs1[:, 1:].tolist()
-        core_iterator = self._core_neighbours(core_smiles)
-        return ((core, _get_value(ligands)) for core, ligands in zip(core_iterator, ligand_list))
-
-    @staticmethod
-    def _ValueError(core: np.ndarray, intersect: np.ndarray, smiles: str) -> ValueError:
-        """Return a :exc:`ValueError` for :meth:`MolDissociater._core_neighbours`."""
-        diff = np.setdiff1d(core, intersect)
-        diff.sort()
-        return ValueError("A number of atoms specified in the 'core_idx' attribute are "
-                          f"absent from '{smiles}';\nabsent atoms: {diff}")
+        # Commence the iteration!
+        cores = cor_lig_pairs_[:, 0]
+        ligands = cor_lig_pairs_[:, 1:]
+        core_iterator = (core_mapping_[cor] for cor in cores)
+        lig_iterator = (chain.from_iterable(lig_mapping_[i] for i in lig) for lig in ligands)
+        return zip(core_iterator, lig_iterator)
 
     """################################# Molecule dissociation #################################"""
 
@@ -543,7 +551,7 @@ class MolDissociater(AbstractDataClass):
             s.job_path = []
             s.core_topology = f'{core.properties.topology}_{core_idx[0]}'
             s.lig_residue = sorted(
-                [mol_new[i[0]].properties.pdb_info.ResidueNumber for i in lig_idx]
+                mol_new[i[0]].properties.pdb_info.ResidueNumber for i in lig_idx
             )
             s.df_index: str = s.core_topology + ' '.join(str(i) for i in s.lig_residue)
 
@@ -555,7 +563,6 @@ class MolDissociater(AbstractDataClass):
         """Return an updated version of :attr:`MolDissociater.mol` ``.properties.indices``."""
         n: int = self.ligand_count
         mol: Molecule = self.mol
-        partition_dict: Mapping[int, List[Atom]] = self._partition_dict
 
         if not mol.properties.indices:
             mol.properties.indices = indices = []
@@ -567,7 +574,7 @@ class MolDissociater(AbstractDataClass):
             del ret[-1]
 
         # Delete the index of the last core atom
-        core_max = next(partition_dict.values())[-1]
+        core_max = int(self.core_idx[-1])
         idx = ret.index(core_max)
         del ret[idx]
 
@@ -575,83 +582,6 @@ class MolDissociater(AbstractDataClass):
         for i in ret:
             i -= 1
         return ret
-
-    """########################################## Misc ##########################################"""
-
-    def partition_mol(self, key: Optional[Callable[[Atom], int]] = None
-                      ) -> Dict[int, List[int]]:
-        """Partition the atoms within a molecule based on a user-specified criteria.
-
-        Parameters
-        ----------
-        key : :data:`Callable<typing.Callable>`, optional
-            A callable which takes an Atom as argument and returns an integer.
-            If ``None``, use the |Atom.properties| ``["pdb_info"]["ResidueNumber"]`` attribute.
-
-        Returns
-        -------
-        :class:`dict` [:class:`int`, :class:`list` [:class:`int`]]
-            A dictionary with keys construcetd by **key** and values consisting of
-            lists with matching atomic indices.
-
-        """
-        func = key if key is not None else lambda at: at.properties.pdb_info.ResidueNumber
-
-        list_append = {}
-        ret = {}
-        for i, at in enumerate(self.mol, 1):
-            key = func(at)
-            try:
-                list_append[key](i)
-            except KeyError:
-                ret[key] = [i]
-                list_append[key] = ret[key].append
-        return ret
-
-    def _core_neighbours(self, smiles: Optional[str] = None) -> Iterator[Tuple[int, ...]]:
-        """Gather all neighbouring core atoms based on a substructure defined by **smiles**.
-
-        Parameter
-        ---------
-        smiles : :class:`str`, optional
-            A SMILES string representing a substructure of within the core.
-            This entire substructure will be disociated together with ligands
-            (rather than just a single core atom).
-
-        Returns
-        -------
-        :class:`Iterator<collections.abc.Iterator>` [:class:`tuple` [:class:`int`]]
-            An iterator returning tuples with (1-based) atomic indices.
-            If :code:`smiles=None` then just return the each element from **core** in a tuple.
-
-        Raises
-        ------
-        ValueError
-            Raised if 1 or more core atoms (specified in :attr:`MolDissociater.core_idx`) are not
-            part of the user-specified substructure.
-
-        """
-        core = self.core_idx
-        if smiles is None:
-            return iter((1+core).tolist())
-
-        # Find substructure matches
-        mol = self.mol
-        rdmol = molkit.to_rdmol(mol)
-        rd_smiles = _smiles_to_rdmol(smiles)
-        matches = np.array(rdmol.GetSubstructMatches(rd_smiles, useChirality=True))
-
-        # Ensure that all user-specified core atoms are part of the substructure matches
-        intersect, _, _idx = np.intersect1d(core, matches)
-        if (intersect != core).all():  # Uhoh
-            with np.printoptions(threshold=0, edgeitems=3):
-                raise self._ValueError(core, intersect, smiles)
-
-        # Return only the matches which contain a user-specified core atom
-        _idx //= matches.shape[1]
-        idx = matches[_idx]
-        idx += 1
-        return iter(idx.tolist())
 
 
 def group_by_values(iterable: Iterable[Tuple[Any, Hashable]]) -> Dict[Hashable, List[Any]]:
@@ -661,11 +591,11 @@ def group_by_values(iterable: Iterable[Tuple[Any, Hashable]]) -> Dict[Hashable, 
     --------
     .. code:: python
 
-        >>> from typing import Iterator
+        >>> from typing import Dict, List
 
-        >>> str_list: list = ['a', 'a', 'a', 'a', 'a', 'b', 'b', 'b']
-        >>> iterable: Iterator = enumerate(str_list)
-        >>> new_dict: dict = group_by_values(iterable)
+        >>> str_list = ['a', 'a', 'a', 'a', 'a', 'b', 'b', 'b']
+        >>> iterable = enumerate(str_list)
+        >>> new_dict: Dict[str, List[int]] = group_by_values(iterable)
 
         >>> print(new_dict)
         {'a': [1, 2, 3, 4, 5], 'b': [6, 7, 8]}
@@ -686,13 +616,13 @@ def group_by_values(iterable: Iterable[Tuple[Any, Hashable]]) -> Dict[Hashable, 
 
     """
     ret: Dict[Hashable, List[Any]] = {}
-    list_append: Dict[Hashable, list.append] = {}
+    ret_append: Dict[Hashable, list.append] = {}
     for value, key in iterable:
         try:
-            list_append[key](value)
+            ret_append[key](value)
         except KeyError:
             ret[key] = [value]
-            list_append[key] = ret[key].append
+            ret_append[key] = ret[key].append
     return ret
 
 
@@ -732,30 +662,18 @@ def iter_repeat(iterable: Iterable[T], times: int) -> Iterator[T]:
     return chain.from_iterable(repeat(i, times) for i in iterable)
 
 
-def as_array(iterable: Iterable, dtype: Union[None, type, np.dtype] = None,
-             copy: bool = True, ndmin: Union[int, Tuple[int, ...]] = 0) -> np.ndarray:
+def as_array(iterable: Iterable, dtype: Union[None, str, type, np.dtype] = None,
+             copy: bool = False, ndmin: Union[int, Tuple[int, ...]] = 0) -> np.ndarray:
     """Convert a generic iterable (including iterators) into a NumPy array.
 
     See :func:`numpy.array` for an extensive description of all parameters.
 
     """
-    if isinstance(iterable, abc.Iterator):
-        ret = np.fromiter(iterable, dtype=dtype)
-    else:
+    try:
         ret = np.array(iterable, dtype=dtype, copy=copy)
+    except TypeError:  # **iterable** is an iterator
+        ret = np.fromiter(iterable, dtype=dtype)
+
     if ret.ndim < ndmin:
         ret.shape += (1,) * (ndmin - ret.ndmin)
     return ret
-
-
-file = '/Users/basvanbeek/Downloads/Cd68Cl26Se55__26_C#CCNCC[=O][O-]@O8.pdb'
-mol: Molecule = readpdb(file)
-for at in mol:
-    if at.properties.charge == -1:
-        at.properties.anchor = True
-
-core_idx = [i for i, at in enumerate(mol, 1) if at.symbol == 'Cd']
-lig_count = 2
-dissociater = MolDissociater(mol, core_idx, lig_count)
-
-mol_gen = start_dissociate(mol, lig_count, lig_pairs=3, core_atom='Cd')

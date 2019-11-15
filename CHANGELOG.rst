@@ -5,6 +5,11 @@ Change Log
 All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
+0.3.2
+*****
+* Reworked the ligand dissociation procedure.
+
+
 0.3.1
 *****
 * Finalized the implementation an acitvation strain workflow with custom MATCH-based forcefields.

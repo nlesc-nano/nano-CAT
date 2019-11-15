@@ -44,7 +44,7 @@ from CAT.attachment.qd_opt_ff import qd_opt_ff
 from CAT.workflows.workflow import WorkFlow
 
 from .construct_xyn import get_xyn
-from .dissociate_xyn import (dissociate_ligand, dissociate_ligand2)
+from .dissociate_xyn import dissociate_ligand
 
 __all__ = ['init_bde']
 
@@ -56,18 +56,22 @@ SETTINGS2 = ('settings', 'BDE 2')
 
 
 def init_bde(qd_df: SettingsDataFrame) -> None:
+    """Initialize the ligand dissociation workflow."""
+    # import pdb; pdb.set_trace()
     workflow = WorkFlow.from_template(qd_df, name='bde')
 
-    # Pull from the database; push unoptimized structures
-    idx = workflow.from_db(qd_df)
+    # Create columns
     columns = _construct_columns(workflow, qd_df[MOL])
     import_columns = {(i, j): (np.nan if i != 'label' else None) for i, j in columns}
-    workflow(start_bde, qd_df, columns=import_columns, index=idx, workflow=workflow)
+
+    # Pull from the database; push unoptimized structures
+    idx = workflow.from_db(qd_df, columns=import_columns)
+    workflow(start_bde, qd_df, columns=columns, index=idx, workflow=workflow)
 
     # Convert the datatype from object back to float
-    qd_df['BDE dE'] = qd_df['BDE dE'].astype(float)
-    qd_df['BDE ddG'] = qd_df['BDE ddG'].astype(float)
-    qd_df['BDE dG'] = qd_df['BDE dG'].astype(float)
+    qd_df['BDE dE'] = qd_df['BDE dE'].astype(float, copy=False)
+    qd_df['BDE ddG'] = qd_df['BDE ddG'].astype(float, copy=False)
+    qd_df['BDE dG'] = qd_df['BDE dG'].astype(float, copy=False)
 
     # Sets a nested list with the filenames of .in files
     # This cannot be done with loc is it will try to expand the list into a 2D array
@@ -75,7 +79,7 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
 
     # Push the optimized structures to the database
     job_recipe = workflow.get_recipe()
-    workflow.to_db(qd_df, index=idx, job_recipe=job_recipe)
+    workflow.to_db(qd_df, index=idx, columns=columns, job_recipe=job_recipe)
 
 
 def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List[Tuple[str, str]]:
@@ -88,18 +92,19 @@ def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List
         except TypeError:
             mol = next(iter(mol_list))
 
-        qd_list = dissociate_ligand(mol, workflow)
-        stop = len(qd_list)
+        qd_iterator = dissociate_ligand(mol, **workflow.as_dict())
+        for stop, _ in enumerate(qd_iterator, 1):
+            pass
 
     super_keys = ('BDE label', 'BDE dE', 'BDE ddG', 'BDE dG')
     sub_keys = np.arange(stop).astype(dtype=str)
     return list(product(super_keys, sub_keys))
 
 
-def start_bde(mol_list: Iterable[Molecule], workflow: WorkFlow,
+def start_bde(mol_list: Iterable[Molecule],
               jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
-              forcefield=None, core_index=None, lig_count=None, ion=None) -> List[np.ndarray]:
-    """Calculate the BDEs with thermochemical corrections. """
+              forcefield=None, lig_count=None, ion=None, **kwargs) -> List[np.ndarray]:
+    """Calculate the BDEs with thermochemical corrections."""
     job1, job2 = jobs
     s1, s2 = settings
 
@@ -110,10 +115,7 @@ def start_bde(mol_list: Iterable[Molecule], workflow: WorkFlow,
         XYn: Molecule = get_xyn(qd_complete, lig_count, ion)
 
         # Create all possible quantum dots where XYn is dissociated
-        if not core_index:
-            qd_list: List[Molecule] = dissociate_ligand(qd_complete, workflow)
-        else:
-            qd_list: List[Molecule] = dissociate_ligand2(qd_complete, workflow)
+        qd_list: List[Molecule] = list(dissociate_ligand(qd_complete, lig_count, **kwargs))
 
         # Construct labels describing the topology of all XYn-dissociated quantum dots
         labels = [qd.properties.df_index for qd in qd_list]

@@ -70,8 +70,9 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
 
     # Convert the datatype from object back to float
     qd_df['BDE dE'] = qd_df['BDE dE'].astype(float, copy=False)
-    qd_df['BDE ddG'] = qd_df['BDE ddG'].astype(float, copy=False)
-    qd_df['BDE dG'] = qd_df['BDE dG'].astype(float, copy=False)
+    if workflow.jobs[1]:
+        qd_df['BDE ddG'] = qd_df['BDE ddG'].astype(float, copy=False)
+        qd_df['BDE dG'] = qd_df['BDE dG'].astype(float, copy=False)
 
     # Sets a nested list with the filenames of .in files
     # This cannot be done with loc is it will try to expand the list into a 2D array
@@ -86,17 +87,20 @@ def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List
     """Construct BDE columns for :func:`init_bde`."""
     if workflow.core_index:
         stop = len(workflow.core_index)
-    else:
+    else:  # This takes a but longer, unfortunetly
         try:
             mol = next(mol_list)
         except TypeError:
             mol = next(iter(mol_list))
 
-        qd_iterator = dissociate_ligand(mol, **workflow.as_dict())
+        qd_iterator = dissociate_ligand(mol, **vars(workflow))
         for stop, _ in enumerate(qd_iterator, 1):
             pass
 
-    super_keys = ('BDE label', 'BDE dE', 'BDE ddG', 'BDE dG')
+    super_keys = ('BDE label', 'BDE dE')
+    if workflow.jobs[1]:  # i.e. thermochemical corrections are enabled
+        super_keys += ('BDE ddG', 'BDE dG')
+
     sub_keys = np.arange(stop).astype(dtype=str)
     return list(product(super_keys, sub_keys))
 
@@ -109,6 +113,7 @@ def start_bde(mol_list: Iterable[Molecule],
     s1, s2 = settings
 
     ret = []
+    ret_append = ret.append
     for qd_complete in mol_list:
         # Dissociate a XYn molecule from the quantum dot surface
         qd_complete.round_coords()
@@ -126,8 +131,8 @@ def start_bde(mol_list: Iterable[Molecule],
         dG = dE + ddG
 
         # Append the to-be returned list
-        value = np.concatenate([labels, dE, ddG, dG])  # This is now, unfortunetly, a str array
-        ret.append(value)
+        value = np.concatenate([labels, dE, ddG, dG] if job2 else [labels, dE])
+        ret_append(value)  # value is now, unfortunetly, a str array
 
         # Update the list with all .in files
         try:
@@ -163,6 +168,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
 
     """
     # Optimize XYn
+    len_core = len(core)
     if job is AMSJob:
         s_cp = s.copy()
         s_cp.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
@@ -175,7 +181,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     E_lig = lig.properties.energy.E
     if E_lig in (None, np.nan):
         logger.error('The BDE XYn geometry optimization failed, skipping further jobs')
-        return np.full(len(core), np.nan)
+        return np.full(len_core, np.nan)
 
     # Perform a single point on the full quantum dot
     if forcefield:
@@ -186,7 +192,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     E_tot = tot.properties.energy.E
     if E_tot in (None, np.nan):
         logger.error('The BDE quantum dot single point failed, skipping further jobs')
-        return np.full(len(core), np.nan)
+        return np.full(len_core, np.nan)
 
     # Perform a single point on the quantum dot(s) - XYn
     for mol in core:
@@ -194,7 +200,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
             qd_opt_ff(mol, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD-XYn_opt')
         else:
             mol.job_single_point(job, s, name='E_QD-XYn_sp')
-    E_core = np.array([mol.properties.energy.E for mol in core])
+    E_core = np.fromiter([mol.properties.energy.E for mol in core], count=len_core, dtype=float)
 
     # Calculate and return dE
     dE = (E_lig + E_core) - E_tot
@@ -226,8 +232,9 @@ def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
 
     """
     # The calculation of dG has been disabled by the user
+    len_core = len(core)
     if job is None:
-        return np.full(len(core), np.nan)
+        return np.full(len_core, np.nan)
 
     # Optimize XYn
     s.input.ams.Constraints.Atom = lig.properties.indices
@@ -239,7 +246,7 @@ def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     if np.nan in (E_lig, G_lig):
         logger.error('The BDE XYn geometry optimization+frequency analysis failed, '
                      'skipping further jobs')
-        return np.full(len(core), np.nan)
+        return np.full(len_core, np.nan)
 
     # Optimize the full quantum dot
     s.input.ams.Constraints.Atom = tot.properties.indices
@@ -251,7 +258,7 @@ def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     if np.nan in (E_tot, G_tot):
         logger.error('The BDE quantum dot geometry optimization+frequency analysis failed, '
                      'skipping further jobs')
-        return np.full(len(core), np.nan)
+        return np.full(len_core, np.nan)
 
     # Optimize the quantum dot(s) - XYn
     for mol in core:
@@ -259,8 +266,8 @@ def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         mol.job_freq(job, s, name='G_QD-XYn_freq')
 
     # Extract energies
-    G_core = np.array([mol.properties.energy.G for mol in core])
-    E_core = np.array([mol.properties.energy.E for mol in core])
+    G_core = np.fromiter([mol.properties.energy.G for mol in core], count=len_core, dtype=float)
+    E_core = np.fromiter([mol.properties.energy.E for mol in core], count=len_core, dtype=float)
 
     # Calculate and return dG and ddG
     dG = (G_lig + G_core) - G_tot

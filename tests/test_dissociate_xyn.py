@@ -119,16 +119,15 @@ def test_combinations() -> None:
     dissociate = MolDissociater(MOL, CORE_IDX, ligand_count=2)
     cl_pairs = dissociate.get_pairs_closest(LIG_IDX, n_pairs=1)
 
-    _combinations = dissociate.combinations(cl_pairs, lig_mapping)
-    combinations = [(i, list(j)) for i, j in _combinations]
-    ref = [
-         ((58,), [243, 244, 245, 246, 247, 248, 249, 285, 286, 287, 288, 289, 290, 291]),
-         ((61,), [243, 244, 245, 246, 247, 248, 249, 229, 230, 231, 232, 233, 234, 235]),
-         ((63,), [229, 230, 231, 232, 233, 234, 235, 159, 160, 161, 162, 163, 164, 165]),
-         ((70,), [285, 286, 287, 288, 289, 290, 291, 243, 244, 245, 246, 247, 248, 249]),
-         ((72,), [159, 160, 161, 162, 163, 164, 165, 285, 286, 287, 288, 289, 290, 291]),
-         ((75,), [159, 160, 161, 162, 163, 164, 165, 229, 230, 231, 232, 233, 234, 235])
-    ]
+    combinations = dissociate.combinations(cl_pairs, lig_mapping)
+    ref = {
+         (frozenset([58]), frozenset([243, 244, 245, 246, 247, 248, 249, 285, 286, 287, 288, 289, 290, 291])),  # noqa
+         (frozenset([61]), frozenset([243, 244, 245, 246, 247, 248, 249, 229, 230, 231, 232, 233, 234, 235])),  # noqa
+         (frozenset([63]), frozenset([229, 230, 231, 232, 233, 234, 235, 159, 160, 161, 162, 163, 164, 165])),  # noqa
+         (frozenset([70]), frozenset([285, 286, 287, 288, 289, 290, 291, 243, 244, 245, 246, 247, 248, 249])),  # noqa
+         (frozenset([72]), frozenset([159, 160, 161, 162, 163, 164, 165, 285, 286, 287, 288, 289, 290, 291])),  # noqa
+         (frozenset([75]), frozenset([159, 160, 161, 162, 163, 164, 165, 229, 230, 231, 232, 233, 234, 235]))   # noqa
+    }
 
     assertion.eq(combinations, ref)
 
@@ -136,9 +135,10 @@ def test_combinations() -> None:
 def test_call() -> None:
     """Tests for :meth:`MolDissociater.__call__`."""
     mol_iterator = dissociate_ligand(MOL, lig_count=2, core_index=CORE_IDX)
-    filename = str(PATH / 'mol_bde_{:d}.pdb')
-    for i, mol in enumerate(mol_iterator, 1):
-        mol_ref = readpdb(filename.format(i))
+    filename = str(PATH / '{}.pdb')
+    for mol in mol_iterator:
+        name = mol.properties.core_topology
+        mol_ref = readpdb(filename.format(name))
         xyz = mol.as_array()
         ref = mol_ref.as_array()
         np.testing.assert_allclose(xyz, ref)

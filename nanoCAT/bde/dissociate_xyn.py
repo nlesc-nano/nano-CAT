@@ -9,7 +9,7 @@ A module for constructing :math:`XYn`-dissociated quantum dots.
 from itertools import chain, combinations, repeat
 from typing import (
     Union, Mapping, Iterable, Tuple, Dict, List, Optional, FrozenSet, Generator, Iterator,
-    Any, TypeVar, Hashable, Sequence, SupportsInt
+    Any, TypeVar, Hashable, SupportsInt, MutableMapping, Type, Set
 )
 
 import numpy as np
@@ -26,8 +26,8 @@ from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 __all__ = ['MolDissociater']
 
 T = TypeVar('T')
-CombinationsTuple = Tuple[Sequence[int], Iterator[int]]
-IdxMapping = Mapping[int, Sequence[int]]
+CombinationsTuple = Tuple[FrozenSet[int], FrozenSet[int]]
+IdxMapping = Mapping[int, Iterable[int]]
 
 
 def dissociate_ligand(mol: Molecule,
@@ -502,7 +502,7 @@ class MolDissociater(AbstractDataClass):
 
     def combinations(self, cor_lig_pairs: np.ndarray,
                      lig_mapping: Optional[IdxMapping] = None,
-                     core_mapping: Optional[IdxMapping] = None) -> Iterator[CombinationsTuple]:
+                     core_mapping: Optional[IdxMapping] = None) -> Set[CombinationsTuple]:
         """Create a list with all to-be removed atom combinations.
 
         Parameters
@@ -522,16 +522,17 @@ class MolDissociater(AbstractDataClass):
 
         Returns
         -------
-        :class:`Iterator<collections.abc.Iterator>` [:class:`tuple`]
-            An iterator of 2-tuples.
-            The first element of each tuple is a sequence with the (1-based) indices of all
-            to-be removed core atoms.
-            The second element contains an iterator with the (1-based) indices of all to-be removed
-            ligand atoms.
+        :class:`set [:class:`tuple`]
+            A set of 2-tuples.
+            The first element of each tuple is a :class:`frozenset` with the (1-based) indices of
+            all to-be removed core atoms.
+            The second element contains a :class:`frozenset` with the (1-based) indices of
+            all to-be removed ligand atoms.
 
         """
-        lig_mapping_ = lig_mapping if lig_mapping is not None else _DUMMY_GETTER
         core_mapping_ = core_mapping if core_mapping is not None else _DUMMY_GETTER
+        lig_mapping_ = lig_mapping if lig_mapping is not None else _DUMMY_GETTER
+        l_map = lig_mapping_
 
         # Switch from 0-based to 1-based indices
         cor_lig_pairs_ = cor_lig_pairs + 1
@@ -539,13 +540,13 @@ class MolDissociater(AbstractDataClass):
         # Commence the iteration!
         cores = cor_lig_pairs_[:, 0]
         ligands = cor_lig_pairs_[:, 1:]
-        core_iterator = (core_mapping_[cor] for cor in cores)
-        lig_iterator = (chain.from_iterable(lig_mapping_[i] for i in lig) for lig in ligands)
-        return zip(core_iterator, lig_iterator)
+        core_iterator = (frozenset(core_mapping_[cor]) for cor in cores)
+        lig_iterator = (frozenset(chain.from_iterable(l_map[i] for i in lig)) for lig in ligands)
+        return set(zip(core_iterator, lig_iterator))
 
     """################################# Molecule dissociation #################################"""
 
-    def __call__(self, combinations: Iterator[CombinationsTuple]) -> Iterator[Molecule]:
+    def __call__(self, combinations: Iterable[CombinationsTuple]) -> Iterator[Molecule]:
         """Get this party started."""
         # Extract instance variables
         mol: Molecule = self.mol
@@ -559,16 +560,16 @@ class MolDissociater(AbstractDataClass):
             s = mol_new.properties
 
             # Create a list of to-be removed atoms
-            core: Atom = mol_new[core_idx[0]]
+            core: Atom = mol_new[next(iter(core_idx))]
             delete_at = [mol_new[i] for i in core_idx]
             delete_at += [mol_new[i] for i in lig_idx]
 
             # Update the Molecule.properties attribute of the new molecule
             s.indices = indices
             s.job_path = []
-            s.core_topology = f'{core.properties.topology}_{core_idx[0]}'
+            s.core_topology = f'{core.properties.topology}_{next(iter(core_idx))}'
             s.lig_residue = sorted(
-                mol_new[i[0]].properties.pdb_info.ResidueNumber for i in lig_idx
+                mol_new[i].properties.pdb_info.ResidueNumber for i in lig_idx
             )
             s.df_index: str = s.core_topology + ' '.join(str(i) for i in s.lig_residue)
 
@@ -601,7 +602,9 @@ class MolDissociater(AbstractDataClass):
         return ret
 
 
-def group_by_values(iterable: Iterable[Tuple[Any, Hashable]]) -> Dict[Hashable, List[Any]]:
+def group_by_values(iterable: Iterable[Tuple[Any, Hashable]],
+                    mapping_type: Type[MutableMapping] = dict
+                    ) -> MutableMapping[Hashable, List[Any]]:
     """Take an iterable, yielding 2-tuples, and group all first elements by the second.
 
     Exameple
@@ -625,14 +628,17 @@ def group_by_values(iterable: Iterable[Tuple[Any, Hashable]]) -> Dict[Hashable, 
         The second element must be a :class:`Hashable<collections.abc.Hashable>` and will be used
         as key in the to-be returned dictionary.
 
+    mapping_type : :class:`type` [:class:`MutableMapping<collections.abc.MutableMapping>`]
+        The type of to-be returned (mutable) mapping.
+
     Returns
     -------
-    :class:`dict` [:class:`Hashable<collections.abc.Hashable>`,
-    :class:`list` [:data:`Any<typing.Any>`]]
-        A grouped dictionary.
+    :class:`MutableMapping<collections.abc.MutableMapping>`
+    [:class:`Hashable<collections.abc.Hashable>`, :class:`list` [:data:`Any<typing.Any>`]]
+        A grouped mapping.
 
     """
-    ret: Dict[Hashable, List[Any]] = {}
+    ret: Mapping[Hashable, List[Any]] = mapping_type()
     ret_append: Dict[Hashable, list.append] = {}
     for value, key in iterable:
         try:

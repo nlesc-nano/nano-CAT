@@ -142,3 +142,29 @@ def test_call() -> None:
         xyz = mol.as_array()
         ref = mol_ref.as_array()
         np.testing.assert_allclose(xyz, ref)
+
+
+def test_call_no_core() -> None:
+    """Tests for :meth:`MolDissociater.__call__` where `core == lig`."""
+    lig_idx = [148, 190, 224, 294]
+    dissociate = MolDissociater(MOL, lig_idx, ligand_count=1)
+    pair1 = dissociate.get_pairs_closest(LIG_IDX, n_pairs=1)
+    pair2 = dissociate.get_pairs_closest(LIG_IDX, n_pairs=2)
+
+    dissociate.ligand_count = 2
+    pair3 = dissociate.get_pairs_closest(LIG_IDX, n_pairs=1)
+    pair4 = dissociate.get_pairs_closest(LIG_IDX, n_pairs=2)
+
+    pairs = (pair1, pair2, pair3, pair4)
+    for i, pair in enumerate(pairs, 1):
+        ref = np.load(PATH / f'call_no_core_{i}.npy')
+        np.testing.assert_array_equal(pair, ref)
+
+    mol_iterator = dissociate_ligand(MOL, lig_count=1, core_index=lig_idx)
+    filename = str(PATH / '{}.pdb')
+    for mol in mol_iterator:
+        name = mol.properties.core_topology
+        mol_ref = readpdb(filename.format(name))
+        xyz = mol.as_array()
+        ref = mol_ref.as_array()
+        np.testing.assert_allclose(xyz, ref)

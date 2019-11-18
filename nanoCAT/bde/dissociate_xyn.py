@@ -536,10 +536,6 @@ class MolDissociater(AbstractDataClass):
 
         # Switch from 0-based to 1-based indices
         pairs = cor_lig_pairs + 1
-        if pairs.shape[1] == 2:
-            pair_intersection = np.intersect1d(*pairs.T)
-            if len(pair_intersection) == len(np.unique(pairs[:, 0])):
-                self._core_is_lig = True
 
         # Commence the iteration!
         cores = pairs[:, 0]
@@ -556,7 +552,9 @@ class MolDissociater(AbstractDataClass):
         mol: Molecule = self.mol
 
         # Construct new indices
-        indices = self._get_new_indices()
+        core_idx, lig_idx = next(iter(combinations))
+        core_is_lig = bool(core_idx.intersection(lig_idx))
+        indices = self._get_new_indices(core_is_lig=core_is_lig)
 
         for core_idx, lig_idx in combinations:
             # Create a new molecule
@@ -582,7 +580,7 @@ class MolDissociater(AbstractDataClass):
                 mol_new.delete_atom(at)
             yield mol_new
 
-    def _get_new_indices(self) -> List[int]:
+    def _get_new_indices(self, core_is_lig: bool = False) -> List[int]:
         """Return an updated version of :attr:`MolDissociater.mol` ``.properties.indices``."""
         n: int = self.ligand_count
         mol: Molecule = self.mol
@@ -596,7 +594,7 @@ class MolDissociater(AbstractDataClass):
         for _ in range(n):
             del ret[-1]
 
-        if self._core_is_lig:
+        if core_is_lig:  # The ligands are dissociated without the core
             return ret
 
         # Delete the index of the last core atom

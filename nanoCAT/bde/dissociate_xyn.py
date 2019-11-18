@@ -9,7 +9,7 @@ A module for constructing :math:`XYn`-dissociated quantum dots.
 from itertools import chain, combinations, repeat
 from typing import (
     Union, Mapping, Iterable, Tuple, Dict, List, Optional, FrozenSet, Generator, Iterator,
-    Any, TypeVar, Hashable, SupportsInt, MutableMapping, Type, Set
+    Any, TypeVar, Hashable, SupportsInt, MutableMapping, Type, Set, Collection
 )
 
 import numpy as np
@@ -27,7 +27,7 @@ __all__ = ['MolDissociater']
 
 T = TypeVar('T')
 CombinationsTuple = Tuple[FrozenSet[int], FrozenSet[int]]
-IdxMapping = Mapping[int, Iterable[int]]
+IdxMapping = Mapping[int, Collection[int]]
 
 
 def dissociate_ligand(mol: Molecule,
@@ -155,7 +155,7 @@ def dissociate_ligand(mol: Molecule,
 
 def _lig_mapping(mol: Molecule, idx: Iterable[int]) -> IdxMapping:
     """Map **idx** to all atoms with the same residue number."""
-    idx = as_array(idx, dtype=int).tolist()
+    idx = as_array(idx, dtype=int).tolist()  # 1-based indices
 
     iterator = ((i, at.properties.pdb_info.ResidueNumber) for i, at in enumerate(mol, 1))
     lig_mapping = group_by_values(iterator)
@@ -166,7 +166,7 @@ def _lig_mapping(mol: Molecule, idx: Iterable[int]) -> IdxMapping:
 
 def _core_mapping(mol: Molecule, idx: Iterable[int], smiles: str) -> IdxMapping:
     """Map **idx** to all atoms part of the same substructure (see **smiles**)."""
-    idx = as_array(idx, dtype=int)
+    idx = as_array(idx, dtype=int)  # 1-based indices
 
     rdmol = molkit.to_rdmol(mol)
     rd_smiles = _smiles_to_rdmol(smiles)
@@ -245,7 +245,7 @@ class MolDissociater(AbstractDataClass):
     def topology(self, value: Optional[Mapping[int, str]]) -> None:
         self._topology = value or {}
 
-    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords'})
+    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords', '_core_is_lig'})
 
     def __init__(self, mol: Molecule,
                  core_idx: Union[int, Iterable[int]],
@@ -264,6 +264,7 @@ class MolDissociater(AbstractDataClass):
 
         # Private instance variables
         self._coords: np.ndarray = mol.as_array()
+        self._core_is_lig: bool = False
 
     @AbstractDataClass.inherit_annotations()
     def _str_iterator(self):
@@ -530,17 +531,20 @@ class MolDissociater(AbstractDataClass):
             all to-be removed ligand atoms.
 
         """
-        core_mapping_ = core_mapping if core_mapping is not None else _DUMMY_GETTER
-        lig_mapping_ = lig_mapping if lig_mapping is not None else _DUMMY_GETTER
-        l_map = lig_mapping_
+        c_map = core_mapping if core_mapping is not None else _DUMMY_GETTER
+        l_map = lig_mapping if lig_mapping is not None else _DUMMY_GETTER
 
         # Switch from 0-based to 1-based indices
-        cor_lig_pairs_ = cor_lig_pairs + 1
+        pairs = cor_lig_pairs + 1
+        if pairs.shape[1] == 2:
+            pair_intersection = np.intersect1d(*pairs.T)
+            if len(pair_intersection) == len(np.unique(pairs[:, 0])):
+                self._core_is_lig = True
 
         # Commence the iteration!
-        cores = cor_lig_pairs_[:, 0]
-        ligands = cor_lig_pairs_[:, 1:]
-        core_iterator = (frozenset(core_mapping_[cor]) for cor in cores)
+        cores = pairs[:, 0]
+        ligands = pairs[:, 1:]
+        core_iterator = (frozenset(c_map[cor]) for cor in cores)
         lig_iterator = (frozenset(chain.from_iterable(l_map[i] for i in lig)) for lig in ligands)
         return set(zip(core_iterator, lig_iterator))
 
@@ -561,17 +565,18 @@ class MolDissociater(AbstractDataClass):
 
             # Create a list of to-be removed atoms
             core: Atom = mol_new[next(iter(core_idx))]
-            delete_at = [mol_new[i] for i in core_idx]
-            delete_at += [mol_new[i] for i in lig_idx]
+            delete_at = {mol_new[i] for i in core_idx}
+            delete_at.update(mol_new[i] for i in lig_idx)
 
             # Update the Molecule.properties attribute of the new molecule
+            s.name = (s.name or 'mol') + '_wo_XYn'
             s.indices = indices
             s.job_path = []
             s.core_topology = f'{core.properties.topology}_{next(iter(core_idx))}'
-            s.lig_residue = sorted(
+            s.lig_residue = sorted({
                 mol_new[i].properties.pdb_info.ResidueNumber for i in lig_idx
-            )
-            s.df_index: str = s.core_topology + ' '.join(str(i) for i in s.lig_residue)
+            })
+            s.df_index: str = s.core_topology + ''.join(f' {i}' for i in s.lig_residue)
 
             for at in delete_at:
                 mol_new.delete_atom(at)
@@ -590,6 +595,9 @@ class MolDissociater(AbstractDataClass):
         ret = mol.properties.indices.copy()
         for _ in range(n):
             del ret[-1]
+
+        if self._core_is_lig:
+            return ret
 
         # Delete the index of the last core atom
         core_max = int(self.core_idx[-1])

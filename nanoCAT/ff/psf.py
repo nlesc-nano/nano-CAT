@@ -285,7 +285,8 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
     @property
     def filename(self) -> str:
         """Get :attr:`PSFContainer.filename` as string or assign an array-like object as a 1D array."""  # noqa
-        return str(self._filename[0])
+        filename = self._filename
+        return str(filename[0]) if len(filename) else str(filename)
 
     @filename.setter
     def filename(self, value: Iterable): self._set_nd_array('_filename', value, 1, str)
@@ -397,8 +398,13 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         """
         _value = [] if value is None else value
+
         try:
             array = np.array(_value, dtype=dtype, ndmin=ndmin, copy=False)
+        except TypeError:  # Value is an iterator
+            array = np.fromiter(_value, dtype=dtype)
+
+        try:
             setattr(self, name, array)
         except ValueError as ex:
             _name = name.strip('_')
@@ -796,18 +802,18 @@ class PSFContainer(AbstractDataClass, AbstractFileContainer):
 
         """  # noqa
         def get_res_id(at: Atom) -> int:
-            return at.properties.pdb_info.ResidueNumber if 'ResidueNumber' in at.properties.pdb_info else 1  # noqa
+            return at.properties.pdb_info.ResidueNumber or 1  # noqa
 
         def get_res_name(at: Atom) -> str:
-            return at.properties.pdb_info.ResidueName if 'ResidueName' in at.properties.pdb_info else 'COR'  # noqa
+            return at.properties.pdb_info.ResidueName or 'COR'  # noqa
 
         def get_at_type(at: Atom) -> str:
-            return at.properties.symbol if 'symbol' in at.properties else at.symbol
+            return at.properties.symbol or at.symbol
 
         def get_charge(at: Atom) -> float:
-            if 'charge_float' in at.properties:
+            if at.properties.charge_float:
                 return float(at.properties.charge_float)
-            elif 'charge' in at.properties:
+            elif at.properties.charge:
                 return float(at.properties.charge)
             return 0.0
 

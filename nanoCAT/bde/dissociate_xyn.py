@@ -4,415 +4,705 @@ nanoCAT.bde.dissociate_xyn
 
 A module for constructing :math:`XYn`-dissociated quantum dots.
 
-Index
------
-.. currentmodule:: nanoCAT.bde.dissociate_xyn
-.. autosummary::
-    dissociate_ligand
-    dissociate_ligand2
-    remove_ligands
-    filter_lig_core
-    filter_lig_core2
-    filter_core
-    get_topology
-    get_combinations
-
-API
----
-.. autofunction:: dissociate_ligand
-.. autofunction:: dissociate_ligand2
-.. autofunction:: remove_ligands
-.. autofunction:: filter_lig_core
-.. autofunction:: filter_lig_core2
-.. autofunction:: filter_core
-.. autofunction:: get_topology
-.. autofunction:: get_combinations
-
 """
 
-from itertools import (chain, combinations)
-from typing import (Iterable, Tuple, Sequence, Dict, List, Optional)
+from itertools import chain, combinations, repeat
+from typing import (
+    Union, Mapping, Iterable, Tuple, Dict, List, Optional, FrozenSet, Generator, Iterator,
+    Any, TypeVar, Hashable, SupportsInt, MutableMapping, Type, Set, Collection
+)
 
 import numpy as np
 from scipy.spatial.distance import cdist
 
-from scm.plams import (Molecule, Atom, Settings)
+from scm.plams import Molecule, Atom, MoleculeError
+from scm.plams.interfaces.molecule import rdkit as molkit
+from assertionlib.dataclass import AbstractDataClass
 
+from CAT.mol_utils import to_atnum
+from CAT.attachment.ligand_anchoring import _smiles_to_rdmol
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 
-__all__ = ['dissociate_ligand']
+__all__ = ['MolDissociater']
+
+T = TypeVar('T')
+CombinationsTuple = Tuple[FrozenSet[int], FrozenSet[int]]
+IdxMapping = Mapping[int, Collection[int]]
 
 
-def dissociate_ligand(mol: Molecule, workflow: 'WorkFlow') -> List[Molecule]:
-    """Create all XYn dissociated quantum dots.
+def dissociate_ligand(mol: Molecule,
+                      lig_count: int,
+                      lig_pairs: int = 1,
+                      lig_core_dist: Optional[float] = None,
+                      core_atom: Union[None, int, str] = None,
+                      core_index: Union[None, int, Iterable[int]] = None,
+                      core_smiles: Optional[str] = None,
+                      core_core_dist: Optional[float] = None,
+                      topology: Optional[Mapping[int, str]] = None,
+                      **kwargs: Any) -> Generator[Molecule, None, None]:
+    r"""Remove :math:`XY_{n}` from **mol** with the help of the :class:`MolDissociater` class.
 
-    Parameter
-    ---------
-    mol : |plams.Molecule|_
-        A PLAMS molecule.
+    The dissociation process consists of 5 general steps:
 
-    settings : |plams.Settings|_
-        A settings object containing all (optional) arguments.
+    * Constructing a :class:`MolDissociater` instance for managing the dissociation workflow.
+    * Assigning a topology-descriptor to each atom with :meth:`MolDissociater.assign_topology`.
+    * Identifying all valid core/ligand pairs using either :meth:`MolDissociater.get_pairs_closest`
+      or :meth:`MolDissociater.get_pairs_distance`.
+    * Creating all to-be dissociated core/ligand combinations with
+      :meth:`MolDissociater.get_combinations`.
+    * Start the dissociation process by calling the earlier
+      created :class:`MolDissociater` instance.
+
+    Examples
+    --------
+    .. code:: python
+
+        >>> from typing import Iterator
+
+        >>> import numpy as np
+        >>> from scm.plams import Molecule
+
+        # Define parameters
+        >>> mol = Molecule(...)
+        >>> core_idx = [1, 2, 3, 4, 5]
+        >>> lig_idx = [10, 20, 30, 40]
+        >>> lig_count = 2
+
+        # Start the workflow
+        >>> dissociate = MolDissociater(mol, core_idx, lig_count)
+        >>> dissociate.assign_topology()
+        >>> pairs: np.ndarray = dissociate.get_pairs_closest(lig_idx)
+        >>> combinations: Iterator[tuple] = dissociate.get_combinations(pairs)
+
+        # Create the final iterator
+        >>> mol_iterator: Iterator[Molecule] = dissociate(cor_lig_combinations)
+
+    Parameters
+    ----------
+    mol : |plams.Molecule|
+        A molecule.
+
+    lig_count : :class:`int`
+        The number of to-be dissociated ligands per core atom/molecule.
+
+    lig_pairs : :class:`int`
+        The number of to-be dissociated core/ligand pairs per core atom.
+        Core/ligand pairs are picked based on whichever ligands are closest to each core atom.
+        This option is irrelevant if a distance based criterium is used (see **lig_dist**).
+
+    lig_core_dist : :class:`float`, optional
+        Instead of dissociating a given number of core/ligand pairs (see **lig_pairs**) dissociate
+        all pairs within a given distance from a core atom.
+
+    core_index : :class:`int` or :class:`Iterable<collections.abc.Iterable>` [:class:`int`]
+        An index or set of indices with all to-be dissociated core atoms.
+        See **core_atom** to define **core_idx** based on a common atomic symbol/number.
+
+    core_atom : :class:`int` or :class:`str`, optional
+        An atomic number or symbol used for automatically defining **core_idx**.
+        Core atoms within the bulk (rather than on the surface) are ignored.
+
+    core_smiles : :class:`str`, optional
+        A SMILES string representing molecule containing **core_idx**.
+        Provide a value here if one wants to disociate an entire molecules from the core and
+        not just atoms.
+
+    core_core_dist : :class:`float`, optional
+        A value representing the mean distance between the core atoms in **core_idx**.
+        If ``None``, guess this value based on the radial distribution function of **mol**
+        (this is generally recomended).
+
+    topology : :class:`Mapping<collections.abc.Mapping>` [:class:`int`, :class:`str`], optional
+        A mapping neighbouring of atom counts to a user specified topology descriptor
+        (*e.g.* ``"edge"``, ``"vertice"`` or ``"face"``).
+
+    \**kwargs : :data:`Any<typing.Any>`
+        For catching excess keyword arguments.
 
     Returns
     -------
-    |list|_ [|plams.Molecule|_]
-        A list of XYn dissociated quantum dots.
+    :class:`Generator<collections.abc.Generator>` [|plams.Molecule|]
+        A generator yielding new molecules with :math:`XY_{n}` removed.
 
     """
-    # Unpack arguments
-    atnum = workflow.core_atom
-    l_count = workflow.lig_count
-    cc_dist = workflow.core_core_dist
-    lc_dist = workflow.lig_core_dist
-    top_dict = workflow.topology
+    if core_atom is None and core_index is None:
+        raise TypeError("The 'core_atom' and 'core_idx' parameters cannot be both 'None'")
 
-    # Parameter not provided, just guess it
-    if not cc_dist:
-        cc_dist = guess_core_core_dist(mol, atnum)
+    # Set **core_idx** to all atoms within **mol** matching **core_atom**
+    if core_atom is not None:
+        atnum = to_atnum(core_atom)
+        core_index = [i for i, at in enumerate(mol, 1) if at.atnum == atnum]
 
-    # Convert **mol** to an XYZ array
-    mol.set_atoms_id()
-    xyz_array = mol.as_array()
+    # Construct a MolDissociater instance
+    dissociate = MolDissociater(mol, core_index, lig_count, core_core_dist, topology)
+    if core_atom:
+        dissociate.remove_bulk()  # Remove atoms not exposed to the surface
+    dissociate.assign_topology()
 
-    # Create a nested list of atoms,
-    # each nested element containing all atoms with a given residue number
-    res_list = gather_residues(mol)
+    # Construct an array with all core/ligand pairs
+    lig_idx = np.fromiter((i for i, at in enumerate(mol, 1) if at.properties.anchor), dtype=int)
+    if lig_core_dist is None:  # Create n pairs regardless of any radius
+        cl_pairs = dissociate.get_pairs_closest(lig_idx, n_pairs=lig_pairs)
+    else:  # Create all pairs within a given radius
+        cl_pairs = dissociate.get_pairs_distance(lig_idx, max_dist=lig_core_dist)
 
-    # Create a list of all core indices and ligand anchor indices
-    idx_c_old = np.array([j for j, at in enumerate(res_list[0]) if at.atnum == atnum])
-    idx_c, topology = filter_core(xyz_array, idx_c_old, top_dict, cc_dist)
-    idx_l = np.array(get_anchor_idx(mol)) - 1
-
-    # Mark the core atoms with their topologies
-    for i, top in zip(idx_c_old, topology):
-        mol[int(i+1)].properties.topology = top
-
-    # Create a dictionary with core indices as keys and all combinations of 2 ligands as values
-    xy = filter_lig_core(xyz_array, idx_l, idx_c, lc_dist, l_count)
-    combinations_dict = get_combinations(xy, res_list, l_count)
-
-    # Create and return new molecules
-    indices = [at.id for at in res_list[0][:-l_count]]
-    indices += (idx_l[:-l_count] + 1).tolist()
-    return remove_ligands(mol, combinations_dict, indices)
+    # Dissociate the ligands
+    lig_mapping = _lig_mapping(mol, lig_idx)
+    core_mapping = _core_mapping(mol, dissociate.core_idx+1, core_smiles) if core_smiles else None
+    cl_combinations = dissociate.combinations(cl_pairs, lig_mapping, core_mapping)
+    return dissociate(cl_combinations)
 
 
-def dissociate_ligand2(mol: Molecule, workflow: 'WorkFlow') -> List[Molecule]:
-    """Create all XYn dissociated quantum dots.
+def _lig_mapping(mol: Molecule, idx: Iterable[int]) -> IdxMapping:
+    """Map **idx** to all atoms with the same residue number."""
+    idx = as_array(idx, dtype=int).tolist()  # 1-based indices
 
-    Parameter
-    ---------
-    mol : |plams.Molecule|_
-        A PLAMS molecule.
+    iterator = ((i, at.properties.pdb_info.ResidueNumber) for i, at in enumerate(mol, 1))
+    lig_mapping = group_by_values(iterator)
 
-    settings : |plams.Settings|_
-        A settings object containing all (optional) arguments.
+    valid_keys = (mol[i].properties.pdb_info.ResidueNumber for i in idx)
+    return {i: lig_mapping[k] for i, k in zip(idx, valid_keys)}
 
-    Returns
-    -------
-    |list|_ [|plams.Molecule|_]
-        A list of XYn dissociated quantum dots.
+
+def _core_mapping(mol: Molecule, idx: Iterable[int], smiles: str) -> IdxMapping:
+    """Map **idx** to all atoms part of the same substructure (see **smiles**)."""
+    idx = as_array(idx, dtype=int)  # 1-based indices
+
+    rdmol = molkit.to_rdmol(mol)
+    rd_smiles = _smiles_to_rdmol(smiles)
+
+    values: np.ndarray = np.array(rdmol.GetSubstructMatches(rd_smiles, useChirality=True))
+    values += 1
+    keys = np.intersect1d(idx, values)
+    len_keys, len_values = len(keys), len(values)
+    if len_keys != len_values:
+        raise ValueError("Keys and values are of non-equal length: {len_keys} & {len(values)}")
+
+    iterator = zip(keys, values.tolist())
+    return dict(iterator)
+
+
+class DummyGetter:
+    """A mapping placeholder; calling `__getitem__` will return the supplied key embedded within a tuple."""  # noqa
+
+    def __getitem__(self, key: SupportsInt) -> Tuple[int]: return (int(key),)
+
+
+_DUMMY_GETTER = DummyGetter()
+
+
+class MolDissociater(AbstractDataClass):
+    """MolDissociater.
+
+    Parameters
+    ----------
+    mol : |plams.Molecule|
+        A PLAMS molecule consisting of cores and ligands.
+
+    core_idx : :class:`int` or :class:`Iterable<colelctions.abc.Iterable>` [:class:`int`]
+        An iterable with (1-based) atomic indices of all core atoms valid for dissociation.
+
+    ligand_count : :class:`int`
+        The number of ligands to-be dissociation with a single atom from
+        :attr:`MolDissociater.core_idx`.
+
+    max_dist : :class:`float`, optional
+        Optional: The maximum distance between core atoms for them to-be considered neighbours.
+        If ``None``, this value will be guessed based on the radial distribution function of
+        **mol**.
+
+    topology : :class:`dict` [:class:`int`, :class:`str`], optional
+        A mapping of neighbouring atom counts to a user-specified topology descriptor.
 
     """
-    # Unpack arguments
-    l_count = workflow.lig_count
-    cc_dist = workflow.core_core_dist
-    idx_c_old = np.array(workflow.core_index) - 1
-    top_dict = workflow.topology
 
-    # Convert **mol** to an XYZ array
-    mol.set_atoms_id()
-    xyz_array = mol.as_array()
+    """####################################### Properties #######################################"""
 
-    # Create a list of all core indices and ligand anchor indices
-    _, topology = filter_core(xyz_array, idx_c_old, top_dict, cc_dist)
+    @property
+    def core_idx(self) -> np.ndarray: return self._core_idx
 
-    # Mark the core atoms with their topologies
-    for i, top in zip(workflow.core_index, topology):
-        mol[i].properties.topology = top
+    @core_idx.setter
+    def core_idx(self, value: Union[int, Iterable[int]]) -> None:
+        self._core_idx = core_idx = as_array(value, dtype=int, ndmin=1, copy=True)
+        core_idx -= 1
+        core_idx.sort()
 
-    # Create a dictionary with core indices as keys and all combinations of 2 ligands as values
-    res_list = gather_residues(mol)
-    anchor_idx = get_anchor_idx(mol)
-    xy = filter_lig_core2(xyz_array, anchor_idx, idx_c_old, l_count)
-    combinations_dict = get_combinations(xy, res_list, l_count)
+    @property
+    def max_dist(self) -> float: return self._max_dist
 
-    # Create and return new molecules
-    _anchor_idx = (1 + anchor_idx).tolist()
-    indices = [at.id for at in res_list[0][:-l_count]] + _anchor_idx[:-l_count]
-    return remove_ligands(mol, combinations_dict, indices)
+    @max_dist.setter
+    def max_dist(self, value: Optional[float]) -> None:
+        if value is not None:
+            self._max_dist = float(value)
+        else:
+            idx = 1 + int(self.core_idx[0])
+            self._max_dist = guess_core_core_dist(self.mol, self.mol[idx])
 
+    @property
+    def topology(self) -> Mapping[int, str]: return self._topology
 
-def get_anchor_idx(mol: Molecule) -> np.ndarray:
-    """Create a list of (1-based) indices of all ligand anchor atoms."""
-    list_ = [i for i in mol.properties.indices if mol[i].properties.pdb_info.ResidueName == 'LIG']
-    ret = np.array(list_)
-    ret -= 1
-    return ret
+    @topology.setter
+    def topology(self, value: Optional[Mapping[int, str]]) -> None:
+        self._topology = value or {}
 
+    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords', '_core_is_lig'})
 
-def gather_residues(mol: Molecule) -> List[List[Atom]]:
-    """Create a nested list of atoms using their residue number."""
-    ret = []
-    for at in mol:
-        i = at.properties.pdb_info.ResidueNumber - 1
+    def __init__(self, mol: Molecule,
+                 core_idx: Union[int, Iterable[int]],
+                 ligand_count: int,
+                 max_dist: Optional[float] = None,
+                 topology: Optional[Mapping[int, str]] = None) -> None:
+        """Initialize a :class:`MolDissociater` instance."""
+        super().__init__()
+
+        # Public instance variables
+        self.mol: Molecule = mol
+        self.core_idx: np.ndarray = core_idx
+        self.ligand_count: int = ligand_count
+        self.max_dist: float = max_dist
+        self.topology: Mapping[int, str] = topology
+
+        # Private instance variables
+        self._coords: np.ndarray = mol.as_array()
+        self._core_is_lig: bool = False
+
+    @AbstractDataClass.inherit_annotations()
+    def _str_iterator(self):
+        return ((k.strip('_'), v) for k, v in super()._str_iterator())
+
+    def remove_bulk(self, max_vec_len: float = 0.5) -> None:
+        """Remove out atoms specified in :attr:`MolDissociater.core_idx` which are present in the bulk.
+
+        The function searches for all neighbouring core atoms within a radius
+        :attr:`MolDissociater.max_dist`.
+        Vectors are then constructed from the core atom to the mean positioon of its neighbours.
+        Vector lengths close to 0 thus indicate that the core atom is surrounded in a (nearly)
+        spherical pattern,
+        *i.e.* it's located in the bulk of the material and not on the surface.
+
+        Performs in inplace update of :attr:`MolDissociater.core_idx`.
+
+        Parameters
+        ----------
+        max_vec_len : :class:`float`
+            The maximum length of an atom vector to-be considered part of the bulk.
+            Atoms producing smaller values are removed from :attr:`MolDissociater.core_idx`.
+            Units are in Angstroem.
+
+        """  # noqa
+        xyz: np.ndarray = self._coords
+        i: np.ndarray = self.core_idx
+        max_dist: float = self.max_dist
+
+        # Construct the distance matrix and fill the diagonal
+        dist = cdist(xyz[i], xyz[i])
+        np.fill_diagonal(dist, max_dist)
+
+        x, y = np.where(dist <= max_dist)
+        bincount = np.bincount(x, minlength=len(i))
+
+        # Slice xyz_array, creating arrays of reference atoms and neighbouring atoms
+        ref_at = xyz[i]
+        neighbour_at = xyz[i[y]]
+
+        # Calculate the vector length from each reference atom to the mean position
+        # of its neighbours
+        # A vector length close to 0.0 implies that a reference atom is surrounded by neighbours in
+        # a more or less spherical pattern:
+        # i.e. the reference atom is in the bulk and not on the surface
+        indices = np.zeros(len(bincount), dtype=int)
+        indices[1:] = np.cumsum(bincount[:-1])
+        average = np.add.reduceat(neighbour_at, indices)
+        average /= bincount[:, None]
+        vec = ref_at - average
+
+        vec_norm = np.linalg.norm(vec, axis=1)
+        norm_accept, *_ = np.where(vec_norm > max_vec_len)
+        self.core_idx = i[norm_accept]
+
+    """################################## Topology assignment ##################################"""
+
+    def assign_topology(self) -> None:
+        """Assign a topology to all core atoms in :attr:`MolDissociater.core_idx`.
+
+        The topology descriptor is based on:
+        * The number of neighbours within a radius defined by :attr:`MolDissociater.max_dist`.
+        * The mapping defined in :attr:`MolDissociater.topology`,
+          which maps the number of neighbours to a user-defined topology description.
+
+        If no topology description is available for a particular neighbouring atom count,
+        then a generic :code:`str(i) + "_neighbours"` descriptor is used
+        (where `i` is the neighbouring atom count).
+
+        Performs an inplace update of all |Atom.properties| ``["topology"]`` values.
+
+        """
+        # Extract variables
+        mol: Molecule = self.mol
+        xyz: np.ndarray = self._coords
+        i: np.ndarray = self.core_idx
+        max_dist: float = self.max_dist
+
+        # Create a distance matrix and find all elements with a distance smaller than **max_dist**
+        dist = cdist(xyz[i], xyz[i])
+        np.fill_diagonal(dist, max_dist)
+
+        # Find all valid core atoms and create a topology indicator
+        valid_core, _ = np.where(dist <= max_dist)
+        neighbour_count = np.bincount(valid_core, minlength=len(i))
+        neighbour_count -= 1
+        topology: List[str] = self._get_topology(neighbour_count)
+
+        core_idx = (1 + self.core_idx).tolist()  # Switch from 0-based to 1-based indices
+        for j, top in zip(core_idx, topology):
+            mol[j].properties.topology = top
+
+    def _get_topology(self, neighbour_count: Iterable[int]) -> List[str]:
+        """Translate the number of neighbouring atoms (**bincount**) into a list of topologies.
+
+        If a specific number of neighbours (*i*) is absent from **topology_dict** then that
+        particular element is set to a generic :code:`str(i) + '_neighbours'`.
+
+        Parameters
+        ----------
+        neighbour_count : :math:`n` :class:`numpy.ndarray` [:class:`int`]
+            An array representing the number of neighbouring atoms per array-element.
+
+        Returns
+        -------
+        :math:`n` :class:`list` [:class:`str`]
+            A list of topologies for all :math:`n` atoms in **bincount**.
+
+        See Also
+        --------
+        :attr:`MolDissociater.topology`
+            A dictionary that maps neighbouring atom counts to a user-specified topology descriptor.
+
+        """
+        topology: Mapping[int, str] = self.topology
+        return [topology.get(i, f'{i}_neighbours') for i in neighbour_count]
+
+    """############################ core/ligand pair identification ############################"""
+
+    def get_pairs_closest(self, lig_idx: Union[int, Iterable[int]],
+                          n_pairs: int = 1) -> np.ndarray:
+        """Create and return the indices of each core atom and the :math:`n` closest ligands.
+
+        :math:`n` is defined according to :attr:`MolDissociater.ligand_count`.
+        Pairs are chosen based on the norm of the :math:`n` core/ligand distances;
+        *i.e.* the :math:`n` pairs with the :math:`n` lowest norms are are returned.
+
+        Parameters
+        ----------
+        lig_idx : :data:`Callable<typing.Callable>`, optional
+            The (1-based) indices of all ligand anchor atoms.
+
+        n_pairs : :class:`int`
+            The number of to-be returned pairs per core atom.
+            If :code:`n_pairs > 1` than each successive set of to-be dissociated ligands is
+            determined by the norm of the :math:`n` distances.
+
+        Returns
+        -------
+        :math:`(m*i) * (n+1)` |np.ndarray|_ [|np.int64|_]
+            An array with the indices of all :math:`m` valid ligand/core pairs
+            with :code:`n=self.ligand_count` and :math:`i=n_pairs`.
+
+        """
+        if n_pairs <= 0:
+            raise ValueError(f"The 'n_pairs' parameter should be larger than 0")
+
+        # Extract instance variables
+        xyz: np.ndarray = self._coords
+        i: np.ndarray = self.core_idx
+        j: np.ndarray = as_array(lig_idx, dtype=int) - 1
+        n: int = self.ligand_count
+
+        # Find all core atoms within a radius **max_dist** from a ligand
+        dist = cdist(xyz[i], xyz[j])
+        if n_pairs == 1:
+            lig_idx = np.argsort(dist, axis=1)[:, :n]
+            core_idx = i[:, None]
+            return np.hstack([core_idx, j[lig_idx]])
+
+        # Shrink the distance matrix, keep the n_pairs smallest distances per row
+        stop = max(1 + n, 1 + n_pairs)
+        idx_small = np.argsort(dist, axis=1)[:, :stop]
+        dist_smallest = np.take_along_axis(dist, idx_small, axis=1)
+
+        # Create an array of combinations
+        combine = np.fromiter(chain.from_iterable(combinations(range(stop), n)), dtype=int)
+        combine.shape = -1, n
+
+        # Accept the n_pair entries (per row) based on the norm
+        norm = np.linalg.norm(dist_smallest[:, combine], axis=2)
+        idx_accept = combine[np.argsort(norm, axis=1)[:, :n_pairs]]
+        idx_accept.shape = len(idx_accept), -1
+
+        # Create an array with all core/ligand pairs
+        lig_idx = np.take_along_axis(idx_small, idx_accept, axis=1)
+        lig_idx.shape = -1, n
+        core_idx = np.fromiter(iter_repeat(i, n_pairs), dtype=int)[:, None]
+        return np.hstack([core_idx, j[lig_idx]])
+
+    def get_pairs_distance(self, lig_idx: Union[int, Iterable[int]],
+                           max_dist: float = 5.0) -> np.ndarray:
+        """Create and return the indices of each core atom and all ligand pairs with **max_dist**.
+
+        :math:`n` is defined according to :attr:`MolDissociater.ligand_count`.
+
+        Parameters
+        ----------
+        lig_idx : :data:`Callable<typing.Callable>`, optional
+            The (1-based) indices of all ligand anchor atoms.
+
+        max_dist : :class:`float`
+            The radius (Angstroem) used as cutoff.
+
+        Returns
+        -------
+        :math:`m*(n+1)` |np.ndarray|_ [|np.int64|_]
+            An array with the indices of all :math:`m` valid ligand/core pairs
+            and with :code:`n=self.ligand_count`.
+
+        """
+        if max_dist <= 0.0:
+            raise ValueError(f"The 'max_dist' parameter should be larger than 0.0")
+
+        # Extract instance variables
+        xyz: np.ndarray = self._coords
+        i: np.ndarray = self.core_idx
+        j: np.ndarray = as_array(lig_idx, dtype=int) - 1
+        n: int = self.ligand_count
+
+        # Find all core atoms within a radius **max_dist** from a ligand
+        dist = cdist(xyz[j], xyz[i])
+        np.fill_diagonal(dist, max_dist)
+
+        # Construct a mapping with core atoms and keys and all matching ligands as values
+        idx = np.where(dist < max_dist)
+        pair_mapping: Dict[int, List[int]] = group_by_values(zip(*idx))
+
+        # Return a 2D array with all valid core/ligand pairs
+        items = pair_mapping.items()
+        cor_lig_pairs = list(chain.from_iterable(
+            ((k,) + n_tup for n_tup in combinations(v, n)) for k, v in items if len(v) >= n
+        ))
+
+        ret = np.array(cor_lig_pairs)
         try:
-            ret[i].append(at)
+            ret[:, 1:] = j[ret[:, 1:]]
+            ret[:, 0] = i[ret[:, 0]]
         except IndexError:
-            ret.append([at])
-    return ret
+            if not idx[0].any():
+                raise MoleculeError(f"No ligands found within a radius of {max_dist} Angstroem")
+            else:
+                raise MoleculeError(f"Not enough ligands found (>= {n}) within a radius of "
+                                    "{max_dist} Angstroem")
+        return ret
+
+    def combinations(self, cor_lig_pairs: np.ndarray,
+                     lig_mapping: Optional[IdxMapping] = None,
+                     core_mapping: Optional[IdxMapping] = None) -> Set[CombinationsTuple]:
+        """Create a list with all to-be removed atom combinations.
+
+        Parameters
+        ----------
+        cor_lig_pairs : :class:`numpy.ndarray`
+            An array with the indices of all core/ligand pairs.
+
+        lig_mapping : :class:`Mapping<collections.abc.Mapping>`, optional
+            A mapping for translating (1-based) atomic indices in `cor_lig_pairs[:, 0]` to
+            lists of (1-based) atomic indices.
+            Used for mapping ligand anchor atoms to the rest of the to-be dissociated ligands.
+
+        core_mapping : :class:`Mapping<collections.abc.Mapping>`, optional
+            A mapping for translating (1-based) atomic indices in `cor_lig_pairs[:, 1:]` to
+            lists of (1-based) atomic indices.
+            Used for mapping core atoms to the to-be dissociated sub structures.
+
+        Returns
+        -------
+        :class:`set [:class:`tuple`]
+            A set of 2-tuples.
+            The first element of each tuple is a :class:`frozenset` with the (1-based) indices of
+            all to-be removed core atoms.
+            The second element contains a :class:`frozenset` with the (1-based) indices of
+            all to-be removed ligand atoms.
+
+        """
+        c_map = core_mapping if core_mapping is not None else _DUMMY_GETTER
+        l_map = lig_mapping if lig_mapping is not None else _DUMMY_GETTER
+
+        # Switch from 0-based to 1-based indices
+        pairs = cor_lig_pairs + 1
+
+        # Commence the iteration!
+        cores = pairs[:, 0]
+        ligands = pairs[:, 1:]
+        core_iterator = (frozenset(c_map[cor]) for cor in cores)
+        lig_iterator = (frozenset(chain.from_iterable(l_map[i] for i in lig)) for lig in ligands)
+        return set(zip(core_iterator, lig_iterator))
+
+    """################################# Molecule dissociation #################################"""
+
+    def __call__(self, combinations: Iterable[CombinationsTuple]) -> Iterator[Molecule]:
+        """Get this party started."""
+        # Extract instance variables
+        mol: Molecule = self.mol
+
+        # Construct new indices
+        core_idx, lig_idx = next(iter(combinations))
+        core_is_lig = bool(core_idx.intersection(lig_idx))
+        indices = self._get_new_indices(core_is_lig=core_is_lig)
+
+        for core_idx, lig_idx in combinations:
+            # Create a new molecule
+            mol_new = mol.copy()
+            s = mol_new.properties
+
+            # Create a list of to-be removed atoms
+            core: Atom = mol_new[next(iter(core_idx))]
+            delete_at = {mol_new[i] for i in core_idx}
+            delete_at.update(mol_new[i] for i in lig_idx)
+
+            # Update the Molecule.properties attribute of the new molecule
+            s.name = (s.name or 'mol') + '_wo_XYn'
+            s.indices = indices
+            s.job_path = []
+            s.core_topology = f'{core.properties.topology}_{next(iter(core_idx))}'
+            s.lig_residue = sorted({
+                mol_new[i].properties.pdb_info.ResidueNumber for i in lig_idx
+            })
+            s.df_index: str = s.core_topology + ''.join(f' {i}' for i in s.lig_residue)
+
+            for at in delete_at:
+                mol_new.delete_atom(at)
+            yield mol_new
+
+    def _get_new_indices(self, core_is_lig: bool = False) -> List[int]:
+        """Return an updated version of :attr:`MolDissociater.mol` ``.properties.indices``."""
+        n: int = self.ligand_count
+        mol: Molecule = self.mol
+
+        if not mol.properties.indices:
+            mol.properties.indices = indices = []
+            return indices
+
+        # Delete the indices of the last n ligands
+        ret = mol.properties.indices.copy()
+        for _ in range(n):
+            del ret[-1]
+
+        if core_is_lig:  # The ligands are dissociated without the core
+            return ret
+
+        # Delete the index of the last core atom
+        core_max = int(self.core_idx[-1])
+        idx = ret.index(core_max)
+        del ret[idx]
+
+        # Update the indices of all remaining ligands
+        for i in ret:
+            i -= 1
+        return ret
 
 
-def filter_lig_core2(xyz_array: np.ndarray, idx_lig: Sequence[int],
-                     idx_core: Sequence[int], lig_count: int = 2) -> np.ndarray:
-    """Create and return the indices of all possible ligand/core pairs.
+def group_by_values(iterable: Iterable[Tuple[Any, Hashable]],
+                    mapping_type: Type[MutableMapping] = dict
+                    ) -> MutableMapping[Hashable, List[Any]]:
+    """Take an iterable, yielding 2-tuples, and group all first elements by the second.
 
-    Parameters
-    ----------
-    xyz_array : :math:`n*3` |np.ndarray|_ [|np.float64|_]
-        An array with the cartesian coordinates of a molecule with *n* atoms.
+    Exameple
+    --------
+    .. code:: python
 
-    idx_lig : |np.ndarray|_ [|np.int64|_]
-        An array of all ligand anchor atoms (Y).
+        >>> from typing import Dict, List
 
-    idx_core : |np.ndarray|_ [|np.int64|_]
-        An array of all core atoms (X).
+        >>> str_list = ['a', 'a', 'a', 'a', 'a', 'b', 'b', 'b']
+        >>> iterable = enumerate(str_list)
+        >>> new_dict: Dict[str, List[int]] = group_by_values(iterable)
 
-    max_dist : float
-        The maximum distance for considering :math:`XY_{n}` pairs.
+        >>> print(new_dict)
+        {'a': [1, 2, 3, 4, 5], 'b': [6, 7, 8]}
 
-    lig_count : int
-        The number of ligand (*n*) in :math:`XY_{n}`.
+    Parameter
+    ---------
+    iterable : :class:`Iterable<collections.abc.Iterable>`
+        An iterable yielding 2 elements upon iteration
+        (*e.g.* :meth:`dict.items` or :func:`enumerate`).
+        The second element must be a :class:`Hashable<collections.abc.Hashable>` and will be used
+        as key in the to-be returned dictionary.
 
-    Returns
-    -------
-    :math:`m*2` |np.ndarray|_ [|np.int64|_]
-        An array with the indices of all :math:`m` valid  ligand/core pairs.
-
-    """
-    dist = cdist(xyz_array[idx_lig], xyz_array[idx_core])
-    xy = []
-    for _ in range(lig_count):
-        xy.append(np.array(np.where(dist == np.nanmin(dist, axis=0))))
-        dist[xy[-1][0], xy[-1][1]] = np.nan
-    xy = np.hstack(xy)
-    xy = xy[[1, 0]]
-    xy = xy[:, xy.argsort(axis=1)[0]]
-
-    bincount = np.bincount(xy[0])
-    xy = xy[:, [i for i, j in enumerate(xy[0]) if bincount[j] >= lig_count]]
-    xy[0] = idx_core[xy[0]]
-    xy[1] += 1
-    return xy
-
-
-def get_fragment(mol: Molecule, atom: Atom) -> List[int]:
-    ret = []
-    atom._visited = True
-
-    def dfs(at: Atom) -> None:
-        for bond in at.bonds:
-            at_new = bond.other_end(at)
-            if hasattr(at_new, '_visited'):
-                continue
-            ret.append(at_new.id)
-            at_new._visited = True
-            dfs(at_new)
-
-    dfs(atom)
-    for at in mol:
-        del at._visited
-    return ret
-
-
-def remove_ligands(mol: Molecule, combinations_dict: dict,
-                   indices: Sequence[int]) -> List[Molecule]:
-    """ """
-    ret = []
-    mol.set_atoms_id()
-    for core in combinations_dict:
-        for lig in combinations_dict[core]:
-            mol_tmp = mol.copy()
-            mol_tmp.properties = prop = Settings()
-
-            prop.indices = indices
-            prop.lig_residue = sorted([mol[i[0]].properties.pdb_info.ResidueNumber for i in lig])
-            prop.job_path = []
-            prop.core_topology = f'{str(mol[core].properties.topology)}_{core}'
-            prop.df_index = (mol_tmp.properties.core_topology +
-                             ' '.join(str(i) for i in mol_tmp.properties.lig_residue))
-            prop.name = mol.properties.name + '_wo_XYn'
-            prop.path = mol.properties.path
-            prop.prm = mol.properties.prm
-
-            delete_idx = [core]
-            delete_idx += chain.from_iterable(lig)
-            core_at = mol_tmp[core]
-            if core_at.bonds:
-                delete_idx += get_fragment(mol_tmp, core_at)
-            delete_idx.sort(reverse=True)
-
-            for i in delete_idx:
-                mol_tmp.delete_atom(mol_tmp[i])
-
-            ret.append(mol_tmp)
-    mol.unset_atoms_id()
-    return ret
-
-
-def filter_core(xyz_array: np.ndarray,
-                idx: np.ndarray,
-                topology_dict: Dict[int, str] = {6: 'vertice', 7: 'edge', 9: 'face'},
-                max_dist: float = 5.0) -> Tuple[np.ndarray, np.ndarray]:
-    """Find all atoms (**idx**) in **xyz_array** which are exposed to the surface.
-
-    A topology is assigned to aforementioned atoms based on the number of neighbouring atoms.
-
-    Parameters
-    ----------
-    xyz_array : :math:`n*3` |np.ndarray|_ [|np.float64|_]
-        An array with the cartesian coordinates of a molecule with :math:`n` atoms.
-
-    idx : |np.ndarray|_ [|np.int64|_]
-        An array of atomic indices in **xyz_array**.
-
-    topology_dict : |dict|_ [|int|_, |str|_]
-        A dictionary which maps the number of neighbours (per atom) to a user-specified topology.
-
-    max_dist : float
-        The radius (Angstrom) for determining if an atom counts as a neighbour or not.
-
-    Returns
-    -------
-    |np.ndarray|_ [|np.int64|_] and |np.ndarray|_ [|np.int64|_]
-        The indices of all atoms in **xyz_array[idx]** exposed to the surface and
-        the topology of atoms in **xyz_array[idx]**.
-
-    """
-    # Create a distance matrix and find all elements with a distance smaller than **max_dist**
-    dist = cdist(xyz_array[idx], xyz_array[idx])
-    np.fill_diagonal(dist, max_dist)
-    xy = np.array(np.where(dist <= max_dist))
-    bincount = np.bincount(xy[0], minlength=len(idx))
-
-    # Slice xyz_array, creating arrays of reference atoms and neighbouring atoms
-    x = xyz_array[idx]
-    y = xyz_array[idx[xy[1]]]
-
-    # Calculate the length of a vector from a reference atom to the mean position of its neighbours
-    # A vector length close to 0.0 implies that a reference atom is surrounded by neighbours in
-    # a more or less spherical pattern (i.e. the reference atom is in the bulk, not on the surface)
-    vec_length = np.empty((bincount.shape[0], 3), dtype=float)
-    k = 0
-    for i, j in enumerate(bincount):
-        vec_length[i] = x[i] - np.average(y[k:k+j], axis=0)
-        k += j
-
-    vec_norm = np.linalg.norm(vec_length, axis=1)
-    return idx[np.where(vec_norm > 0.5)[0]], get_topology(bincount, topology_dict)
-
-
-def get_topology(bincount: Iterable[int],
-                 topology_dict: Optional[Dict[int, str]] = None) -> List[str]:
-    """Translate the number of neighbouring atoms (**bincount**) into a list of topologies.
-
-    If a specific number of neighbours (*i*) is absent from **topology_dict** then that particular
-    element is set to a generic str(*i*) + '_neighbours'.
-
-    Parameters
-    ----------
-    bincount : :math:`n` |np.ndarray|_ [|np.int64|_]
-        An array with the number of neighbours per atom for a total of :math:`n` atoms.
-
-    topology_dict : |dict|_ [|int|_, |str|_]
-        Optional: A dictionary which maps the number of neighbours (per atom) to
-        a user-specified topology.
+    mapping_type : :class:`type` [:class:`MutableMapping<collections.abc.MutableMapping>`]
+        The type of to-be returned (mutable) mapping.
 
     Returns
     -------
-    :math:`n` |list|_
-        A list of topologies for all :math:`n` atoms in **bincount**.
+    :class:`MutableMapping<collections.abc.MutableMapping>`
+    [:class:`Hashable<collections.abc.Hashable>`, :class:`list` [:data:`Any<typing.Any>`]]
+        A grouped mapping.
 
     """
-    if isinstance(topology_dict, Settings):
-        dict_ = topology_dict.as_dict()
-    elif topology_dict is None:
-        dict_ = {}
-    else:
-        dict_ = topology_dict.copy()
-
-    return [(dict_[i] if i in dict_ else f'{i}_neighbours') for i in bincount]
-
-
-def filter_lig_core(xyz_array: np.ndarray,
-                    idx_lig: Sequence[int],
-                    idx_core: Sequence[int],
-                    max_dist: float = 5.0,
-                    lig_count: int = 2) -> np.ndarray:
-    """Create and return the indices of all possible ligand/core atom pairs.
-
-    Ligand/core atom pair construction is limited to a given radius (**max_dist**).
-
-    Parameters
-    ----------
-    xyz_array : :math:`n*3` |np.ndarray|_ [|np.float64|_]
-        An array with the cartesian coordinates of a molecule with *n* atoms.
-
-    idx_lig : |np.ndarray|_ [|np.int64|_]
-        An array of all ligand anchor atoms (Y).
-
-    idx_core : |np.ndarray|_ [|np.int64|_]
-        An array of all core atoms (X).
-
-    max_dist : float
-        The maximum distance for considering :math:`XY_{n}` pairs.
-
-    lig_count : int
-        The number of ligand (*n*) in :math:`XY_{n}`.
-
-    Returns
-    -------
-    :math:`m*2` |np.ndarray|_ [|np.int64|_]
-        An array with the indices of all :math:`m` valid ligand/core pairs
-        (as determined by **max_dist**).
-
-    """
-    dist = cdist(xyz_array[idx_core], xyz_array[idx_lig])
-    _xy = np.array(np.where(dist <= max_dist))
-    bincount = np.bincount(_xy[0])
-
-    xy = _xy[:, [i for i, j in enumerate(_xy[0]) if bincount[j] >= lig_count]]
-    xy[0] = idx_core[xy[0]]
-    xy[1] += 1
-    return xy
-
-
-def get_combinations(xy: np.ndarray, res_list: Sequence[Sequence[Atom]],
-                     lig_count: int = 2) -> dict:
-    """Given an array of indices (**xy**) and a nested list of atoms **res_list**.
-
-    Parameters
-    ----------
-    xy : :math:`m*2` |np.ndarray|_ [|np.int64|_]
-        An array with the indices of all :math:`m` core/ligand pairs.
-
-    res_list : |list|_ [|tuple|_ [|plams.Atom|_]]
-        A list of PLAMS atoms, each nested tuple representing all atoms within a given residue.
-
-    lig_count : int
-        The number of ligand (*n*) in :math:`XY_{n}`.
-
-    Returns
-    -------
-    |dict|_
-        A dictionary with core/ligand combinations.
-
-    """
-    dict_ = {}
-    for core, lig in xy.T:
+    ret: Mapping[Hashable, List[Any]] = mapping_type()
+    ret_append: Dict[Hashable, list.append] = {}
+    for value, key in iterable:
         try:
-            dict_[res_list[0][core].id].append([at.id for at in res_list[lig]])
+            ret_append[key](value)
         except KeyError:
-            dict_[res_list[0][core].id] = [[at.id for at in res_list[lig]]]
-    return {k: combinations(v, lig_count) for k, v in dict_.items()}
+            ret[key] = [value]
+            ret_append[key] = ret[key].append
+    return ret
+
+
+def iter_repeat(iterable: Iterable[T], times: int) -> Iterator[T]:
+    """Iterate over an iterable and apply :func:`itertools.repeat` to each element.
+
+    Examples
+    --------
+    .. code:: python
+
+        >>> iterable = range(3)
+        >>> times = 2
+        >>> iterator = iter_repeat(iterable, n)
+        >>> for i in iterator:
+        ...     print(i)
+        0
+        0
+        1
+        1
+        2
+        2
+
+    Parameters
+    ----------
+    iterable : :class:`Iterable<collections.abc.Iterable>`
+        An iterable.
+
+    times : :class:`int`
+        The number of times each element should be repeated.
+
+    Returns
+    -------
+    :class:`Iterator<collections.abc.Iterator>`
+        An iterator that yields each element from **iterable** multiple **times**.
+
+    """
+    return chain.from_iterable(repeat(i, times) for i in iterable)
+
+
+def as_array(iterable: Iterable, dtype: Union[None, str, type, np.dtype] = None,
+             copy: bool = False, ndmin: int = 0) -> np.ndarray:
+    """Convert a generic iterable (including iterators) into a NumPy array.
+
+    See :func:`numpy.array` for an extensive description of all parameters.
+
+    """
+    try:
+        ret = np.array(iterable, dtype=dtype, copy=copy)
+    except TypeError:  # **iterable** is an iterator
+        ret = np.fromiter(iterable, dtype=dtype)
+
+    if ret.ndim < ndmin:
+        ret.shape += (1,) * (ndmin - ret.ndmin)
+    return ret

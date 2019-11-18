@@ -39,10 +39,8 @@ from CAT.mol_utils import (to_atnum, round_coords)
 __all__ = ['get_xyn']
 
 
-def get_xyn(mol_ref: Molecule,
-            lig_count: int = 2,
-            ion: Union[None, Molecule, str, int] = 'Cd',
-            opt: bool = True) -> Molecule:
+def get_xyn(mol_ref: Molecule, lig_count: int = 2,
+            ion: Union[None, Molecule, str, int] = 'Cd', opt: bool = True) -> Molecule:
     """Combine an ion (:math:`X`) and a quantum dot with :math:`n` ligands (:math:`Y`).
 
     The ligands are attached to **ion** such that the resulting :math:`XY_{n}` molecule addopts

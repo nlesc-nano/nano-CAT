@@ -47,29 +47,29 @@ def guess_core_core_dist(mol: Molecule,
 
     Parameters
     ----------
-    mol : |plams.Molecule|_
+    mol : |plams.Molecule|
         A molecule.
 
-    atom : |str|_ or |int|_
+    atom : :class:`str` or :class:`int`
         An atomic number or symbol for defining an atom subset within **mol**.
         The RDF is constructed for this subset.
 
-    dr : float
+    dr : :class:`float`
         The RDF integration step-size in Angstrom, *i.e.* the distance between concentric spheres.
 
-    r_max : float
+    r_max : :class:`float`
         The maximum to be evaluated interatomic distance in the RDF.
 
-    window_length : int
+    window_length : :class:`int`
         The length of the filter window (*i.e.* the number of coefficients) for
         the Savitzky-Golay filter.
 
-    polyorder : int
+    polyorder : :class:`int`
         The order of the polynomial used to fit the samples for the Savitzky-Golay filter.
 
     Returns
     -------
-    |float|_
+    :class:`float`
         The interatomic radius of the first RDF minimum (following the first maximum).
 
     Raises
@@ -80,7 +80,7 @@ def guess_core_core_dist(mol: Molecule,
     ValueError
         Raised if no minimum is found in the smoothed RDF.
 
-    See also
+    See Also
     --------
     scipy.signal.savgol_filter_: Apply a Savitzky-Golay filter to an array.
 
@@ -114,9 +114,7 @@ def guess_core_core_dist(mol: Molecule,
     raise ValueError("No minimum found in the (smoothed) radial distribution function of 'mol'")
 
 
-def get_rdf(dist: np.ndarray,
-            dr: float = 0.1,
-            r_max: float = 8.0) -> np.ndarray:
+def get_rdf(dist: np.ndarray, dr: float = 0.1, r_max: float = 8.0) -> np.ndarray:
     """Calculate and return the radial distribution function (RDF).
 
     Implementation based on the RDF generator in Auto-FOX_.

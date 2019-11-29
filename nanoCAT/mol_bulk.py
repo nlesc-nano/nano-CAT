@@ -87,6 +87,7 @@ def start_lig_bulkiness(qd_series: pd.Series, lig_series: pd.Series, core_series
                         **kwargs: Any) -> None:
     """Start the main loop for the ligand bulkiness calculation."""
     V_list = []
+    V_list_append = V_list.append
     for (i, j, k, l) in qd_series.index:
         # Extract the core and ligand
         ij, kl = (i, j), (k, l)
@@ -97,7 +98,7 @@ def start_lig_bulkiness(qd_series: pd.Series, lig_series: pd.Series, core_series
         angle, r_ref = get_core_angle(core)
         r, h = get_lig_radius(ligand)
         V_bulk = get_V(r, h, r_ref, angle)
-        V_list.append(V_bulk)
+        V_list_append(V_bulk)
     return V_list
 
 

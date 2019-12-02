@@ -18,8 +18,8 @@ API
 
 """
 
-from typing import Optional, Iterable, Tuple, List, Any, Type
-from itertools import chain
+from typing import Optional, Iterable, Tuple, List, Any, Type, Generator
+from itertools import combinations
 
 import numpy as np
 
@@ -29,7 +29,8 @@ import scm.plams.interfaces.molecule.rdkit as molkit
 
 from rdkit.Chem import AllChem
 
-from CAT.jobs import job_single_point, job_geometry_opt
+from FOX import get_non_bonded
+from CAT.jobs import job_md
 from CAT.mol_utils import round_coords
 from CAT.workflows.workflow import WorkFlow
 from CAT.settings_dataframe import SettingsDataFrame
@@ -68,10 +69,10 @@ def init_asa_md(qd_df: SettingsDataFrame) -> None:
 
 
 def get_asa_md(mol_list: Iterable[Molecule],
-              jobs: Tuple[Type[Job], ...],
-              settings: Tuple[Settings, ...],
-              read_template: bool = True,
-              **kwargs: Any) -> np.ndarray:
+               jobs: Tuple[Type[Job], ...],
+               settings: Tuple[Settings, ...],
+               read_template: bool = True,
+               **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA).
 
     The ASA calculates the interaction, strain and total energy.
@@ -99,4 +100,31 @@ def get_asa_md(mol_list: Iterable[Molecule],
         for all *n* molecules in **mol_series**.
 
     """
-    pass
+    job = jobs[0]
+    s = settings[0]
+    if job is not Cp2kJob:
+        raise ValueError("'jobs' expected '(Cp2kJob,)'")
+
+    E_int_iterator = (i for i in _md_iterator(mol_list, job, s))
+    E_int = np.from_iter(E_int_iterator, dtype=float)
+
+
+def _md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
+                 settings: Settings) -> Generator[float, None, None]:
+    for mol in mol_list:
+        results = mol.job_md(job, settings, ret_results=True)  # Run the MD
+
+        # Manually calculate all inter-ligand, ligand/core & core/core interactions
+        df = get_non_bonded(
+            results['PROJECT-pos-1.xyz'],
+            psf=settings.input.force_eval.subsys.topology.conn_file_name,
+            prm=settings.input.force_eval.mm.forcefield.parm_file_name,
+            cp2k_settings=settings
+        )
+
+        # Set all core/core interactions to 0.0
+        symbol_set = {at.symbol for at in mol if at.properties.pdb_info.ResidueName == 'COR'}
+        for key in combinations(sorted(symbol_set), r=2):
+            df.loc[key] = 0.0
+
+        yield df.values.sum()

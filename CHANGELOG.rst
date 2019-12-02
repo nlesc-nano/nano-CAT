@@ -8,7 +8,8 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 0.4.0
 *****
-* Placeholder.
+* Made Auto-FOX a hard dependency; removed a number of now-duplicate functions.
+* Added a workflow for perfoming activation strain analyses on entire MD trajectories.
 
 
 0.3.2

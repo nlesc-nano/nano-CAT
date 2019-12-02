@@ -59,10 +59,11 @@ setup(
         'numpy',
         'scipy',
         'pandas',
+        'AssertionLi>=1.0',
         'plams@git+https://github.com/SCM-NV/PLAMS@master',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
         'CAT@git+https://github.com/nlesc-nano/CAT@master',
-        'AssertionLib@git+https://github.com/nlesc-nano/AssertionLib@master'
+        'Auto-FOX@git+https://github.com/nlesc-nano/auto-FOX@master'
     ],
     setup_requires=[
         'pytest-runner'

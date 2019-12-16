@@ -39,11 +39,10 @@ from .asa import _get_asa_fragments
 def get_asa_md(mol_list: Iterable[Molecule],
                jobs: Tuple[Type[Job], ...],
                settings: Tuple[Settings, ...],
-               read_template: bool = True,
                **kwargs: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    r"""Perform an activation strain analyses (ASA).
+    r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
 
-    The ASA calculates the interaction, strain and total energy.
+    The ASA calculates the (ensemble-averaged) interaction, strain and total energy.
 
     Parameters
     ----------
@@ -51,21 +50,20 @@ def get_asa_md(mol_list: Iterable[Molecule],
         An iterable consisting of PLAMS molecules.
 
     jobs : :class:`tuple` [|plams.Job|]
-        A tuple that may or may not contain |plams.Job| types.
-        Will default to RDKits' implementation of UFF if ``None``.
+        A tuple containing a single |plams.Job| type.
 
     settings : :class:`tuple` [|plams.Settings|]
-        A tuple that may or may not contain job |plams.Settings|.
-        Will default to RDKits' implementation of UFF if ``None``.
+        A tuple containing a single |plams.Settings| instance.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for ensuring signature compatiblity.
 
     Returns
     -------
-    Three :math:`n*3` |np.ndarray|_ [|np.float64|_]
-        A 2D array containing :math:`E_{int}`, :math:`E_{strain}` and :math:`E`
-        for all *n* molecules in **mol_series**.
+    3x :math:`n` |np.ndarray|_ [|np.float64|_]
+        Returns 3 1D arrays respectively containing :math:`E_{int}`, :math:`E_{strain}`
+        and :math:`E`.
+        Energies are calculated for the MD trajectories of all *n* molecules in **mol_list**.
 
     """
     job = jobs[0]
@@ -82,12 +80,14 @@ def get_asa_md(mol_list: Iterable[Molecule],
         shape = mol_len, 5
         count = mol_len * 5
 
+    # Extract all energies and ligand counts
     E = np.from_iter(md_iterator(mol_list, job, s), count=count, dtype=float)
     E *= Units.conversion_ratio('au', 'kcal/mol')
     E.shape = shape
 
+    # Calculate (and return) the interaction, strain and total energy
     E_int = E[:, 0]
-    E_strain = (E[:, 1] + E[:, 2]) - np.product(E[:, 3:], axis=1)
+    E_strain = np.sum(E[:, 1:3], axis=1) - np.product(E[:, 3:], axis=1)
     return E_int, E_strain, E_int + E_strain
 
 
@@ -97,7 +97,34 @@ Tuple5 = Tuple[float, float, float, float, int]
 
 def md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
                 settings: Settings) -> Generator[Tuple5, None, None]:
-    """Iterate over an iterable of molecules; perform an MD followed by an ASA."""
+    """Iterate over an iterable of molecules; perform an MD followed by an ASA.
+
+    The various energies are averaged over all molecules in the MD-trajectory.
+
+    Parameters
+    ----------
+    mol_list : :class:`Iterable<collectionc.abc.Iterable>` [:class:`Molecule`]
+        An iterable consisting of PLAMS molecules.
+
+    job : |plams.Job|
+        A |plams.Job| type.
+        Should be equal to :class:`Cp2kJob`.
+
+    settings : :class:`tuple` [|plams.Settings|]
+        CP2K job settings for **job**.
+
+    Returns
+    -------
+    4x :class:`float` and 1x :class:`int`
+        A tuple with 5 (ensemble-averaged) quantities:
+
+        * The inter-ligand non-bonded interaction
+        * The intra-ligand non-bonded interaction
+        * The intra-ligand bonded interaction
+        * The energy of a single optimized ligand
+        * The number of ligands
+
+    """
     for mol in mol_list:
         results = qd_opt_ff(mol, job, settings, name='QD_MD')  # Run the MD
 

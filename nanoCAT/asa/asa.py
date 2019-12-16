@@ -35,6 +35,8 @@ from CAT.workflows.workflow import WorkFlow
 from CAT.settings_dataframe import SettingsDataFrame
 from CAT.attachment.qd_opt_ff import qd_opt_ff
 
+from .md_asa import get_asa_md
+
 __all__ = ['init_asa']
 
 # Aliases for pd.MultiIndex columns
@@ -59,7 +61,10 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
 
     # Run the activation strain workflow
     idx = workflow.from_db(qd_df)
-    workflow(get_asa_energy, qd_df, index=idx)
+    if workflow.md:
+        workflow(get_asa_md, qd_df, index=idx)
+    else:
+        workflow(get_asa_energy, qd_df, index=idx)
 
     # Prepare for results exporting
     qd_df[JOB_SETTINGS_ASA] = workflow.pop_job_settings(qd_df[MOL])

@@ -18,54 +18,22 @@ API
 
 """
 
-from typing import Optional, Iterable, Tuple, List, Any, Type, Generator
-from itertools import combinations
+from typing import Iterable, Tuple, Any, Type, Generator, Set
 
 import numpy as np
 
-from scm.plams import Settings, Molecule, Cp2kJob
+from scm.plams import Settings, Molecule, Cp2kJob, Units
 from scm.plams.core.basejob import Job
-import scm.plams.interfaces.molecule.rdkit as molkit
 
-from rdkit.Chem import AllChem
+from FOX import (
+    get_non_bonded, get_intra_non_bonded, get_bonded, MultiMolecule, PSFContainer, PRMContainer
+)
 
-from FOX import get_non_bonded
-from CAT.jobs import job_md
+from CAT.jobs import job_geometry_opt
 from CAT.mol_utils import round_coords
-from CAT.workflows.workflow import WorkFlow
-from CAT.settings_dataframe import SettingsDataFrame
 from CAT.attachment.qd_opt_ff import qd_opt_ff
 
-__all__ = ['init_asa_md']
-
-# Aliases for pd.MultiIndex columns
-MOL: Tuple[str, str] = ('mol', '')
-JOB_SETTINGS_ASA_MD: Tuple[str, str] = ('job_settings_ASA_MD', '')
-
-UFF = AllChem.UFFGetMoleculeForceField
-
-
-def init_asa_md(qd_df: SettingsDataFrame) -> None:
-    """Initialize the activation-strain analyses (ASA).
-
-    The ASA (RDKit UFF level) is conducted on the ligands in the absence of the core.
-
-    Parameters
-    ----------
-    |CAT.SettingsDataFrame|
-        A dataframe of quantum dots.
-
-    """
-    workflow = WorkFlow.from_template(qd_df, name='asa_md')
-
-    # Run the activation strain workflow
-    idx = workflow.from_db(qd_df)
-    workflow(get_asa_md, qd_df, index=idx)
-
-    # Prepare for results exporting
-    qd_df[JOB_SETTINGS_ASA_MD] = workflow.pop_job_settings(qd_df[MOL])
-    job_recipe = workflow.get_recipe()
-    workflow.to_db(qd_df, index=idx, job_recipe=job_recipe)
+from .asa import _get_asa_fragments
 
 
 def get_asa_md(mol_list: Iterable[Molecule],
@@ -105,26 +73,78 @@ def get_asa_md(mol_list: Iterable[Molecule],
     if job is not Cp2kJob:
         raise ValueError("'jobs' expected '(Cp2kJob,)'")
 
-    E_int_iterator = (i for i in _md_iterator(mol_list, job, s))
-    E_int = np.from_iter(E_int_iterator, dtype=float)
+    try:
+        mol_len = len(mol_list)
+    except TypeError:  # **mol_list*** is an iterator
+        shape = -1, 3
+        count = -1
+    else:
+        shape = mol_len, 3
+        count = mol_len * 3
+
+    E = np.from_iter(md_iterator(mol_list, job, s), count=count, dtype=float)
+    E *= Units.conversion_ratio('au', 'kcal/mol')
+    E.shape = shape
+    E[:, 2] = np.sum(E[:, :2], axis=1)  # Fill the last column with E = E_int + E_strain
+    return E
 
 
-def _md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
-                 settings: Settings) -> Generator[float, None, None]:
+def md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
+                settings: Settings) -> Generator[Tuple[float, float, float], None, None]:
+    """Iterate over an iterable of molecules; perform an MD followed by an ASA."""
     for mol in mol_list:
-        results = mol.job_md(job, settings, ret_results=True)  # Run the MD
+        results = qd_opt_ff(mol, job, settings, name='QD_MD')  # Run the MD
 
-        # Manually calculate all inter-ligand, ligand/core & core/core interactions
-        df = get_non_bonded(
-            results['PROJECT-pos-1.xyz'],
-            psf=settings.input.force_eval.subsys.topology.conn_file_name,
-            prm=settings.input.force_eval.mm.forcefield.parm_file_name,
-            cp2k_settings=settings
-        )
+        multi_mol = MultiMolecule.from_xyz(results['PROJECT-pos-1.xyz'])
+        psf = PSFContainer.read(settings.input.force_eval.subsys.topology.conn_file_name)
+        prm = PRMContainer.read(settings.input.force_eval.mm.forcefield.parm_file_name)
 
-        # Set all core/core interactions to 0.0
-        symbol_set = {at.symbol for at in mol if at.properties.pdb_info.ResidueName == 'COR'}
-        for key in combinations(sorted(symbol_set), r=2):
-            df.loc[key] = 0.0
+        # Calculate all inter- and intra-ligand interactions
+        inter_nb = _inter_nonbonded(multi_mol, settings, psf, prm)
+        intra_nb = _intra_nonbonded(multi_mol, psf, prm)
+        inter_bond = _inter_bonded(multi_mol, results)
 
-        yield df.values.sum()
+        # Optimize an (individual) ligand
+        frags, _ = _get_asa_fragments(mol)
+        frag_count = len(frags)
+        frag = frags[0]
+        frag.round_coords()
+        frag.job_geometry_opt(job, md2opt(settings), read_template=False)
+        frag_opt = frag.properties.energy.E
+
+        # Calculate the strain and interaction
+        E_int = inter_nb
+        E_strain = (intra_nb + inter_bond) - (frag_opt * frag_count)
+        return E_int, E_strain, np.nan
+
+
+def md2opt(s: Settings) -> Settings:
+    """Convert CP2K MD settings to CP2K geometry optimization settings."""
+    s2 = s.copy()
+    del s2.input.motion.md
+    s2.input['global'].run_type = 'geometry_optimization'
+
+
+def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings,
+                     psf: PSFContainer, prm: PRMContainer) -> float:
+    """Collect all inter-ligand non-bonded interactions."""
+    # Manually calculate all inter-ligand, ligand/core & core/core interactions
+    df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s)
+
+    # Set all core/core and core/ligand interactions to 0.0
+    core: Set[str] = set(psf.atom_name[psf.residue_name == 'COR'])
+    for key in df.index:
+        if core.intersection(key):
+            df.loc[key] = 0
+
+    return df.values.sum()
+
+
+def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
+    """Collect all intra-ligand non-bonded interactions."""
+    return get_intra_non_bonded(multi_mol, psf=psf, prm=prm).values.sum()
+
+
+def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
+    """Collect all intra-ligand bonded interactions."""
+    return get_bonded(multi_mol, psf, prm).values.sum()

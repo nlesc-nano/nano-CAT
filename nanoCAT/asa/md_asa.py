@@ -19,6 +19,7 @@ API
 """
 
 from typing import Iterable, Tuple, Any, Type, Generator, Set
+from itertools import chain
 
 import numpy as np
 
@@ -63,14 +64,17 @@ def get_asa_md(mol_list: Iterable[Molecule],
     3x :math:`n` |np.ndarray|_ [|np.float64|_]
         Returns 3 1D arrays respectively containing :math:`E_{int}`, :math:`E_{strain}`
         and :math:`E`.
-        Energies are calculated for the MD trajectories of all *n* molecules in **mol_list**.
+        Ensemble-averaged energies are calculated for the, to-be calculate, MD trajectories of
+        all *n* molecules in **mol_list**.
 
     """
+    # Extract all Job types and job Settings
     job = jobs[0]
-    s = settings[0]
+    s = settings[0].copy()
     if job is not Cp2kJob:
         raise ValueError("'jobs' expected '(Cp2kJob,)'")
 
+    # Infer the shape of the to-be returned energy array
     try:
         mol_len = len(mol_list)
     except TypeError:  # **mol_list*** is an iterator
@@ -81,7 +85,8 @@ def get_asa_md(mol_list: Iterable[Molecule],
         count = mol_len * 5
 
     # Extract all energies and ligand counts
-    E = np.from_iter(md_iterator(mol_list, job, s), count=count, dtype=float)
+    iterator = chain.from_iterable(md_generator(mol_list, job, s))
+    E = np.from_iter(iterator, count=count, dtype=float)
     E *= Units.conversion_ratio('au', 'kcal/mol')
     E.shape = shape
 
@@ -95,8 +100,8 @@ KCAL2AU: float = Units.conversion_ratio('kcal/mol', 'hartree')  # kcal/mol to ha
 Tuple5 = Tuple[float, float, float, float, int]
 
 
-def md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
-                settings: Settings) -> Generator[Tuple5, None, None]:
+def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
+                 settings: Settings) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.
@@ -145,7 +150,7 @@ def md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
         frag.job_geometry_opt(job, md2opt(settings), read_template=False)
         frag_opt = frag.properties.energy.E * KCAL2AU
 
-        return inter_nb, intra_nb, inter_bond, frag_opt, frag_count
+        yield inter_nb, intra_nb, inter_bond, frag_opt, frag_count
 
 
 def md2opt(s: Settings) -> Settings:

@@ -40,7 +40,7 @@ def get_asa_md(mol_list: Iterable[Molecule],
                jobs: Tuple[Type[Job], ...],
                settings: Tuple[Settings, ...],
                read_template: bool = True,
-               **kwargs: Any) -> np.ndarray:
+               **kwargs: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     r"""Perform an activation strain analyses (ASA).
 
     The ASA calculates the interaction, strain and total energy.
@@ -76,21 +76,27 @@ def get_asa_md(mol_list: Iterable[Molecule],
     try:
         mol_len = len(mol_list)
     except TypeError:  # **mol_list*** is an iterator
-        shape = -1, 3
+        shape = -1, 5
         count = -1
     else:
-        shape = mol_len, 3
-        count = mol_len * 3
+        shape = mol_len, 5
+        count = mol_len * 5
 
     E = np.from_iter(md_iterator(mol_list, job, s), count=count, dtype=float)
     E *= Units.conversion_ratio('au', 'kcal/mol')
     E.shape = shape
-    E[:, 2] = np.sum(E[:, :2], axis=1)  # Fill the last column with E = E_int + E_strain
-    return E
+
+    E_int = E[:, 0]
+    E_strain = (E[:, 1] + E[:, 2]) - np.product(E[:, 3:], axis=1)
+    return E_int, E_strain, E_int + E_strain
+
+
+KCAL2AU: float = Units.conversion_ratio('kcal/mol', 'hartree')  # kcal/mol to hartree
+Tuple5 = Tuple[float, float, float, float, int]
 
 
 def md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
-                settings: Settings) -> Generator[Tuple[float, float, float], None, None]:
+                settings: Settings) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA."""
     for mol in mol_list:
         results = qd_opt_ff(mol, job, settings, name='QD_MD')  # Run the MD
@@ -110,12 +116,9 @@ def md_iterator(mol_list: Iterable[Molecule], job: Type[Job],
         frag = frags[0]
         frag.round_coords()
         frag.job_geometry_opt(job, md2opt(settings), read_template=False)
-        frag_opt = frag.properties.energy.E
+        frag_opt = frag.properties.energy.E * KCAL2AU
 
-        # Calculate the strain and interaction
-        E_int = inter_nb
-        E_strain = (intra_nb + inter_bond) - (frag_opt * frag_count)
-        return E_int, E_strain, np.nan
+        return inter_nb, intra_nb, inter_bond, frag_opt, frag_count
 
 
 def md2opt(s: Settings) -> Settings:

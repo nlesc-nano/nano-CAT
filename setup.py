@@ -25,6 +25,7 @@ setup(
     packages=[
         'nanoCAT',
         'nanoCAT.bde',
+        'nanoCAT.asa',
         'nanoCAT.data',
         'nanoCAT.ff'
     ],

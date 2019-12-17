@@ -7,3 +7,4 @@ pandas
 plams@git+https://github.com/SCM-NV/PLAMS@master
 qmflows@git+https://github.com/SCM-NV/qmflows@master
 CAT@git+https://github.com/nlesc-nano/CAT@devel
+FOX@git+https://github.com/nlesc-nano/Auto-FOX@devel

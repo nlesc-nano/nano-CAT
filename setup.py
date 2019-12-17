@@ -41,6 +41,7 @@ setup(
         'python-3',
         'python-3-6',
         'python-3-7',
+        'python-3-8',
         'automation',
         'scientific-workflows'
     ],
@@ -51,7 +52,8 @@ setup(
         'License :: OSI Approved :: GNU Lesser General Public License',
         'Natural Language :: English',
         'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7'
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8'
     ],
     test_suite='tests',
     python_requires='>=3.6',

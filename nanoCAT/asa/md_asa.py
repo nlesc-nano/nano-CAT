@@ -1,25 +1,25 @@
 """
-nanoCAT.asa
-===========
+nanoCAT.asa.md_asa
+==================
 
-A module related to performing activation strain analyses.
+A module related to performing MD-averaged activation strain analyses.
 
 Index
 -----
-.. currentmodule:: nanoCAT.asa
+.. currentmodule:: nanoCAT.asa.md_asa
 .. autosummary::
-    init_asa
-    get_asa_energy
+    get_asa_md
+    md_generator
 
 API
 ---
-.. autofunction:: init_asa
-.. autofunction:: get_asa_energy
+.. autofunction:: get_asa_md
+.. autofunction:: md_generator
 
 """
 
 from typing import Iterable, Tuple, Any, Type, Generator, Set
-from itertools import chain
+from itertools import chain, combinations_with_replacement
 
 import numpy as np
 
@@ -30,17 +30,17 @@ from FOX import (
     get_non_bonded, get_intra_non_bonded, get_bonded, MultiMolecule, PSFContainer, PRMContainer
 )
 
-from CAT.jobs import job_geometry_opt
+from CAT.jobs import job_md
 from CAT.mol_utils import round_coords
 from CAT.attachment.qd_opt_ff import qd_opt_ff
 
-from .asa import _get_asa_fragments
+from .asa_frag import get_asa_fragments
 
 
 def get_asa_md(mol_list: Iterable[Molecule],
                jobs: Tuple[Type[Job], ...],
                settings: Tuple[Settings, ...],
-               **kwargs: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+               **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
 
     The ASA calculates the (ensemble-averaged) interaction, strain and total energy.
@@ -61,10 +61,10 @@ def get_asa_md(mol_list: Iterable[Molecule],
 
     Returns
     -------
-    3x :math:`n` |np.ndarray|_ [|np.float64|_]
-        Returns 3 1D arrays respectively containing :math:`E_{int}`, :math:`E_{strain}`
+    :math:`n*3` |np.ndarray|_ [|np.float64|_]
+        Returns a 2D array respectively containing :math:`E_{int}`, :math:`E_{strain}`
         and :math:`E`.
-        Ensemble-averaged energies are calculated for the, to-be calculate, MD trajectories of
+        Ensemble-averaged energies are calculated for the, to-be computed, MD trajectories of
         all *n* molecules in **mol_list**.
 
     """
@@ -74,7 +74,7 @@ def get_asa_md(mol_list: Iterable[Molecule],
     if job is not Cp2kJob:
         raise ValueError("'jobs' expected '(Cp2kJob,)'")
 
-    # Infer the shape of the to-be returned energy array
+    # Infer the shape of the to-be created energy array
     try:
         mol_len = len(mol_list)
     except TypeError:  # **mol_list*** is an iterator
@@ -86,14 +86,14 @@ def get_asa_md(mol_list: Iterable[Molecule],
 
     # Extract all energies and ligand counts
     iterator = chain.from_iterable(md_generator(mol_list, job, s))
-    E = np.from_iter(iterator, count=count, dtype=float)
-    E *= Units.conversion_ratio('au', 'kcal/mol')
+    E = np.fromiter(iterator, count=count, dtype=float)
     E.shape = shape
+    E[:, :4] *= Units.conversion_ratio('au', 'kcal/mol')
 
     # Calculate (and return) the interaction, strain and total energy
     E_int = E[:, 0]
     E_strain = np.sum(E[:, 1:3], axis=1) - np.product(E[:, 3:], axis=1)
-    return E_int, E_strain, E_int + E_strain
+    return np.array([E_int, E_strain, E_int + E_strain]).T
 
 
 KCAL2AU: float = Units.conversion_ratio('kcal/mol', 'hartree')  # kcal/mol to hartree
@@ -131,23 +131,24 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
     """
     for mol in mol_list:
-        results = qd_opt_ff(mol, job, settings, name='QD_MD')  # Run the MD
+        # Run the MD job
+        results = qd_opt_ff(mol, job, settings, name='QD_MD', job_func=Molecule.job_md)
 
-        multi_mol = MultiMolecule.from_xyz(results['PROJECT-pos-1.xyz'])
-        psf = PSFContainer.read(settings.input.force_eval.subsys.topology.conn_file_name)
-        prm = PRMContainer.read(settings.input.force_eval.mm.forcefield.parm_file_name)
+        multi_mol = MultiMolecule.from_xyz(results['cp2k-pos-1.xyz'])
+        psf = PSFContainer.read(results['QD_MD.psf'])
+        prm = PRMContainer.read(results['QD_MD.prm'])
 
         # Calculate all inter- and intra-ligand interactions
         inter_nb = _inter_nonbonded(multi_mol, settings, psf, prm)
         intra_nb = _intra_nonbonded(multi_mol, psf, prm)
-        inter_bond = _inter_bonded(multi_mol, results)
+        inter_bond = _inter_bonded(multi_mol, psf, prm)
 
         # Optimize an (individual) ligand
-        frags, _ = _get_asa_fragments(mol)
+        frags, _ = get_asa_fragments(mol)
         frag_count = len(frags)
         frag = frags[0]
         frag.round_coords()
-        frag.job_geometry_opt(job, md2opt(settings), read_template=False)
+        qd_opt_ff(frag, job, md2opt(settings), new_psf=True, name='Ligand_opt')
         frag_opt = frag.properties.energy.E * KCAL2AU
 
         yield inter_nb, intra_nb, inter_bond, frag_opt, frag_count
@@ -158,19 +159,28 @@ def md2opt(s: Settings) -> Settings:
     s2 = s.copy()
     del s2.input.motion.md
     s2.input['global'].run_type = 'geometry_optimization'
+    return s2
 
 
 def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings,
                      psf: PSFContainer, prm: PRMContainer) -> float:
-    """Collect all inter-ligand non-bonded interactions."""
+    """Collect all inter-ligand and ligand/core non-bonded interactions."""
     # Manually calculate all inter-ligand, ligand/core & core/core interactions
     df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s)
 
+    # Set all intra-core interactions to 0.0
+    core = set(psf.atom_name[psf.residue_name == 'COR'])
+    iterator = combinations_with_replacement(sorted(core), r=2)
+    for key in iterator:
+        df.loc[key] = 0
+
+    """
     # Set all core/core and core/ligand interactions to 0.0
     core: Set[str] = set(psf.atom_name[psf.residue_name == 'COR'])
     for key in df.index:
         if core.intersection(key):
             df.loc[key] = 0
+    """
 
     return df.values.sum()
 
@@ -182,4 +192,5 @@ def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContai
 
 def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
     """Collect all intra-ligand bonded interactions."""
-    return get_bonded(multi_mol, psf, prm).values.sum()
+    E_tup = get_bonded(multi_mol, psf, prm)  # bonds, angles, dihedrals, impropers
+    return sum(series.sum() for series in E_tup)

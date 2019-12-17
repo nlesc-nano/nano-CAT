@@ -1,12 +1,12 @@
 """
-nanoCAT.asa
-===========
+nanoCAT.asa.asa
+===============
 
 A module related to performing activation strain analyses.
 
 Index
 -----
-.. currentmodule:: nanoCAT.asa
+.. currentmodule:: nanoCAT.asa.asa
 .. autosummary::
     init_asa
     get_asa_energy
@@ -18,8 +18,7 @@ API
 
 """
 
-from typing import Optional, Iterable, Tuple, List, Any, Type
-from itertools import chain
+from typing import Optional, Iterable, Tuple, Any, Type
 
 import numpy as np
 
@@ -36,6 +35,7 @@ from CAT.settings_dataframe import SettingsDataFrame
 from CAT.attachment.qd_opt_ff import qd_opt_ff
 
 from .md_asa import get_asa_md
+from .asa_frag import get_asa_fragments
 
 __all__ = ['init_asa']
 
@@ -119,7 +119,7 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     # Perform the activation strain analyses
     E_intermediate = []
     for qd in mol_list:
-        ligand_list, core = _get_asa_fragments(qd)
+        ligand_list, core = get_asa_fragments(qd)
         E_intermediate += asa_func(
             qd, ligand_list, core, read_template=read_template, job=job, settings=settings
         )
@@ -140,59 +140,6 @@ def get_asa_energy(mol_list: Iterable[Molecule],
     isnan = np.isnan(ret).any(axis=1)
     ret[isnan] = np.nan
     return ret
-
-
-def _get_asa_fragments(qd: Molecule) -> Tuple[List[Molecule], Molecule]:
-    """Construct the fragments for an activation strain analyses.
-
-    Parameters
-    ----------
-    qd : |plams.Molecule|
-        A Molecule whose atoms' properties should be marked with `pdb_info.ResidueName`.
-        Atoms in the core should herein be marked with ``"COR"``.
-
-    Returns
-    -------
-    :class:`list` [|plams.Molecule|] and |plams.Molecule|
-        A list of ligands and the core.
-        Fragments are defined based on connectivity patterns (or lack thereof).
-
-    """
-    # Delete all atoms within the core
-    mol_complete = qd.copy()
-    core = Molecule()
-    core.properties = mol_complete.properties.copy()
-
-    core_atoms = [at for at in mol_complete if at.properties.pdb_info.ResidueName == 'COR']
-    for atom in core_atoms:
-        mol_complete.delete_atom(atom)
-        atom.mol = core
-
-    core.atoms = core_atoms
-    mol_complete.properties.name += '_frags'
-    core.properties.name += '_core'
-
-    # Fragment the molecule
-    ligand_list = mol_complete.separate()
-
-    # Set atomic properties
-    for at1, at2 in zip(chain(*ligand_list), mol_complete):
-        at1.properties.symbol = at2.properties.symbol
-        at1.properties.charge_float = at2.properties.charge_float
-    for at1, at2 in zip(core, qd):
-        at1.properties.symbol = at2.properties.symbol
-        at1.properties.charge_float = at2.properties.charge_float
-
-    # Set the prm parameter which points to the created .prm file
-    name = mol_complete.properties.name[:-1]
-    path = mol_complete.properties.path
-    prm = mol_complete.properties.prm
-    for mol in ligand_list:
-        mol.properties.name = name
-        mol.properties.path = path
-        mol.properties.prm = prm
-
-    return ligand_list, core
 
 
 def _asa_uff(mol_complete: Molecule, ligands: Iterable[Molecule], core: Molecule,

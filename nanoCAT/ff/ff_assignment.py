@@ -27,9 +27,9 @@ from CAT.jobs import _get_results_error
 from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
 from CAT.workflows.workflow import WorkFlow
+from FOX import PRMContainer
 
 from .match_job import MatchJob
-from .prm import PRMContainer
 
 __all__ = ['init_ff_assignment', 'run_match_job']
 

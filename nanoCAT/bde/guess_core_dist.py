@@ -27,6 +27,7 @@ from scipy.signal import savgol_filter
 from scm.plams import Molecule, MoleculeError
 
 from CAT.mol_utils import to_atnum
+from FOX.functions.rdf import get_rdf_lowmem as get_rdf
 
 
 def guess_core_core_dist(mol: Molecule,
@@ -94,7 +95,8 @@ def guess_core_core_dist(mol: Molecule,
     dist = cdist(ar, ar)
 
     # Create and smooth the RDF
-    rdf = get_rdf(dist, dr, r_max)
+    rdf = get_rdf(dist, dr=dr, r_max=r_max)
+    rdf[0] = 0.0
     rdf_smooth = savgol_filter(rdf, window_length, polyorder)
 
     # Find the global maximum and calculate the gradient of the smoothed RDF
@@ -112,51 +114,3 @@ def guess_core_core_dist(mol: Molecule,
         return dr * (idx_max + i + idx)
 
     raise ValueError("No minimum found in the (smoothed) radial distribution function of 'mol'")
-
-
-def get_rdf(dist: np.ndarray, dr: float = 0.1, r_max: float = 8.0) -> np.ndarray:
-    """Calculate and return the radial distribution function (RDF).
-
-    Implementation based on the RDF generator in Auto-FOX_.
-
-    .. _Auto-FOX: https://github.com/nlesc-nano/auto-FOX
-
-    Parameters
-    ----------
-    dist : :math:`n*k` |np.ndarray|_ [|np.float64|_]
-        A 2D array representing a distance matrix of :math:`n` by :math:`k` atoms.
-
-    dr : float
-        The integration step-size in Angstrom, *i.e.* the distance between concentric spheres.
-
-    r_max : float
-        The maximum to be evaluated interatomic distance.
-
-    Returns
-    -------
-    |np.ndarray|_ [|np.float64|_]
-        A 1D array of length :math:`1 + r_{max} / dr`: with a radial distribution function.
-
-    """
-    dist_int = np.array(dist / dr, dtype=int).ravel()
-    r = np.arange(0, r_max + dr, dr)
-    r_len = len(r)
-
-    # Calculate the average particle density N / V
-    # The diameter of the spherical volume (V) is defined by the largest inter-particle distance
-    dens_mean = dist.shape[-1] / ((4/3) * np.pi * (0.5 * dist.max())**3)
-
-    # Count the number of occurances of each (rounded) distance (i.e. particle count)
-    dens = np.bincount(dist_int, minlength=r_len)[:r_len].astype(float)
-
-    with np.errstate(divide='ignore', invalid='ignore'):
-        # Correct for the number of reference atoms
-        dens /= dist.shape[1]
-
-        # Convert the particle count into a partical density
-        dens /= (4 * np.pi * r**2 * dr)
-
-        # Normalize and return the particle density
-        dens /= dens_mean
-    dens[0] = 0.0
-    return dens

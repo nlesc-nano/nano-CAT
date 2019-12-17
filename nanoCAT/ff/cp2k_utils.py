@@ -16,7 +16,7 @@ API
 
 """
 
-from scm.plams import (Molecule, Settings, Atom)
+from scm.plams import Molecule, Settings, Atom
 
 __all__ = ['set_cp2k_element', 'set_cp2k_param']
 

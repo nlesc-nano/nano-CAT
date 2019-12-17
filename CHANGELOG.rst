@@ -5,6 +5,13 @@ Change Log
 All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
+
+0.4.0
+*****
+* Made Auto-FOX a hard dependency; removed a number of (now-duplicate) functions and modules.
+* Added a workflow for perfoming activation strain analyses on entire MD trajectories.
+
+
 0.3.2
 *****
 * Reworked the ligand dissociation procedure.

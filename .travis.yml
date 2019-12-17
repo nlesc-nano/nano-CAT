@@ -5,7 +5,7 @@ env:
     global:
         - COMMIT_AUTHOR_EMAIL: b.f.van.beek@vu.nl
     matrix:
-        - PYTHON_VERSION=3.6
+        # - PYTHON_VERSION=3.6
         - PYTHON_VERSION=3.7
         - PYTHON_VERSION=3.8
 
@@ -33,8 +33,8 @@ install:
 
 script:
     # Run the unitary tests excluding the expensive computations
-    - pytest -m "not (slow or long)" --cov=nanoCAT tests
-    - coverage xml && coverage report -m
+    - pytest -m "not (slow or long)" --cov-config .coveragerc --cov=nanoCAT tests
+    # - coverage xml && coverage report -m
 
 branches:
     only:

@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.4.1
+*****
+* Updated the MD-ASA workflow: The ligand interaction is now calculated using
+  neutral parameters; the strain using ionic parameters.
+
+
 0.4.0
 *****
 * Made Auto-FOX a hard dependency; removed a number of (now-duplicate) functions and modules.

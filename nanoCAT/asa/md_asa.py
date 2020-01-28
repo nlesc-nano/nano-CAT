@@ -18,13 +18,16 @@ API
 
 """
 
-from typing import Iterable, Tuple, Any, Type, Generator, Set
-from itertools import chain, combinations_with_replacement
+from os.path import join
+from typing import Iterable, Tuple, Any, Type, Generator, Iterator, TypeVar
+from itertools import chain, repeat
 
 import numpy as np
 
+from rdkit import Chem
 from scm.plams import Settings, Molecule, Cp2kJob, Units
 from scm.plams.core.basejob import Job
+import scm.plams.interfaces.molecule.rdkit as molkit
 
 from FOX import (
     get_non_bonded, get_intra_non_bonded, get_bonded, MultiMolecule, PSFContainer, PRMContainer
@@ -32,15 +35,14 @@ from FOX import (
 
 from CAT.jobs import job_md
 from CAT.mol_utils import round_coords
-from CAT.attachment.qd_opt_ff import qd_opt_ff
+from CAT.attachment.qd_opt_ff import qd_opt_ff, _constrain_charge
 
 from .asa_frag import get_asa_fragments
+from ..ff.ff_assignment import run_match_job
 
 
-def get_asa_md(mol_list: Iterable[Molecule],
-               jobs: Tuple[Type[Job], ...],
-               settings: Tuple[Settings, ...],
-               **kwargs: Any) -> np.ndarray:
+def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
+               settings: Tuple[Settings, ...], **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
 
     The ASA calculates the (ensemble-averaged) interaction, strain and total energy.
@@ -72,7 +74,7 @@ def get_asa_md(mol_list: Iterable[Molecule],
     job = jobs[0]
     s = settings[0].copy()
     if job is not Cp2kJob:
-        raise ValueError("'jobs' expected '(Cp2kJob,)'")
+        raise ValueError("'jobs' expected '(Cp2kJob,)'; observed value: {repr(jobs)}")
 
     # Infer the shape of the to-be created energy array
     try:
@@ -93,9 +95,12 @@ def get_asa_md(mol_list: Iterable[Molecule],
     # Calculate (and return) the interaction, strain and total energy
     E_int = E[:, 0]
     E_strain = np.sum(E[:, 1:3], axis=1) - np.product(E[:, 3:], axis=1)
-    return np.array([E_int, E_strain, E_int + E_strain]).T
+
+    ret = np.array([E_int, E_strain, E_int + E_strain]).T
+    return ret
 
 
+MATCH_SETTINGS = Settings({'input': {'forcefield': 'top_all36_cgenff'}})
 KCAL2AU: float = Units.conversion_ratio('kcal/mol', 'hartree')  # kcal/mol to hartree
 Tuple5 = Tuple[float, float, float, float, int]
 
@@ -133,23 +138,50 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     for mol in mol_list:
         # Run the MD job
         results = qd_opt_ff(mol, job, settings, name='QD_MD', job_func=Molecule.job_md)
+        if results.job.status == 'crashed':
+            yield np.nan, np.nan, np.nan, np.nan, 0
 
         multi_mol = MultiMolecule.from_xyz(results['cp2k-pos-1.xyz'])
         psf = PSFContainer.read(results['QD_MD.psf'])
-        prm = PRMContainer.read(results['QD_MD.prm'])
 
-        # Calculate all inter- and intra-ligand interactions
-        inter_nb = _inter_nonbonded(multi_mol, settings, psf, prm)
-        intra_nb = _intra_nonbonded(multi_mol, psf, prm)
-        inter_bond = _inter_bonded(multi_mol, psf, prm)
-
-        # Optimize an (individual) ligand
+        # Switch to the neutral parameters
         frags, _ = get_asa_fragments(mol)
-        frag_count = len(frags)
         frag = frags[0]
         frag.round_coords()
-        qd_opt_ff(frag, job, md2opt(settings), new_psf=True, name='Ligand_opt')
-        frag_opt = frag.properties.energy.E * KCAL2AU
+        frag_count = len(frags)
+        frag_neutral = frag.copy()
+        frag_neutral[len(mol) - mol.properties.indices[-1] - 1].properties.charge = 0
+        frag_neutral = add_Hs(frag_neutral, forcefield='uff')
+        run_match_job(frag_neutral, MATCH_SETTINGS)
+
+        # Update the PSFContainer
+        psf_neutral = psf.copy()
+        symbol_list = [at.properties.symbol for at in frag_neutral.atoms[:-1]] * frag_count
+        charge_list = [at.properties.charge_float for at in frag_neutral.atoms[:-1]] * frag_count
+        psf_neutral.atom_type.loc[psf_neutral.residue_name == 'LIG'] = symbol_list
+        psf_neutral.charge.loc[psf_neutral.residue_name == 'LIG'] = charge_list
+
+        psf_neutral.charge.loc[mol.properties.indices] += frag_neutral[-1].properties.charge_float
+        psf_neutral.charge.loc[psf_neutral.residue_name == 'COR'] = 0.0
+        # _constrain_charge(psf_neutral, 0.0, idx_slice=psf.atoms.index[psf.residue_name == 'COR']-1)
+
+        # Calculate all inter-ligand interactions
+        prm_neutral = PRMContainer.read(frag_neutral.properties.prm)
+        inter_nb = _inter_nonbonded(multi_mol, None, psf_neutral, prm_neutral)
+
+        # Calculate all intra-ligand interactions
+        prm_charge = PRMContainer.read(results['QD_MD.prm'])
+        intra_nb = _intra_nonbonded(multi_mol, psf, prm_charge)
+        inter_bond = _inter_bonded(multi_mol, psf, prm_charge)
+
+        # Optimize an (individual) ligand
+        results = qd_opt_ff(frag, job, md2opt(settings), new_psf=True, name='Ligand_opt')
+
+        # Calculate the optimized ligand energy
+        frag_multi = MultiMolecule.from_Molecule(frag)
+        psf_lig = join(results.job.path, 'Ligand_opt.psf')
+        frag_opt = _intra_nonbonded(frag_multi, psf_lig, prm_charge)
+        frag_opt += _inter_bonded(frag_multi, psf_lig, prm_charge)
 
         yield inter_nb, intra_nb, inter_bond, frag_opt, frag_count
 
@@ -159,28 +191,24 @@ def md2opt(s: Settings) -> Settings:
     s2 = s.copy()
     del s2.input.motion.md
     s2.input['global'].run_type = 'geometry_optimization'
+
+    # Delete all user-specified parameters; rely on MATCH
+    del s2.input.force_eval.mm.forcefield.charge
+    del s2.input.force_eval.mm.forcefield.nonbonded
     return s2
 
 
 def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings,
                      psf: PSFContainer, prm: PRMContainer) -> float:
-    """Collect all inter-ligand and ligand/core non-bonded interactions."""
+    """Collect all inter-ligand non-bonded interactions."""
     # Manually calculate all inter-ligand, ligand/core & core/core interactions
     df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s)
 
-    # Set all intra-core interactions to 0.0
+    # Set all core/core and core/ligand interactions to 0
     core = set(psf.atom_name[psf.residue_name == 'COR'])
-    iterator = combinations_with_replacement(sorted(core), r=2)
-    for key in iterator:
-        df.loc[key] = 0
-
-    """
-    # Set all core/core and core/ligand interactions to 0.0
-    core: Set[str] = set(psf.atom_name[psf.residue_name == 'COR'])
     for key in df.index:
         if core.intersection(key):
             df.loc[key] = 0
-    """
 
     return df.values.sum()
 
@@ -193,4 +221,45 @@ def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContai
 def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
     """Collect all intra-ligand bonded interactions."""
     E_tup = get_bonded(multi_mol, psf, prm)  # bonds, angles, dihedrals, impropers
-    return sum(series.sum() for series in E_tup)
+    return sum((series.sum() if series is not None else 0.0) for series in E_tup)
+
+
+# Temporary replacement for molkit's add_Hs() function until the function is fixed
+# https://github.com/SCM-NV/PLAMS/pull/77
+
+def add_Hs(mol, forcefield=None, return_rdmol=False):
+    """Add hydrogens to protein molecules read from PDB.
+
+    Makes sure that the hydrogens get the correct PDBResidue info.
+
+    :param mol: Molecule to be protonated
+    :type mol: |Molecule| or rdkit.Chem.Mol
+    :param str forcefield: Specify 'uff' or 'mmff' to apply forcefield based
+        geometry optimization on new atoms.
+    :param bool return_rdmol: return a RDKit molecule if true, otherwise a PLAMS molecule
+    :return: A molecule with explicit hydrogens added
+    :rtype: |Molecule| or rdkit.Chem.Mol
+    """
+    mol = molkit.to_rdmol(mol)
+    retmol = Chem.AddHs(mol)
+    for atom in retmol.GetAtoms():
+        if atom.GetPDBResidueInfo() is None and atom.GetSymbol() == 'H':
+            bond = atom.GetBonds()[0]
+            if bond.GetBeginAtom().GetIdx() == atom.GetIdx:
+                connected_atom = bond.GetEndAtom()
+            else:
+                connected_atom = bond.GetBeginAtom()
+            try:
+                ResInfo = connected_atom.GetPDBResidueInfo()
+                if ResInfo is None:
+                    continue  # Segmentation faults are raised if ResInfo is None
+                atom.SetMonomerInfo(ResInfo)
+                atomname = 'H' + atom.GetPDBResidueInfo().GetName()[1:]
+                atom.GetPDBResidueInfo().SetName(atomname)
+            except Exception:
+                pass
+
+    unchanged = molkit.gen_coords_rdmol(retmol)
+    if forcefield:
+        molkit.optimize_coordinates(retmol, forcefield, fixed=unchanged)
+    return retmol if return_rdmol else molkit.from_rdmol(retmol)

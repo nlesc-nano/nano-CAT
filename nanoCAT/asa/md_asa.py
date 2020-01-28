@@ -163,7 +163,6 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         psf_neutral.charge.loc[mol.properties.indices] += frag_neutral[-1].properties.charge_float
         psf_neutral.charge.loc[psf_neutral.residue_name == 'COR'] = 0.0
-        # _constrain_charge(psf_neutral, 0.0, idx_slice=psf.atoms.index[psf.residue_name == 'COR']-1)
 
         # Calculate all inter-ligand interactions
         prm_neutral = PRMContainer.read(frag_neutral.properties.prm)

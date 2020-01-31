@@ -19,8 +19,8 @@ API
 """
 
 from os.path import join
-from typing import Iterable, Tuple, Any, Type, Generator, Iterator, TypeVar
-from itertools import chain, repeat
+from typing import Iterable, Tuple, Any, Type, Generator
+from itertools import chain
 
 import numpy as np
 
@@ -35,7 +35,7 @@ from FOX import (
 
 from CAT.jobs import job_md
 from CAT.mol_utils import round_coords
-from CAT.attachment.qd_opt_ff import qd_opt_ff, _constrain_charge
+from CAT.attachment.qd_opt_ff import qd_opt_ff
 
 from .asa_frag import get_asa_fragments
 from ..ff.ff_assignment import run_match_job

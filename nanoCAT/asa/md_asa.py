@@ -151,7 +151,10 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         frag.round_coords()
         frag_count = len(frags)
         frag_neutral = frag.copy()
-        frag_neutral[len(mol) - mol.properties.indices[-1] - 1].properties.charge = 0
+        for at in frag_neutral:
+            if at.properties.anchor:
+                at.properties.charge = 0
+                break
         frag_neutral = add_Hs(frag_neutral, forcefield='uff')
         run_match_job(frag_neutral, MATCH_SETTINGS)
 
@@ -159,6 +162,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         psf_neutral = psf.copy()
         symbol_list = [at.properties.symbol for at in frag_neutral.atoms[:-1]] * frag_count
         charge_list = [at.properties.charge_float for at in frag_neutral.atoms[:-1]] * frag_count
+
         psf_neutral.atom_type.loc[psf_neutral.residue_name == 'LIG'] = symbol_list
         psf_neutral.charge.loc[psf_neutral.residue_name == 'LIG'] = charge_list
 

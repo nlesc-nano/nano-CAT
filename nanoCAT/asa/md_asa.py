@@ -140,6 +140,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         results = qd_opt_ff(mol, job, settings, name='QD_MD', job_func=Molecule.job_md)
         if results.job.status == 'crashed':
             yield np.nan, np.nan, np.nan, np.nan, 0
+            continue
 
         multi_mol = MultiMolecule.from_xyz(results['cp2k-pos-1.xyz'])
         psf = PSFContainer.read(results['QD_MD.psf'])

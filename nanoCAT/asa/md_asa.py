@@ -23,7 +23,6 @@ from typing import Iterable, Tuple, Any, Type, Generator
 from itertools import chain
 
 import numpy as np
-import pandas as pd
 
 from scm.plams import Settings, Molecule, Cp2kJob, Units
 from scm.plams.core.basejob import Job
@@ -42,7 +41,9 @@ from ..ff.ff_assignment import run_match_job
 
 
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
-               settings: Tuple[Settings, ...], **kwargs: Any) -> np.ndarray:
+               settings: Tuple[Settings, ...], iter_start: int = 3000,
+               scale_elstat: float = 0.0, scale_lj: float = 1.0,
+               **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
 
     The ASA calculates the (ensemble-averaged) interaction, strain and total energy.
@@ -57,6 +58,16 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
 
     settings : :class:`tuple` [|plams.Settings|]
         A tuple containing a single |plams.Settings| instance.
+
+    iter_start : :class:`int`
+        The MD iteration at which the ASA will be started.
+        All preceding iteration are disgarded, treated as pre-equilibration steps.
+
+    scale_elstat : :class:`float`
+        Scaling factor to apply to all 1,4-nonbonded electrostatic interactions.
+
+    scale_lj : :class:`float`
+        Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for ensuring signature compatiblity.
@@ -87,26 +98,28 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
         count = mol_len * 5
 
     # Extract all energies and ligand counts
-    iterator = chain.from_iterable(md_generator(mol_list, job, s))
+    iterator = chain.from_iterable(md_generator(mol_list, job, s,
+                                                iter_start=iter_start,
+                                                scale_elstat=scale_elstat,
+                                                scale_lj=scale_lj))
+
     E = np.fromiter(iterator, count=count, dtype=float)
     E.shape = shape
-    E[:, :4] *= Units.conversion_ratio('au', 'kcal/mol')
+    E[:, :4] *= Units.conversion_ratio('hartree', 'kcal/mol')
 
     # Calculate (and return) the interaction, strain and total energy
     E_int = E[:, 0]
-    E_strain = np.sum(E[:, 1:3], axis=1) - np.product(E[:, 3:], axis=1)
+    E_strain = E[:, 1:3].sum(axis=1) - E[:, 3:].prod(axis=1)
 
-    ret = np.array([E_int, E_strain, E_int + E_strain]).T
-    return ret
+    return np.array([E_int, E_strain, E_int + E_strain]).T
 
 
 MATCH_SETTINGS = Settings({'input': {'forcefield': 'top_all36_cgenff'}})
-KCAL2AU: float = Units.conversion_ratio('kcal/mol', 'hartree')  # kcal/mol to hartree
 Tuple5 = Tuple[float, float, float, float, int]
 
 
 def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
-                 settings: Settings) -> Generator[Tuple5, None, None]:
+                 settings: Settings, iter_start: int = 3000) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.
@@ -122,6 +135,10 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
     settings : :class:`tuple` [|plams.Settings|]
         CP2K job settings for **job**.
+
+    iter_start : :class:`int`
+        The MD iteration at which the ASA will be started.
+        All preceding iteration are disgarded, treated as pre-equilibration steps.
 
     Returns
     -------
@@ -148,7 +165,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
             yield np.nan, np.nan, np.nan, np.nan, 0
             continue
 
-        md_trajec = MultiMolecule.from_xyz(md_results['cp2k-pos-1.xyz'])
+        md_trajec = MultiMolecule.from_xyz(md_results['cp2k-pos-1.xyz'])[iter_start:]
         psf_charged = PSFContainer.read(md_results['QD_MD.psf'])
 
         # Optimize a single ligand
@@ -236,9 +253,13 @@ def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings, psf: PSFContainer,
     return df.values.sum()
 
 
-def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
+def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer,
+                     scale_elstat: float = 0.0, scale_lj: float = 1.0) -> float:
     """Collect all intra-ligand non-bonded interactions."""
-    return get_intra_non_bonded(multi_mol, psf=psf, prm=prm).values.sum()
+    df = get_intra_non_bonded(multi_mol, psf, prm,
+                              scale_elstat=scale_elstat,
+                              scale_lj=scale_lj)
+    return df.values.sum()
 
 
 def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:

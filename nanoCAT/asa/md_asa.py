@@ -41,7 +41,7 @@ from ..ff.ff_assignment import run_match_job
 
 
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
-               settings: Tuple[Settings, ...], iter_start: int = 3000,
+               settings: Tuple[Settings, ...], iter_start: int = 5000,
                scale_elstat: float = 0.0, scale_lj: float = 1.0,
                **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
@@ -65,9 +65,11 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
 
     scale_elstat : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded electrostatic interactions.
+        Serves the same purpose as the cp2k ``EI_SCALE14`` keyword.
 
     scale_lj : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
+        Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for ensuring signature compatiblity.
@@ -119,7 +121,8 @@ Tuple5 = Tuple[float, float, float, float, int]
 
 
 def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
-                 settings: Settings, iter_start: int = 3000) -> Generator[Tuple5, None, None]:
+                 settings: Settings, iter_start: int = 50000,
+                 scale_elstat: float = 0.0, scale_lj: float = 1.0) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.
@@ -139,6 +142,14 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     iter_start : :class:`int`
         The MD iteration at which the ASA will be started.
         All preceding iteration are disgarded, treated as pre-equilibration steps.
+
+    scale_elstat : :class:`float`
+        Scaling factor to apply to all 1,4-nonbonded electrostatic interactions.
+        Serves the same purpose as the cp2k ``EI_SCALE14`` keyword.
+
+    scale_lj : :class:`float`
+        Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
+        Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
 
     Returns
     -------

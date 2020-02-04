@@ -41,7 +41,7 @@ from ..ff.ff_assignment import run_match_job
 
 
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
-               settings: Tuple[Settings, ...], iter_start: int = 5000,
+               settings: Tuple[Settings, ...], iter_start: int = 500,
                scale_elstat: float = 0.0, scale_lj: float = 1.0,
                **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
@@ -121,7 +121,7 @@ Tuple5 = Tuple[float, float, float, float, int]
 
 
 def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
-                 settings: Settings, iter_start: int = 5000,
+                 settings: Settings, iter_start: int = 500,
                  scale_elstat: float = 0.0, scale_lj: float = 1.0) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 

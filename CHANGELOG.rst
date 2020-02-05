@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.4.2
+*****
+* Import the now fixed ``add_Hs()`` function from PLAMS.
+* Cleaned up the ``md_asa`` module.
+* Following the convention of CP2K, 1,4-electrostatic interactions are now
+  ignored during the MD-ASA workflow.
+
+
 0.4.1
 *****
 * Updated the MD-ASA workflow: The ligand interaction is now calculated using

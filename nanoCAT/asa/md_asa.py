@@ -135,7 +135,8 @@ Tuple5 = Tuple[float, float, float, float, int]
 def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                  settings: Settings, iter_start: int = 500,
                  scale_elstat: float = 0.0, scale_lj: float = 1.0,
-                 distance_upper_bound: float = np.inf, k: int = 20) -> Generator[Tuple5, None, None]:
+                 distance_upper_bound: float = np.inf,
+                 k: int = 20) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.

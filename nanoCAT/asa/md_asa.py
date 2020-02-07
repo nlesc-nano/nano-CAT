@@ -18,9 +18,9 @@ API
 
 """
 
-from os.path import join
 from typing import Iterable, Tuple, Any, Type, Generator
-from itertools import chain
+from os.path import join
+from itertools import chain, combinations_with_replacement
 
 import numpy as np
 
@@ -43,6 +43,7 @@ from ..ff.ff_assignment import run_match_job
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
                settings: Tuple[Settings, ...], iter_start: int = 500,
                scale_elstat: float = 0.0, scale_lj: float = 1.0,
+               distance_upper_bound: float = np.inf, k: int = 20,
                **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
 
@@ -70,6 +71,15 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     scale_lj : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
         Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
+
+    distance_upper_bound : :class:`float`
+        Consider only atom-pairs within this distance for calculating inter-ligand interactions.
+        Units are in Angstrom.
+        Using ``inf`` will default to the full, untruncated, distance matrix.
+
+    k : :class:`int`
+        The (maximum) number of to-be considered distances per atom.
+        Only relevant when **distance_upper_bound** is not set to ``inf``.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for ensuring signature compatiblity.
@@ -103,7 +113,9 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     iterator = chain.from_iterable(md_generator(mol_list, job, s,
                                                 iter_start=iter_start,
                                                 scale_elstat=scale_elstat,
-                                                scale_lj=scale_lj))
+                                                scale_lj=scale_lj,
+                                                distance_upper_bound=distance_upper_bound,
+                                                k=k))
 
     E = np.fromiter(iterator, count=count, dtype=float)
     E.shape = shape
@@ -122,7 +134,9 @@ Tuple5 = Tuple[float, float, float, float, int]
 
 def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                  settings: Settings, iter_start: int = 500,
-                 scale_elstat: float = 0.0, scale_lj: float = 1.0) -> Generator[Tuple5, None, None]:
+                 scale_elstat: float = 0.0, scale_lj: float = 1.0,
+                 distance_upper_bound: float = np.inf,
+                 k: int = 20) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.
@@ -150,6 +164,15 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     scale_lj : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
         Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
+
+    distance_upper_bound : :class:`float`
+        Consider only atom-pairs within this distance for calculating inter-ligand interactions.
+        Units are in Angstrom.
+        Using ``inf`` will default to the full, untruncated, distance matrix.
+
+    k : :class:`int`
+        The (maximum) number of to-be considered distances per atom.
+        Only relevant when **distance_upper_bound** is not set to ``inf``.
 
     Returns
     -------
@@ -197,7 +220,8 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                                        lig_count, mol.properties.indices)
 
         # Inter-ligand interaction
-        inter_nb = _inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral)
+        inter_nb = _inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral,
+                                    distance_upper_bound=distance_upper_bound, k=k)
 
         # Intra-ligand interaction
         intra_nb = _intra_nonbonded(md_trajec, psf_charged, prm_charged)
@@ -249,17 +273,16 @@ def _md2opt(s: Settings) -> Settings:
     return s2
 
 
-def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings, psf: PSFContainer,
-                     prm: PRMContainer) -> float:
+def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings, psf: PSFContainer, prm: PRMContainer,
+                     distance_upper_bound: float = np.inf, k: int = 20) -> float:
     """Collect all inter-ligand non-bonded interactions."""
-    # Manually calculate all inter-ligand, ligand/core & core/core interactions
-    df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s)
+    atom_set = set(psf.atom_name[psf.residue_name != 'COR'])
+    atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
 
-    # Set all core/core and core/ligand interactions to 0
-    core = set(psf.atom_name[psf.residue_name == 'COR'])
-    for key in df.index:
-        if core.intersection(key):
-            df.loc[key] = 0
+    # Manually calculate all inter-ligand, ligand/core & core/core interactions
+    df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s,
+                        distance_upper_bound=distance_upper_bound, k=k,
+                        atom_pairs=atom_pairs)
 
     return df.values.sum()
 

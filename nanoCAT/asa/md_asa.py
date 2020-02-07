@@ -276,7 +276,7 @@ def _md2opt(s: Settings) -> Settings:
 def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings, psf: PSFContainer, prm: PRMContainer,
                      distance_upper_bound: float = np.inf, k: int = 20) -> float:
     """Collect all inter-ligand non-bonded interactions."""
-    atom_set = set(psf.atom_name[psf.residue_name != 'COR'])
+    atom_set = set(psf.atom_type[psf.residue_name != 'COR'])
     atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
 
     # Manually calculate all inter-ligand, ligand/core & core/core interactions

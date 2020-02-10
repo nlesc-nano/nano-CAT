@@ -6,10 +6,10 @@ A module for constructing :math:`XYn`-dissociated quantum dots.
 
 """
 
-from itertools import chain, combinations, repeat
+from itertools import chain, combinations
 from typing import (
-    Union, Mapping, Iterable, Tuple, Dict, List, Optional, FrozenSet, Generator, Iterator,
-    Any, TypeVar, Hashable, SupportsInt, MutableMapping, Type, Set, Collection
+    Union, Mapping, Iterable, Tuple, Dict, List, Optional, FrozenSet, Generator,
+    Any, TypeVar, SupportsInt, Set, Collection
 )
 
 import numpy as np
@@ -20,8 +20,11 @@ from scm.plams.interfaces.molecule import rdkit as molkit
 from assertionlib.dataclass import AbstractDataClass
 
 from CAT.mol_utils import to_atnum
+from CAT.utils import iter_repeat
 from CAT.attachment.ligand_anchoring import _smiles_to_rdmol
-from nanoCAT.bde.guess_core_dist import guess_core_core_dist
+from FOX import group_by_values
+
+from .guess_core_dist import guess_core_core_dist
 
 __all__ = ['MolDissociater']
 
@@ -32,7 +35,7 @@ IdxMapping = Mapping[int, Collection[int]]
 
 def dissociate_ligand(mol: Molecule,
                       lig_count: int,
-                      lig_pairs: int = 1,
+                      lig_core_pairs: Optional[int] = 1,
                       lig_core_dist: Optional[float] = None,
                       core_atom: Union[None, int, str] = None,
                       core_index: Union[None, int, Iterable[int]] = None,
@@ -85,7 +88,7 @@ def dissociate_ligand(mol: Molecule,
     lig_count : :class:`int`
         The number of to-be dissociated ligands per core atom/molecule.
 
-    lig_pairs : :class:`int`
+    lig_core_pairs : :class:`int`, optional
         The number of to-be dissociated core/ligand pairs per core atom.
         Core/ligand pairs are picked based on whichever ligands are closest to each core atom.
         This option is irrelevant if a distance based criterium is used (see **lig_dist**).
@@ -124,9 +127,17 @@ def dissociate_ligand(mol: Molecule,
     :class:`Generator<collections.abc.Generator>` [|plams.Molecule|]
         A generator yielding new molecules with :math:`XY_{n}` removed.
 
+    Raises
+    ------
+    :exc:`TypeError`
+        Raised if **core_atom** and **core_idx** are both ``None`` or
+        **lig_core_pairs** and **lig_core_dist** are both ``None``.
+
     """
-    if core_atom is None and core_index is None:
+    if core_atom is core_index is None:
         raise TypeError("The 'core_atom' and 'core_idx' parameters cannot be both 'None'")
+    elif lig_core_pairs is lig_core_dist is None:
+        raise TypeError("The 'lig_core_pairs' and 'lig_core_dist' parameters cannot be both 'None'")
 
     # Set **core_idx** to all atoms within **mol** matching **core_atom**
     if core_atom is not None:
@@ -142,7 +153,8 @@ def dissociate_ligand(mol: Molecule,
     # Construct an array with all core/ligand pairs
     lig_idx = np.fromiter((i for i, at in enumerate(mol, 1) if at.properties.anchor), dtype=int)
     if lig_core_dist is None:  # Create n pairs regardless of any radius
-        cl_pairs = dissociate.get_pairs_closest(lig_idx, n_pairs=lig_pairs)
+        cl_pairs = dissociate.get_pairs_closest(lig_idx, n_pairs=lig_core_pairs)
+
     else:  # Create all pairs within a given radius
         cl_pairs = dissociate.get_pairs_distance(lig_idx, max_dist=lig_core_dist)
 
@@ -185,7 +197,7 @@ def _core_mapping(mol: Molecule, idx: Iterable[int], smiles: str) -> IdxMapping:
 class DummyGetter:
     """A mapping placeholder; calling `__getitem__` will return the supplied key embedded within a tuple."""  # noqa
 
-    def __getitem__(self, key: SupportsInt) -> Tuple[int]: return (int(key),)
+    def __getitem__(self, key: SupportsInt) -> Tuple[int]: return (key,)
 
 
 _DUMMY_GETTER = DummyGetter()
@@ -219,6 +231,18 @@ class MolDissociater(AbstractDataClass):
     """####################################### Properties #######################################"""
 
     @property
+    def mol(self) -> Molecule: return self._mol
+
+    @mol.setter
+    def mol(self, value: Molecule) -> None:
+        self._mol = value
+        try:
+            self._coords = value.as_array()
+        except (TypeError, AttributeError) as ex:
+            raise TypeError("'mol' expected a 'Molecule'; observed type: "
+                            f"'{value.__class__.__name__}'").with_traceback(ex.__traceback__)
+
+    @property
     def core_idx(self) -> np.ndarray: return self._core_idx
 
     @core_idx.setter
@@ -235,7 +259,7 @@ class MolDissociater(AbstractDataClass):
         if value is not None:
             self._max_dist = float(value)
         else:
-            idx = 1 + int(self.core_idx[0])
+            idx = 1 + self.core_idx[0]
             self._max_dist = guess_core_core_dist(self.mol, self.mol[idx])
 
     @property
@@ -245,7 +269,7 @@ class MolDissociater(AbstractDataClass):
     def topology(self, value: Optional[Mapping[int, str]]) -> None:
         self._topology = value or {}
 
-    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords', '_core_is_lig'})
+    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords'})
 
     def __init__(self, mol: Molecule,
                  core_idx: Union[int, Iterable[int]],
@@ -255,16 +279,15 @@ class MolDissociater(AbstractDataClass):
         """Initialize a :class:`MolDissociater` instance."""
         super().__init__()
 
-        # Public instance variables
-        self.mol: Molecule = mol
-        self.core_idx: np.ndarray = core_idx
-        self.ligand_count: int = ligand_count
-        self.max_dist: float = max_dist
-        self.topology: Mapping[int, str] = topology
-
         # Private instance variables
-        self._coords: np.ndarray = mol.as_array()
-        self._core_is_lig: bool = False
+        self._coords = None
+
+        # Public instance variables
+        self.mol = mol
+        self.core_idx = core_idx
+        self.ligand_count = ligand_count
+        self.max_dist = max_dist
+        self.topology = topology
 
     @AbstractDataClass.inherit_annotations()
     def _str_iterator(self):
@@ -546,7 +569,8 @@ class MolDissociater(AbstractDataClass):
 
     """################################# Molecule dissociation #################################"""
 
-    def __call__(self, combinations: Iterable[CombinationsTuple]) -> Iterator[Molecule]:
+    def __call__(self,
+                 combinations: Iterable[CombinationsTuple]) -> Generator[Molecule, None, None]:
         """Get this party started."""
         # Extract instance variables
         mol: Molecule = self.mol
@@ -598,7 +622,7 @@ class MolDissociater(AbstractDataClass):
             return ret
 
         # Delete the index of the last core atom
-        core_max = int(self.core_idx[-1])
+        core_max = self.core_idx[-1]
         idx = ret.index(core_max)
         del ret[idx]
 
@@ -606,89 +630,6 @@ class MolDissociater(AbstractDataClass):
         for i in ret:
             i -= 1
         return ret
-
-
-def group_by_values(iterable: Iterable[Tuple[Any, Hashable]],
-                    mapping_type: Type[MutableMapping] = dict
-                    ) -> MutableMapping[Hashable, List[Any]]:
-    """Take an iterable, yielding 2-tuples, and group all first elements by the second.
-
-    Exameple
-    --------
-    .. code:: python
-
-        >>> from typing import Dict, List
-
-        >>> str_list = ['a', 'a', 'a', 'a', 'a', 'b', 'b', 'b']
-        >>> iterable = enumerate(str_list)
-        >>> new_dict: Dict[str, List[int]] = group_by_values(iterable)
-
-        >>> print(new_dict)
-        {'a': [1, 2, 3, 4, 5], 'b': [6, 7, 8]}
-
-    Parameter
-    ---------
-    iterable : :class:`Iterable<collections.abc.Iterable>`
-        An iterable yielding 2 elements upon iteration
-        (*e.g.* :meth:`dict.items` or :func:`enumerate`).
-        The second element must be a :class:`Hashable<collections.abc.Hashable>` and will be used
-        as key in the to-be returned dictionary.
-
-    mapping_type : :class:`type` [:class:`MutableMapping<collections.abc.MutableMapping>`]
-        The type of to-be returned (mutable) mapping.
-
-    Returns
-    -------
-    :class:`MutableMapping<collections.abc.MutableMapping>`
-    [:class:`Hashable<collections.abc.Hashable>`, :class:`list` [:data:`Any<typing.Any>`]]
-        A grouped mapping.
-
-    """
-    ret: Mapping[Hashable, List[Any]] = mapping_type()
-    ret_append: Dict[Hashable, list.append] = {}
-    for value, key in iterable:
-        try:
-            ret_append[key](value)
-        except KeyError:
-            ret[key] = [value]
-            ret_append[key] = ret[key].append
-    return ret
-
-
-def iter_repeat(iterable: Iterable[T], times: int) -> Iterator[T]:
-    """Iterate over an iterable and apply :func:`itertools.repeat` to each element.
-
-    Examples
-    --------
-    .. code:: python
-
-        >>> iterable = range(3)
-        >>> times = 2
-        >>> iterator = iter_repeat(iterable, n)
-        >>> for i in iterator:
-        ...     print(i)
-        0
-        0
-        1
-        1
-        2
-        2
-
-    Parameters
-    ----------
-    iterable : :class:`Iterable<collections.abc.Iterable>`
-        An iterable.
-
-    times : :class:`int`
-        The number of times each element should be repeated.
-
-    Returns
-    -------
-    :class:`Iterator<collections.abc.Iterator>`
-        An iterator that yields each element from **iterable** multiple **times**.
-
-    """
-    return chain.from_iterable(repeat(i, times) for i in iterable)
 
 
 def as_array(iterable: Iterable, dtype: Union[None, str, type, np.dtype] = None,

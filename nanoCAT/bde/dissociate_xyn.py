@@ -2,7 +2,31 @@
 nanoCAT.bde.dissociate_xyn
 ==========================
 
-A module for constructing :math:`XYn`-dissociated quantum dots.
+A module for constructing :math:`XY_{n}`-dissociated quantum dots.
+
+Index
+-----
+.. currentmodule:: nanoCAT.bde.dissociate_xyn
+.. autosummary::
+    dissociate_ligand
+    MolDissociater
+    MolDissociater.remove_bulk
+    MolDissociater.assign_topology
+    MolDissociater.get_pairs_closest
+    MolDissociater.get_pairs_distance
+    MolDissociater.combinations
+    MolDissociater.__call__
+
+API
+---
+.. autofunction:: dissociate_ligand
+.. autoclass:: MolDissociater
+.. automethod:: MolDissociater.remove_bulk
+.. automethod:: MolDissociater.assign_topology
+.. automethod:: MolDissociater.get_pairs_closest
+.. automethod:: MolDissociater.get_pairs_distance
+.. automethod:: MolDissociater.combinations
+.. automethod:: MolDissociater.__call__
 
 """
 
@@ -167,7 +191,7 @@ def dissociate_ligand(mol: Molecule,
 
 def _lig_mapping(mol: Molecule, idx: Iterable[int]) -> IdxMapping:
     """Map **idx** to all atoms with the same residue number."""
-    idx = as_array(idx, dtype=int).tolist()  # 1-based indices
+    idx = as_array(idx, dtype=int)  # 1-based indices
 
     iterator = ((i, at.properties.pdb_info.ResidueNumber) for i, at in enumerate(mol, 1))
     lig_mapping = group_by_values(iterator)
@@ -204,9 +228,34 @@ _DUMMY_GETTER = DummyGetter()
 
 
 class MolDissociater(AbstractDataClass):
-    """MolDissociater.
+    """The :class:`MolDissociater` class; serves as an API for :func:`dissociate_ligand`.
 
     Parameters
+    ----------
+    mol : |plams.Molecule|
+        A PLAMS molecule consisting of cores and ligands.
+        See :attr:`MolDissociater.mol`.
+
+    core_idx : :class:`int` or :class:`Iterable<colelctions.abc.Iterable>` [:class:`int`]
+        An iterable with (1-based) atomic indices of all core atoms valid for dissociation.
+        See :attr:`MolDissociater.core_idx`.
+
+    ligand_count : :class:`int`
+        The number of ligands to-be dissociation with a single atom from
+        :attr:`MolDissociater.core_idx`.
+        See :attr:`MolDissociater.ligand_count`.
+
+    max_dist : :class:`float`, optional
+        The maximum distance between core atoms for them to-be considered neighbours.
+        If ``None``, this value will be guessed based on the radial distribution function of
+        **mol**.
+        See :attr:`MolDissociater.ligand_count`.
+
+    topology : :class:`dict` [:class:`int`, :class:`str`], optional
+        A mapping of neighbouring atom counts to a user-specified topology descriptor.
+        See :attr:`MolDissociater.topology`.
+
+    Attributes
     ----------
     mol : |plams.Molecule|
         A PLAMS molecule consisting of cores and ligands.
@@ -219,9 +268,9 @@ class MolDissociater(AbstractDataClass):
         :attr:`MolDissociater.core_idx`.
 
     max_dist : :class:`float`, optional
-        Optional: The maximum distance between core atoms for them to-be considered neighbours.
+        The maximum distance between core atoms for them to-be considered neighbours.
         If ``None``, this value will be guessed based on the radial distribution function of
-        **mol**.
+        :attr:`MolDissociater.mol`.
 
     topology : :class:`dict` [:class:`int`, :class:`str`], optional
         A mapping of neighbouring atom counts to a user-specified topology descriptor.
@@ -349,17 +398,18 @@ class MolDissociater(AbstractDataClass):
         """Assign a topology to all core atoms in :attr:`MolDissociater.core_idx`.
 
         The topology descriptor is based on:
+
         * The number of neighbours within a radius defined by :attr:`MolDissociater.max_dist`.
         * The mapping defined in :attr:`MolDissociater.topology`,
           which maps the number of neighbours to a user-defined topology description.
 
         If no topology description is available for a particular neighbouring atom count,
-        then a generic :code:`str(i) + "_neighbours"` descriptor is used
+        then a generic :code:`f"{i}_neighbours"` descriptor is used
         (where `i` is the neighbouring atom count).
 
-        Performs an inplace update of all |Atom.properties| ``["topology"]`` values.
+        Performs an inplace update of all :class:`Atom.properties.topology<scm.plams.mol.atom.Atom>` values.
 
-        """
+        """  # noqa
         # Extract variables
         mol: Molecule = self.mol
         xyz: np.ndarray = self._coords
@@ -409,15 +459,11 @@ class MolDissociater(AbstractDataClass):
 
     def get_pairs_closest(self, lig_idx: Union[int, Iterable[int]],
                           n_pairs: int = 1) -> np.ndarray:
-        """Create and return the indices of each core atom and the :math:`n` closest ligands.
-
-        :math:`n` is defined according to :attr:`MolDissociater.ligand_count`.
-        Pairs are chosen based on the norm of the :math:`n` core/ligand distances;
-        *i.e.* the :math:`n` pairs with the :math:`n` lowest norms are are returned.
+        r"""Create and return the indices of each core atom and the :math:`n` closest ligands.
 
         Parameters
         ----------
-        lig_idx : :data:`Callable<typing.Callable>`, optional
+        lig_idx : :class:`int` or :class:`Iterable<collections.abc.Iterable>` [:class:`int`]
             The (1-based) indices of all ligand anchor atoms.
 
         n_pairs : :class:`int`
@@ -427,9 +473,8 @@ class MolDissociater(AbstractDataClass):
 
         Returns
         -------
-        :math:`(m*i) * (n+1)` |np.ndarray|_ [|np.int64|_]
-            An array with the indices of all :math:`m` valid ligand/core pairs
-            with :code:`n=self.ligand_count` and :math:`i=n_pairs`.
+        2D :class:`numpy.ndarray` [:class:`int`]
+            A 2D array with the indices of all valid ligand/core pairs.
 
         """
         if n_pairs <= 0:
@@ -470,13 +515,11 @@ class MolDissociater(AbstractDataClass):
 
     def get_pairs_distance(self, lig_idx: Union[int, Iterable[int]],
                            max_dist: float = 5.0) -> np.ndarray:
-        """Create and return the indices of each core atom and all ligand pairs with **max_dist**.
-
-        :math:`n` is defined according to :attr:`MolDissociater.ligand_count`.
+        r"""Create and return the indices of each core atom and all ligand pairs with **max_dist**.
 
         Parameters
         ----------
-        lig_idx : :data:`Callable<typing.Callable>`, optional
+        lig_idx : :class:`int` or :class:`Iterable<collections.abc.Iterable>` [:class:`int`]
             The (1-based) indices of all ligand anchor atoms.
 
         max_dist : :class:`float`
@@ -484,9 +527,8 @@ class MolDissociater(AbstractDataClass):
 
         Returns
         -------
-        :math:`m*(n+1)` |np.ndarray|_ [|np.int64|_]
-            An array with the indices of all :math:`m` valid ligand/core pairs
-            and with :code:`n=self.ligand_count`.
+        2D :class:`numpy.ndarray` [:class:`int`]
+            A 2D array with the indices of all valid ligand/core pairs.
 
         """
         if max_dist <= 0.0:
@@ -535,18 +577,18 @@ class MolDissociater(AbstractDataClass):
             An array with the indices of all core/ligand pairs.
 
         lig_mapping : :class:`Mapping<collections.abc.Mapping>`, optional
-            A mapping for translating (1-based) atomic indices in `cor_lig_pairs[:, 0]` to
+            A mapping for translating (1-based) atomic indices in ``cor_lig_pairs[:, 0]`` to
             lists of (1-based) atomic indices.
             Used for mapping ligand anchor atoms to the rest of the to-be dissociated ligands.
 
         core_mapping : :class:`Mapping<collections.abc.Mapping>`, optional
-            A mapping for translating (1-based) atomic indices in `cor_lig_pairs[:, 1:]` to
+            A mapping for translating (1-based) atomic indices in ``cor_lig_pairs[:, 1:]`` to
             lists of (1-based) atomic indices.
             Used for mapping core atoms to the to-be dissociated sub structures.
 
         Returns
         -------
-        :class:`set [:class:`tuple`]
+        :class:`set` [:class:`tuple`]
             A set of 2-tuples.
             The first element of each tuple is a :class:`frozenset` with the (1-based) indices of
             all to-be removed core atoms.
@@ -571,7 +613,7 @@ class MolDissociater(AbstractDataClass):
 
     def __call__(self,
                  combinations: Iterable[CombinationsTuple]) -> Generator[Molecule, None, None]:
-        """Get this party started."""
+        """Start the dissociation process."""
         # Extract instance variables
         mol: Molecule = self.mol
 

@@ -19,8 +19,8 @@ from scm.plams import Molecule, Atom, MoleculeError
 from scm.plams.interfaces.molecule import rdkit as molkit
 from assertionlib.dataclass import AbstractDataClass
 
-from CAT.mol_utils import to_atnum
 from CAT.utils import iter_repeat
+from CAT.mol_utils import to_atnum
 from CAT.attachment.ligand_anchoring import _smiles_to_rdmol
 from FOX import group_by_values
 
@@ -341,7 +341,7 @@ class MolDissociater(AbstractDataClass):
 
         vec_norm = np.linalg.norm(vec, axis=1)
         norm_accept, *_ = np.where(vec_norm > max_vec_len)
-        self.core_idx = i[norm_accept]
+        self._core_idx = i[norm_accept]
 
     """################################## Topology assignment ##################################"""
 
@@ -376,7 +376,7 @@ class MolDissociater(AbstractDataClass):
         neighbour_count -= 1
         topology: List[str] = self._get_topology(neighbour_count)
 
-        core_idx = (1 + self.core_idx).tolist()  # Switch from 0-based to 1-based indices
+        core_idx = 1 + self.core_idx  # Switch from 0-based to 1-based indices
         for j, top in zip(core_idx, topology):
             mol[j].properties.topology = top
 
@@ -645,5 +645,5 @@ def as_array(iterable: Iterable, dtype: Union[None, str, type, np.dtype] = None,
         ret = np.fromiter(iterable, dtype=dtype)
 
     if ret.ndim < ndmin:
-        ret.shape += (1,) * (ndmin - ret.ndmin)
+        ret.shape += (1,) * (ndmin - ret.ndim)
     return ret

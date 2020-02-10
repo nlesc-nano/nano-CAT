@@ -241,7 +241,9 @@ def _get_neutral_frag(frag: Molecule) -> Molecule:
         if at.properties.anchor:
             at.properties.charge = 0
             break
+
     frag_neutral = add_Hs(frag_neutral, forcefield='uff')
+    frag_neutral.properties.pdb_info.IsHeteroAtom = False
     run_match_job(frag_neutral, MATCH_SETTINGS)
     return frag_neutral
 

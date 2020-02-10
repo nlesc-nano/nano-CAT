@@ -106,7 +106,7 @@ def test_get_pairs_distance() -> None:
 def test_remove_bulk() -> None:
     """Tests for :meth:`MolDissociater.remove_bulk`."""
     core_idx = (i for i, at in enumerate(MOL, 1) if at.symbol == 'Cd')
-    dissociate = MolDissociater(MOL, core_idx, ligand_count=2)
+    dissociate = MolDissociater(MOL.copy(), core_idx, ligand_count=2)
     dissociate.remove_bulk()
 
     ref = np.load(PATH / 'remove_bulk.npy')

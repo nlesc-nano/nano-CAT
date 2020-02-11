@@ -284,7 +284,7 @@ def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings, psf: PSFContainer, p
                                       distance_upper_bound=distance_upper_bound, k=k,
                                       atom_pairs=atom_pairs)
 
-    return elstat_df.values.sum() + lj_df.values.sum()
+    return elstat_df.mean().sum() + lj_df.mean().sum()
 
 
 def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer,
@@ -293,10 +293,11 @@ def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContai
     elstat_df, lj_df = get_intra_non_bonded(multi_mol, psf, prm,
                                             scale_elstat=scale_elstat,
                                             scale_lj=scale_lj)
-    return elstat_df.values.sum() + lj_df.values.sum()
+
+    return elstat_df.mean().sum() + lj_df.mean().sum()
 
 
 def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
     """Collect all intra-ligand bonded interactions."""
     E_tup = get_bonded(multi_mol, psf, prm)  # bonds, angles, dihedrals, impropers
-    return sum((df.values.sum() if df is not None else 0.0) for df in E_tup)
+    return sum((df.mean().sum() if df is not None else 0.0) for df in E_tup)

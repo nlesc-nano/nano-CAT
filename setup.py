@@ -61,7 +61,7 @@ setup(
     install_requires=[
         'numpy',
         'scipy',
-        'pandas',
+        'pandas>=0.24.0',
         'AssertionLib>=1.0',
         'plams@git+https://github.com/SCM-NV/PLAMS@master',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',

@@ -18,27 +18,24 @@ API
 
 """
 
-from os import PathLike
-from typing import Iterable, Tuple, Any, Type, Generator, Union, AnyStr, Hashable, Optional
+from typing import Iterable, Tuple, Any, Type, Generator, Sequence
 from os.path import join
-from itertools import chain, combinations_with_replacement
+from itertools import chain
 
 import numpy as np
-import pandas as pd
 
 from scm.plams import Settings, Molecule, Cp2kJob, Units
 from scm.plams.core.basejob import Job
 from scm.plams.interfaces.molecule.rdkit import add_Hs
 
-from FOX import (
-    get_non_bonded, get_intra_non_bonded, get_bonded, MultiMolecule, PSFContainer, PRMContainer
-)
+from FOX import MultiMolecule, PSFContainer, PRMContainer, get_intra_non_bonded, get_bonded
 
 from CAT.jobs import job_md
 from CAT.mol_utils import round_coords
-from CAT.attachment.qd_opt_ff import qd_opt_ff
+from CAT.attachment.qd_opt_ff import qd_opt_ff, get_psf
 
 from .asa_frag import get_asa_fragments
+from .energy_gatherer import EnergyGatherer
 from ..ff.ff_assignment import run_match_job
 
 
@@ -129,7 +126,7 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     # Calculate (and return) the interaction, strain and total energy
     E_int = E[:, 0]
     E_strain = E[:, 1:3].sum(axis=1) - E[:, 3:].prod(axis=1)
-
+    import pdb; pdb.set_trace()
     return np.array([E_int, E_strain, E_int + E_strain]).T
 
 
@@ -197,7 +194,11 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     for mol in mol_list:
         # Identify the fragments
         ligands, _ = get_asa_fragments(mol)
-        lig = ligands[0]
+        prm_charged = PRMContainer.read(mol.properties.prm)
+        psf_lig = get_psf(ligands[0], charges=None)
+
+        # import pdb; pdb.set_trace()
+        lig = _get_best_ligand(ligands, psf_lig, prm_charged)
         lig.round_coords()
         lig_count = len(ligands)
 
@@ -218,8 +219,6 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         # Prepare arguments for the intra-ligand interactions
         lig_opt = MultiMolecule.from_Molecule(lig)
-        prm_charged = PRMContainer.read(opt_results['ligand_opt.prm'])
-        psf_lig = join(opt_results.job.path, 'ligand_opt.psf')
 
         # Prepare arguments for the inter-ligand interactions
         lig_neutral = _get_neutral_frag(lig)
@@ -228,18 +227,78 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                                        lig_count, mol.properties.indices)
 
         # Inter-ligand interaction
-        inter_nb = _inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral,
-                                    distance_upper_bound=distance_upper_bound, k=k)
+        qd_map = EnergyGatherer()
+        inter_nb = qd_map.inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral,
+                                          distance_upper_bound=distance_upper_bound, k=k)
 
         # Intra-ligand interaction
-        intra_nb = _intra_nonbonded(md_trajec, psf_charged, prm_charged)
-        intra_bond = _inter_bonded(md_trajec, psf_charged, prm_charged)
+        psf_charged.charge = [(at.properties.charge_float if at.properties.charge_float else 0.0) for at in mol]
+        intra_bond = qd_map.intra_bonded(md_trajec, psf_charged, prm_charged)
+        intra_nb = qd_map.intra_nonbonded(md_trajec, psf_charged, prm_charged,
+                                          scale_elstat=scale_elstat, scale_lj=scale_lj)
 
         # Intra-ligand interaction within a single optimized ligand
-        frag_opt = _intra_nonbonded(lig_opt, psf_lig, prm_charged)
-        frag_opt += _inter_bonded(lig_opt, psf_lig, prm_charged)
+        lig_map = EnergyGatherer()
+        frag_opt = lig_map.intra_bonded(lig_opt, psf_lig, prm_charged)
+        frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged,
+                                            scale_elstat=scale_elstat, scale_lj=scale_lj)
+
+
+        import pandas as pd
+
+        b = {'angles', 'bonds', 'dihedrals', 'impropers'}
+
+        strain = pd.Series(0.0, index=qd_map.angles.index.copy())
+        for k, v in qd_map.items():
+            if k in {'inter_elstat', 'inter_lj'}:
+                continue
+            if k in b:
+                continue
+            elif v is None:
+                continue
+            strain += np.nansum(v, axis=1)
+
+        strain /= lig_count
+
+        for k, v in lig_map.items():
+            if v is None:
+                continue
+            if k in b:
+                continue
+            strain -= np.nansum(v, axis=1)
+
+        strain *= Units.conversion_ratio('au', 'kcal/mol')
+
+        E_bond = qd_map.bonds.sum(axis=1) / lig_count - lig_map.bonds.sum(axis=1).values
+        E_angles = qd_map.angles.sum(axis=1) / lig_count - lig_map.angles.sum(axis=1).values
+        E_impropers = qd_map.impropers.sum(axis=1) / lig_count - lig_map.impropers.sum(axis=1).values
+        E_dihedrals = qd_map.dihedrals.sum(axis=1) / lig_count - lig_map.dihedrals.sum(axis=1).values
+        E_lj = qd_map.intra_lj.sum(axis=1) / lig_count - lig_map.intra_lj.sum(axis=1).values
+        E_elstat = qd_map.intra_elstat.sum(axis=1) / lig_count - lig_map.intra_elstat.sum(axis=1).values
+
+        E_bond *= Units.conversion_ratio('au', 'kcal/mol')
+        E_angles *= Units.conversion_ratio('au', 'kcal/mol')
+        E_impropers *= Units.conversion_ratio('au', 'kcal/mol')
+        E_dihedrals *= Units.conversion_ratio('au', 'kcal/mol')
+        E_lj *= Units.conversion_ratio('au', 'kcal/mol')
+        E_elstat *= Units.conversion_ratio('au', 'kcal/mol')
+
+        import pdb; pdb.set_trace()
 
         yield inter_nb, intra_nb, intra_bond, frag_opt, lig_count
+
+
+def _get_best_ligand(ligand_list: Sequence[Molecule], psf, prm) -> Molecule:
+    mol = MultiMolecule.from_Molecule(ligand_list)
+
+    elstat, lj = get_intra_non_bonded(mol, psf, prm)
+    series = elstat.sum(axis=1) + lj.sum(axis=1)
+    for i in get_bonded(mol, psf, prm):
+        if i is not None:
+            series += i.sum(axis=1)
+
+    i = series.values.argmin()
+    return ligand_list[i]
 
 
 def _get_neutral_frag(frag: Molecule) -> Molecule:
@@ -276,60 +335,9 @@ def _md2opt(s: Settings) -> Settings:
     s2 = s.copy()
     del s2.input.motion.md
     s2.input['global'].run_type = 'geometry_optimization'
+    s2.input.force_eval.mm.print.ff_info = 'debug'
 
     # Delete all user-specified parameters; rely on MATCH
     del s2.input.force_eval.mm.forcefield.charge
     del s2.input.force_eval.mm.forcefield.nonbonded
     return s2
-
-
-def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings, psf: PSFContainer, prm: PRMContainer,
-                     distance_upper_bound: float = np.inf, k: int = 20) -> float:
-    """Collect all inter-ligand non-bonded interactions."""
-    atom_set = set(psf.atom_type[psf.residue_name != 'COR'])
-    atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
-
-    # Manually calculate all inter-ligand, ligand/core & core/core interactions
-    elstat_df, lj_df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s,
-                                      distance_upper_bound=distance_upper_bound, k=k,
-                                      atom_pairs=atom_pairs)
-
-    return elstat_df.mean().sum() + lj_df.mean().sum()
-
-
-def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer,
-                     scale_elstat: float = 0.0, scale_lj: float = 1.0) -> float:
-    """Collect all intra-ligand non-bonded interactions."""
-    elstat_df, lj_df = get_intra_non_bonded(multi_mol, psf, prm,
-                                            scale_elstat=scale_elstat,
-                                            scale_lj=scale_lj)
-
-    return elstat_df.mean().sum() + lj_df.mean().sum()
-
-
-def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
-    """Collect all intra-ligand bonded interactions."""
-    E_tup = get_bonded(multi_mol, psf, prm)  # bonds, angles, dihedrals, impropers
-    return sum((df.mean().sum() if df is not None else 0.0) for df in E_tup)
-
-
-def _concatenate_df(**kwargs: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
-    """Concatenate all DataFrames in **kwargs** into a single DataFrame."""
-    values_iterator = iter(kwargs.values())
-    try:
-        df = None
-        while df is None:
-            df = next(values_iterator)
-    except StopIteration:
-        return None
-
-    index = df.index.copy()
-    index.name = 'MD Iteration'
-    columns = pd.MultiIndex(levels=([], []), codes=([], []), names=('quantity', 'atoms'))
-    ret = pd.DataFrame(index=index, columns=columns)
-
-    for key, df in kwargs.items():
-        for column, value in df.items():
-            column_new = (key, ' '.join(str(i) for i in column))
-            ret[column_new] = value
-    return ret

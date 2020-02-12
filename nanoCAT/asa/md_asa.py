@@ -18,11 +18,13 @@ API
 
 """
 
-from typing import Iterable, Tuple, Any, Type, Generator
+from os import PathLike
+from typing import Iterable, Tuple, Any, Type, Generator, Union, AnyStr, Hashable, Optional
 from os.path import join
 from itertools import chain, combinations_with_replacement
 
 import numpy as np
+import pandas as pd
 
 from scm.plams import Settings, Molecule, Cp2kJob, Units
 from scm.plams.core.basejob import Job
@@ -44,7 +46,7 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
                settings: Tuple[Settings, ...], iter_start: int = 500,
                scale_elstat: float = 0.0, scale_lj: float = 1.0,
                distance_upper_bound: float = np.inf, k: int = 20,
-               **kwargs: Any) -> np.ndarray:
+               dump_csv: bool = False, **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
 
     The ASA calculates the (ensemble-averaged) interaction, strain and total energy.
@@ -81,6 +83,9 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
         The (maximum) number of to-be considered distances per atom.
         Only relevant when **distance_upper_bound** is not set to ``inf``.
 
+    dump_csv : :class:`str`, optional
+        If ``True``, dump the raw energy terms to a set of .csv files.
+
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for ensuring signature compatiblity.
 
@@ -115,7 +120,7 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
                                                 scale_elstat=scale_elstat,
                                                 scale_lj=scale_lj,
                                                 distance_upper_bound=distance_upper_bound,
-                                                k=k))
+                                                k=k, dump_csv=dump_csv))
 
     E = np.fromiter(iterator, count=count, dtype=float)
     E.shape = shape
@@ -136,7 +141,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                  settings: Settings, iter_start: int = 500,
                  scale_elstat: float = 0.0, scale_lj: float = 1.0,
                  distance_upper_bound: float = np.inf,
-                 k: int = 20) -> Generator[Tuple5, None, None]:
+                 k: int = 20, dump_csv: bool = False) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.
@@ -173,6 +178,9 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     k : :class:`int`
         The (maximum) number of to-be considered distances per atom.
         Only relevant when **distance_upper_bound** is not set to ``inf``.
+
+    dump_csv : :class:`str`, optional
+        If ``True``, dump the raw energy terms to a set of .csv files.
 
     Returns
     -------
@@ -303,3 +311,25 @@ def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer
     """Collect all intra-ligand bonded interactions."""
     E_tup = get_bonded(multi_mol, psf, prm)  # bonds, angles, dihedrals, impropers
     return sum((df.mean().sum() if df is not None else 0.0) for df in E_tup)
+
+
+def _concatenate_df(**kwargs: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """Concatenate all DataFrames in **kwargs** into a single DataFrame."""
+    values_iterator = iter(kwargs.values())
+    try:
+        df = None
+        while df is None:
+            df = next(values_iterator)
+    except StopIteration:
+        return None
+
+    index = df.index.copy()
+    index.name = 'MD Iteration'
+    columns = pd.MultiIndex(levels=([], []), codes=([], []), names=('quantity', 'atoms'))
+    ret = pd.DataFrame(index=index, columns=columns)
+
+    for key, df in kwargs.items():
+        for column, value in df.items():
+            column_new = (key, ' '.join(str(i) for i in column))
+            ret[column_new] = value
+    return ret

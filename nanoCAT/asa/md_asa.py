@@ -175,7 +175,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         The (maximum) number of to-be considered distances per atom.
         Only relevant when **distance_upper_bound** is not set to ``inf``.
 
-    dump_csv : :class:`str`, optional
+    dump_csv : :class:`bool`, optional
         If ``True``, dump the raw energy terms to a set of .csv files.
 
     Returns
@@ -284,8 +284,8 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         """  # noqa
 
         if dump_csv:
-            qd_map.to_csv(join(mol.properties.path, 'asa', f'{mol.propeties.name}.qd.csv'))
-            lig_map.to_csv(join(mol.properties.path, 'asa', f'{mol.propeties.name}.lig.csv'))
+            qd_map.to_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.qd.csv'))
+            lig_map.to_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.lig.csv'))
 
         yield inter_nb, intra_nb, intra_bond, frag_opt, lig_count
 

@@ -3,7 +3,7 @@ from os import PathLike
 from io import TextIOBase
 from types import MappingProxyType
 from typing import (ClassVar, FrozenSet, Mapping, Optional, Any, Callable, Union, AnyStr, TypeVar,
-                    Iterator, KeysView, ItemsView, ValuesView, Dict, Tuple)
+                    Iterator, KeysView, ItemsView, ValuesView, Dict, SupportsFloat)
 from collections import abc
 from itertools import combinations_with_replacement
 
@@ -38,7 +38,7 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
       Collect, assign and return all intra-ligand bonded interactions.
 
     The resulting DataFrames can be exported to and from .csv files or concatenated with,
-    respectivelly, the :meth:`EnergyGatherer.to_csv` and :meth:`EnergyGatherer.read_csv` methods.
+    respectivelly, the :meth:`EnergyGatherer.write_csv` and :meth:`EnergyGatherer.read_csv` methods.
 
     All units are in atomic units.
 
@@ -284,7 +284,7 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
         return elstat_df.mean().sum() + lj_df.mean().sum()
 
     def intra_nonbonded(self, multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer,
-                        scale_elstat: float = 0.0, scale_lj: float = 1.0) -> float:
+                        scale_elstat: float = 1.0, scale_lj: float = 1.0) -> float:
         """Collect, assign and return all intra-ligand non-bonded interactions."""
         elstat_df, lj_df = get_intra_non_bonded(multi_mol, psf, prm,
                                                 scale_elstat=scale_elstat,
@@ -303,8 +303,8 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
 
         return sum((df.mean().sum() if df is not None else 0.0) for df in E_tup)
 
-    def to_csv(self, path_or_buf: Union[None, AnyStr, PathLike, TextIOBase] = None,
-               drop_zero: bool = True, **kwargs: Any) -> Optional[str]:
+    def write_csv(self, path_or_buf: Union[None, AnyStr, PathLike, TextIOBase] = None,
+                  drop_zero: bool = True, **kwargs: Any) -> Optional[str]:
         r"""Export this instances :meth:`values<EnergyGatherer.values>` to a .csv file.
 
         Serves as wrapper arround the :meth:`pandas.DataFrame.to_csv` method.
@@ -374,7 +374,7 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
 
         See Also
         --------
-        :meth:`EnergyGatherer.to_csv`
+        :meth:`EnergyGatherer.write_csv`
             Export this instances :meth:`values<EnergyGatherer.values>` to a .csv file.
 
         """
@@ -475,4 +475,81 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
                 if evaluate(value):
                     column_new = (key, ' '.join(str(i) for i in column))
                     ret[column_new] = value.copy()
+        return ret
+
+    def _imap(self, value: SupportsFloat,
+              func: Callable[[pd.DataFrame, float], Any]) -> None:
+        """Apply **func** to all DataFrames in this instance."""
+        try:
+            value_ = float(value)
+        except TypeError as ex:
+            raise TypeError(f"'{self.__class__.__name__}' instances only support arithmetic "
+                            "operations with scalars; observed type: "
+                            f"'{value.__class__.__name__}'").with_traceback(ex.__Traceback__)
+
+        for df in self.values():
+            if df is not None:
+                func(df, value_)
+
+    def __iadd__(self, value: SupportsFloat):
+        self._imap(value, func=pd.DataFrame.__iadd__)
+        return self
+
+    def __isub__(self, value: SupportsFloat):
+        self._imap(value, func=pd.DataFrame.__isub__)
+        return self
+
+    def __imul__(self, value: SupportsFloat):
+        self._imap(value, func=pd.DataFrame.__imul__)
+        return self
+
+    def __ifloordiv__(self, value: SupportsFloat):
+        self._imap(value, func=pd.DataFrame.__ifloordiv__)
+        return self
+
+    def __itruediv__(self, value: SupportsFloat):
+        self._imap(value, func=pd.DataFrame.__itruediv__)
+        return self
+
+    def __ipow__(self, value: SupportsFloat):
+        self._imap(value, func=pd.DataFrame.__ipow__)
+        return self
+
+    def __imod__(self, value: SupportsFloat):
+        self._imap(value, func=pd.DataFrame.__imod__)
+        return self
+
+    def __add__(self, value: SupportsFloat):
+        ret = self.copy(deep=True)
+        ret += value
+        return ret
+
+    def __sub__(self, value: SupportsFloat):
+        ret = self.copy(deep=True)
+        ret -= value
+        return ret
+
+    def __mul__(self, value: SupportsFloat):
+        ret = self.copy(deep=True)
+        ret *= value
+        return ret
+
+    def __floordiv__(self, value: SupportsFloat):
+        ret = self.copy(deep=True)
+        ret /= value
+        return ret
+
+    def __truediv__(self, value: SupportsFloat):
+        ret = self.copy(deep=True)
+        ret //= value
+        return ret
+
+    def __pow__(self, value: SupportsFloat):
+        ret = self.copy(deep=True)
+        ret **= value
+        return ret
+
+    def __pow__(self, value: SupportsFloat):
+        ret = self.copy(deep=True)
+        ret %= value
         return ret

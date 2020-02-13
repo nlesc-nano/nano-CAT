@@ -19,7 +19,6 @@ API
 """
 
 from typing import Iterable, Tuple, Any, Type, Generator, Sequence
-from os.path import join
 from itertools import chain
 
 import numpy as np
@@ -126,7 +125,6 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     # Calculate (and return) the interaction, strain and total energy
     E_int = E[:, 0]
     E_strain = E[:, 1:3].sum(axis=1) - E[:, 3:].prod(axis=1)
-    import pdb; pdb.set_trace()
     return np.array([E_int, E_strain, E_int + E_strain]).T
 
 
@@ -243,7 +241,6 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged,
                                             scale_elstat=scale_elstat, scale_lj=scale_lj)
 
-
         import pandas as pd
 
         b = {'angles', 'bonds', 'dihedrals', 'impropers'}
@@ -282,8 +279,6 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         E_dihedrals *= Units.conversion_ratio('au', 'kcal/mol')
         E_lj *= Units.conversion_ratio('au', 'kcal/mol')
         E_elstat *= Units.conversion_ratio('au', 'kcal/mol')
-
-        import pdb; pdb.set_trace()
 
         yield inter_nb, intra_nb, intra_bond, frag_opt, lig_count
 
@@ -335,7 +330,6 @@ def _md2opt(s: Settings) -> Settings:
     s2 = s.copy()
     del s2.input.motion.md
     s2.input['global'].run_type = 'geometry_optimization'
-    s2.input.force_eval.mm.print.ff_info = 'debug'
 
     # Delete all user-specified parameters; rely on MATCH
     del s2.input.force_eval.mm.forcefield.charge

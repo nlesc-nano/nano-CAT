@@ -18,6 +18,7 @@ API
 
 """
 
+from os.path import join
 from typing import Iterable, Tuple, Any, Type, Generator, Sequence
 from itertools import chain
 
@@ -208,6 +209,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         md_trajec = MultiMolecule.from_xyz(md_results['cp2k-pos-1.xyz'])[iter_start:]
         psf_charged = PSFContainer.read(md_results['QD_MD.psf'])
+        psf_charged.charge = [(at.properties.charge_float if at.properties.charge_float else 0.0) for at in mol]
 
         # Optimize a single ligand
         opt_results = qd_opt_ff(lig, job, _md2opt(settings), new_psf=True, name='ligand_opt')
@@ -230,7 +232,6 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                                           distance_upper_bound=distance_upper_bound, k=k)
 
         # Intra-ligand interaction
-        psf_charged.charge = [(at.properties.charge_float if at.properties.charge_float else 0.0) for at in mol]
         intra_bond = qd_map.intra_bonded(md_trajec, psf_charged, prm_charged)
         intra_nb = qd_map.intra_nonbonded(md_trajec, psf_charged, prm_charged,
                                           scale_elstat=scale_elstat, scale_lj=scale_lj)
@@ -241,6 +242,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged,
                                             scale_elstat=scale_elstat, scale_lj=scale_lj)
 
+        """
         import pandas as pd
 
         b = {'angles', 'bonds', 'dihedrals', 'impropers'}
@@ -279,6 +281,11 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         E_dihedrals *= Units.conversion_ratio('au', 'kcal/mol')
         E_lj *= Units.conversion_ratio('au', 'kcal/mol')
         E_elstat *= Units.conversion_ratio('au', 'kcal/mol')
+        """  # noqa
+
+        if dump_csv:
+            qd_map.to_csv(join(mol.properties.path, 'asa', f'{mol.propeties.name}.qd.csv'))
+            lig_map.to_csv(join(mol.properties.path, 'asa', f'{mol.propeties.name}.lig.csv'))
 
         yield inter_nb, intra_nb, intra_bond, frag_opt, lig_count
 

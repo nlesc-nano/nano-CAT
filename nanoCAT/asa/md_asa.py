@@ -284,8 +284,8 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         """  # noqa
 
         if dump_csv:
-            qd_map.to_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.qd.csv'))
-            lig_map.to_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.lig.csv'))
+            qd_map.write_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.qd.csv'))
+            lig_map.write_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.lig.csv'))
 
         yield inter_nb, intra_nb, intra_bond, frag_opt, lig_count
 

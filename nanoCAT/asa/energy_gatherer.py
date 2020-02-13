@@ -171,7 +171,7 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
                                  f"accepted names: {tuple(sorted(cls.E_SET))}")
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """Implement :code:`setattr(self, name)`."""
+        """Implement :code:`setattr(self, name, value)`."""
         if name in self.E_SET:
             self._vars_view[name] = value
         super().__setattr__(name, value)

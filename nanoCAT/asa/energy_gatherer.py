@@ -268,6 +268,13 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
             else:
                 return True
 
+    @AbstractDataClass.inherit_annotations()
+    def copy(self, deep: bool = True):
+        return super().copy(deep=deep)
+
+    @AbstractDataClass.inherit_annotations()
+    def __copy__(self): return self.copy(deep=True)
+
     def inter_nonbonded(self, multi_mol: MultiMolecule, s: Settings, psf: PSFContainer,
                         prm: PRMContainer, distance_upper_bound: float = np.inf,
                         k: int = 20) -> float:
@@ -477,6 +484,14 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
                     ret[column_new] = value.copy()
         return ret
 
+    def drop_zero(self) -> None:
+        """Remove all DataFrame columns whose values consist exclusively of ``0.0``."""
+        for df in self.values():
+            if df is not None:
+                is_zero = ~df.any(axis=0)
+                labels = is_zero[is_zero].index
+                df.drop(labels, inplace=True, axis=1)
+
     def _imap(self, value: SupportsFloat,
               func: Callable[[pd.DataFrame, float], Any]) -> None:
         """Apply **func** to all DataFrames in this instance."""
@@ -491,65 +506,65 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
             if df is not None:
                 func(df, value_)
 
-    def __iadd__(self, value: SupportsFloat):
+    def __iadd__(self, value: SupportsFloat) -> 'EnergyGatherer':
         self._imap(value, func=pd.DataFrame.__iadd__)
         return self
 
-    def __isub__(self, value: SupportsFloat):
+    def __isub__(self, value: SupportsFloat) -> 'EnergyGatherer':
         self._imap(value, func=pd.DataFrame.__isub__)
         return self
 
-    def __imul__(self, value: SupportsFloat):
+    def __imul__(self, value: SupportsFloat) -> 'EnergyGatherer':
         self._imap(value, func=pd.DataFrame.__imul__)
         return self
 
-    def __ifloordiv__(self, value: SupportsFloat):
+    def __ifloordiv__(self, value: SupportsFloat) -> 'EnergyGatherer':
         self._imap(value, func=pd.DataFrame.__ifloordiv__)
         return self
 
-    def __itruediv__(self, value: SupportsFloat):
+    def __itruediv__(self, value: SupportsFloat) -> 'EnergyGatherer':
         self._imap(value, func=pd.DataFrame.__itruediv__)
         return self
 
-    def __ipow__(self, value: SupportsFloat):
+    def __ipow__(self, value: SupportsFloat) -> 'EnergyGatherer':
         self._imap(value, func=pd.DataFrame.__ipow__)
         return self
 
-    def __imod__(self, value: SupportsFloat):
+    def __imod__(self, value: SupportsFloat) -> 'EnergyGatherer':
         self._imap(value, func=pd.DataFrame.__imod__)
         return self
 
-    def __add__(self, value: SupportsFloat):
-        ret = self.copy(deep=True)
+    def __add__(self, value: SupportsFloat) -> 'EnergyGatherer':
+        ret = self.copy()
         ret += value
         return ret
 
-    def __sub__(self, value: SupportsFloat):
-        ret = self.copy(deep=True)
+    def __sub__(self, value: SupportsFloat) -> 'EnergyGatherer':
+        ret = self.copy()
         ret -= value
         return ret
 
-    def __mul__(self, value: SupportsFloat):
-        ret = self.copy(deep=True)
+    def __mul__(self, value: SupportsFloat) -> 'EnergyGatherer':
+        ret = self.copy()
         ret *= value
         return ret
 
-    def __floordiv__(self, value: SupportsFloat):
-        ret = self.copy(deep=True)
+    def __floordiv__(self, value: SupportsFloat) -> 'EnergyGatherer':
+        ret = self.copy()
         ret /= value
         return ret
 
-    def __truediv__(self, value: SupportsFloat):
-        ret = self.copy(deep=True)
+    def __truediv__(self, value: SupportsFloat) -> 'EnergyGatherer':
+        ret = self.copy()
         ret //= value
         return ret
 
-    def __pow__(self, value: SupportsFloat):
-        ret = self.copy(deep=True)
+    def __pow__(self, value: SupportsFloat) -> 'EnergyGatherer':
+        ret = self.copy()
         ret **= value
         return ret
 
-    def __pow__(self, value: SupportsFloat):
-        ret = self.copy(deep=True)
+    def __mod__(self, value: SupportsFloat) -> 'EnergyGatherer':
+        ret = self.copy()
         ret %= value
         return ret

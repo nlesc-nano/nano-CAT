@@ -18,7 +18,7 @@ API
 
 """
 
-from os.path import join
+from pathlib import Path
 from typing import Iterable, Tuple, Any, Type, Generator, Sequence
 from itertools import chain
 
@@ -41,7 +41,7 @@ from ..ff.ff_assignment import run_match_job
 
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
                settings: Tuple[Settings, ...], iter_start: int = 500,
-               scale_elstat: float = 0.0, scale_lj: float = 1.0,
+               el_scale14: float = 0.0, lj_scale14: float = 1.0,
                distance_upper_bound: float = np.inf, k: int = 20,
                dump_csv: bool = False, **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
@@ -63,11 +63,11 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
         The MD iteration at which the ASA will be started.
         All preceding iteration are disgarded, treated as pre-equilibration steps.
 
-    scale_elstat : :class:`float`
+    el_scale14 : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded electrostatic interactions.
         Serves the same purpose as the cp2k ``EI_SCALE14`` keyword.
 
-    scale_lj : :class:`float`
+    lj_scale14 : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
         Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
 
@@ -114,8 +114,8 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     # Extract all energies and ligand counts
     iterator = chain.from_iterable(md_generator(mol_list, job, s,
                                                 iter_start=iter_start,
-                                                scale_elstat=scale_elstat,
-                                                scale_lj=scale_lj,
+                                                el_scale14=el_scale14,
+                                                lj_scale14=lj_scale14,
                                                 distance_upper_bound=distance_upper_bound,
                                                 k=k, dump_csv=dump_csv))
 
@@ -135,9 +135,10 @@ Tuple5 = Tuple[float, float, float, float, int]
 
 def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                  settings: Settings, iter_start: int = 500,
-                 scale_elstat: float = 0.0, scale_lj: float = 1.0,
-                 distance_upper_bound: float = np.inf,
-                 k: int = 20, dump_csv: bool = False) -> Generator[Tuple5, None, None]:
+                 el_scale14: float = 0.0, lj_scale14: float = 1.0,
+                 distance_upper_bound: float = np.inf, k: int = 20,
+                 shift_cutoff: bool = True, dump_csv: bool = False
+                 ) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.
@@ -158,11 +159,11 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         The MD iteration at which the ASA will be started.
         All preceding iteration are disgarded, treated as pre-equilibration steps.
 
-    scale_elstat : :class:`float`
+    el_scale14 : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded electrostatic interactions.
         Serves the same purpose as the cp2k ``EI_SCALE14`` keyword.
 
-    scale_lj : :class:`float`
+    lj_scale : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
         Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
 
@@ -174,6 +175,11 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     k : :class:`int`
         The (maximum) number of to-be considered distances per atom.
         Only relevant when **distance_upper_bound** is not set to ``inf``.
+
+    shift_cutoff : :class:`bool`
+        Shift all potentials by a constant such that
+        it is equal to zero at **distance_upper_bound**.
+        Only relavent when ``distance_upper_bound < inf``.
 
     dump_csv : :class:`bool`, optional
         If ``True``, dump the raw energy terms to a set of .csv files.
@@ -196,8 +202,12 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         prm_charged = PRMContainer.read(mol.properties.prm)
         psf_lig = get_psf(ligands[0], charges=None)
 
-        # import pdb; pdb.set_trace()
-        lig = _get_best_ligand(ligands, psf_lig, prm_charged)
+        # Find the best ligand
+        lig = _get_best_ligand(ligands, psf_lig, prm_charged,
+                               distance_upper_bound=distance_upper_bound,
+                               shift_cutoff=shift_cutoff,
+                               el_scale14=el_scale14,
+                               lj_scale14=lj_scale14)
         lig.round_coords()
         lig_count = len(ligands)
 
@@ -209,7 +219,8 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         md_trajec = MultiMolecule.from_xyz(md_results['cp2k-pos-1.xyz'])[iter_start:]
         psf_charged = PSFContainer.read(md_results['QD_MD.psf'])
-        psf_charged.charge = [(at.properties.charge_float if at.properties.charge_float else 0.0) for at in mol]
+        psf_charged.charge = [(at.properties.charge_float if at.properties.charge_float else 0.0)
+                              for at in mol]
 
         # Optimize a single ligand
         opt_results = qd_opt_ff(lig, job, _md2opt(settings), new_psf=True, name='ligand_opt')
@@ -234,66 +245,31 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         # Intra-ligand interaction
         intra_bond = qd_map.intra_bonded(md_trajec, psf_charged, prm_charged)
         intra_nb = qd_map.intra_nonbonded(md_trajec, psf_charged, prm_charged,
-                                          scale_elstat=scale_elstat, scale_lj=scale_lj)
+                                          distance_upper_bound=distance_upper_bound,
+                                          shift_cutoff=shift_cutoff,
+                                          el_scale14=el_scale14,
+                                          lj_scale14=lj_scale14)
 
         # Intra-ligand interaction within a single optimized ligand
         lig_map = EnergyGatherer()
         frag_opt = lig_map.intra_bonded(lig_opt, psf_lig, prm_charged)
         frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged,
-                                            scale_elstat=scale_elstat, scale_lj=scale_lj)
-
-        """
-        import pandas as pd
-
-        b = {'angles', 'bonds', 'dihedrals', 'impropers'}
-
-        strain = pd.Series(0.0, index=qd_map.angles.index.copy())
-        for k, v in qd_map.items():
-            if k in {'inter_elstat', 'inter_lj'}:
-                continue
-            if k in b:
-                continue
-            elif v is None:
-                continue
-            strain += np.nansum(v, axis=1)
-
-        strain /= lig_count
-
-        for k, v in lig_map.items():
-            if v is None:
-                continue
-            if k in b:
-                continue
-            strain -= np.nansum(v, axis=1)
-
-        strain *= Units.conversion_ratio('au', 'kcal/mol')
-
-        E_bond = qd_map.bonds.sum(axis=1) / lig_count - lig_map.bonds.sum(axis=1).values
-        E_angles = qd_map.angles.sum(axis=1) / lig_count - lig_map.angles.sum(axis=1).values
-        E_impropers = qd_map.impropers.sum(axis=1) / lig_count - lig_map.impropers.sum(axis=1).values
-        E_dihedrals = qd_map.dihedrals.sum(axis=1) / lig_count - lig_map.dihedrals.sum(axis=1).values
-        E_lj = qd_map.intra_lj.sum(axis=1) / lig_count - lig_map.intra_lj.sum(axis=1).values
-        E_elstat = qd_map.intra_elstat.sum(axis=1) / lig_count - lig_map.intra_elstat.sum(axis=1).values
-
-        E_bond *= Units.conversion_ratio('au', 'kcal/mol')
-        E_angles *= Units.conversion_ratio('au', 'kcal/mol')
-        E_impropers *= Units.conversion_ratio('au', 'kcal/mol')
-        E_dihedrals *= Units.conversion_ratio('au', 'kcal/mol')
-        E_lj *= Units.conversion_ratio('au', 'kcal/mol')
-        E_elstat *= Units.conversion_ratio('au', 'kcal/mol')
-        """  # noqa
-
+                                            distance_upper_bound=distance_upper_bound,
+                                            shift_cutoff=shift_cutoff,
+                                            el_scale14=el_scale14,
+                                            lj_scale14=lj_scale14)
         if dump_csv:
-            qd_map.write_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.qd.csv'))
-            lig_map.write_csv(join(mol.properties.path, 'asa', f'{mol.properties.name}.lig.csv'))
+            qd_map.write_csv(Path(mol.properties.path) / 'asa' / f'{mol.properties.name}.qd.csv')
+            lig_map.write_csv(Path(mol.properties.path) / 'asa' / f'{mol.properties.name}.lig.csv')
 
         yield inter_nb, intra_nb, intra_bond, frag_opt, lig_count
 
 
-def _get_best_ligand(ligand_list: Sequence[Molecule], psf, prm) -> Molecule:
+def _get_best_ligand(ligand_list: Sequence[Molecule], psf, prm, **kwargs) -> Molecule:
+    """Find and return the ligand with the lowest energy."""
     mol = MultiMolecule.from_Molecule(ligand_list)
 
-    elstat, lj = get_intra_non_bonded(mol, psf, prm)
+    elstat, lj = get_intra_non_bonded(mol, psf, prm, **kwargs)
     series = elstat.sum(axis=1) + lj.sum(axis=1)
     for i in get_bonded(mol, psf, prm):
         if i is not None:

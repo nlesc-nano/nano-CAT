@@ -269,15 +269,11 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
                 return True
 
     @AbstractDataClass.inherit_annotations()
-    def copy(self, deep: bool = True):
-        return super().copy(deep=deep)
-
-    @AbstractDataClass.inherit_annotations()
     def __copy__(self): return self.copy(deep=True)
 
     def inter_nonbonded(self, multi_mol: MultiMolecule, s: Settings, psf: PSFContainer,
                         prm: PRMContainer, distance_upper_bound: float = np.inf,
-                        k: int = 20) -> float:
+                        k: int = 20, shift_cutoff: bool = True) -> float:
         """Collect, assign and return all inter-ligand non-bonded interactions."""
         atom_set = set(psf.atom_type[psf.residue_name != 'COR'])
         atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
@@ -285,17 +281,21 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
         # Manually calculate all inter-ligand, ligand/core & core/core interactions
         elstat_df, lj_df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s,
                                           distance_upper_bound=distance_upper_bound, k=k,
+                                          shift_cutoff=shift_cutoff,
                                           atom_pairs=atom_pairs)
         self.inter_elstat = elstat_df
         self.inter_lj = lj_df
         return elstat_df.mean().sum() + lj_df.mean().sum()
 
     def intra_nonbonded(self, multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer,
-                        scale_elstat: float = 1.0, scale_lj: float = 1.0) -> float:
+                        distance_upper_bound: float = np.inf, shift_cutoff: bool = True,
+                        el_scale14: float = 1.0, lj_scale14: float = 1.0) -> float:
         """Collect, assign and return all intra-ligand non-bonded interactions."""
         elstat_df, lj_df = get_intra_non_bonded(multi_mol, psf, prm,
-                                                scale_elstat=scale_elstat,
-                                                scale_lj=scale_lj)
+                                                distance_upper_bound=distance_upper_bound,
+                                                shift_cutoff=shift_cutoff,
+                                                el_scale14=el_scale14,
+                                                lj_scale14=lj_scale14)
         self.intra_elstat = elstat_df
         self.intra_lj = lj_df
         return elstat_df.mean().sum() + lj_df.mean().sum()

@@ -193,10 +193,10 @@ def _lig_mapping(mol: Molecule, idx: Iterable[int]) -> IdxMapping:
     """Map **idx** to all atoms with the same residue number."""
     idx = as_array(idx, dtype=int)  # 1-based indices
 
-    iterator = ((i, at.properties.pdb_info.ResidueNumber) for i, at in enumerate(mol, 1))
+    iterator = ((i, at.properties.pdb_info.get('ResidueNumber', i)) for i, at in enumerate(mol, 1))
     lig_mapping = group_by_values(iterator)
 
-    valid_keys = (mol[i].properties.pdb_info.ResidueNumber for i in idx)
+    valid_keys = (mol[i].properties.pdb_info.get('ResidueNumber', i) for i in idx)
     return {i: lig_mapping[k] for i, k in zip(idx, valid_keys)}
 
 

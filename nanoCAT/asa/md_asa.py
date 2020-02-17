@@ -18,9 +18,9 @@ API
 
 """
 
-from typing import Iterable, Tuple, Any, Type, Generator
-from os.path import join
-from itertools import chain, combinations_with_replacement
+from pathlib import Path
+from typing import Iterable, Tuple, Any, Type, Generator, Sequence
+from itertools import chain
 
 import numpy as np
 
@@ -28,23 +28,22 @@ from scm.plams import Settings, Molecule, Cp2kJob, Units
 from scm.plams.core.basejob import Job
 from scm.plams.interfaces.molecule.rdkit import add_Hs
 
-from FOX import (
-    get_non_bonded, get_intra_non_bonded, get_bonded, MultiMolecule, PSFContainer, PRMContainer
-)
+from FOX import MultiMolecule, PSFContainer, PRMContainer, get_intra_non_bonded, get_bonded
 
 from CAT.jobs import job_md
 from CAT.mol_utils import round_coords
-from CAT.attachment.qd_opt_ff import qd_opt_ff
+from CAT.attachment.qd_opt_ff import qd_opt_ff, get_psf
 
 from .asa_frag import get_asa_fragments
+from .energy_gatherer import EnergyGatherer
 from ..ff.ff_assignment import run_match_job
 
 
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
                settings: Tuple[Settings, ...], iter_start: int = 500,
-               scale_elstat: float = 0.0, scale_lj: float = 1.0,
+               el_scale14: float = 0.0, lj_scale14: float = 1.0,
                distance_upper_bound: float = np.inf, k: int = 20,
-               **kwargs: Any) -> np.ndarray:
+               dump_csv: bool = False, **kwargs: Any) -> np.ndarray:
     r"""Perform an activation strain analyses (ASA) along an molecular dynamics (MD) trajectory.
 
     The ASA calculates the (ensemble-averaged) interaction, strain and total energy.
@@ -64,11 +63,11 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
         The MD iteration at which the ASA will be started.
         All preceding iteration are disgarded, treated as pre-equilibration steps.
 
-    scale_elstat : :class:`float`
+    el_scale14 : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded electrostatic interactions.
         Serves the same purpose as the cp2k ``EI_SCALE14`` keyword.
 
-    scale_lj : :class:`float`
+    lj_scale14 : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
         Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
 
@@ -80,6 +79,9 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     k : :class:`int`
         The (maximum) number of to-be considered distances per atom.
         Only relevant when **distance_upper_bound** is not set to ``inf``.
+
+    dump_csv : :class:`str`, optional
+        If ``True``, dump the raw energy terms to a set of .csv files.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for ensuring signature compatiblity.
@@ -112,10 +114,10 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     # Extract all energies and ligand counts
     iterator = chain.from_iterable(md_generator(mol_list, job, s,
                                                 iter_start=iter_start,
-                                                scale_elstat=scale_elstat,
-                                                scale_lj=scale_lj,
+                                                el_scale14=el_scale14,
+                                                lj_scale14=lj_scale14,
                                                 distance_upper_bound=distance_upper_bound,
-                                                k=k))
+                                                k=k, dump_csv=dump_csv))
 
     E = np.fromiter(iterator, count=count, dtype=float)
     E.shape = shape
@@ -124,7 +126,6 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     # Calculate (and return) the interaction, strain and total energy
     E_int = E[:, 0]
     E_strain = E[:, 1:3].sum(axis=1) - E[:, 3:].prod(axis=1)
-
     return np.array([E_int, E_strain, E_int + E_strain]).T
 
 
@@ -134,9 +135,10 @@ Tuple5 = Tuple[float, float, float, float, int]
 
 def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                  settings: Settings, iter_start: int = 500,
-                 scale_elstat: float = 0.0, scale_lj: float = 1.0,
-                 distance_upper_bound: float = np.inf,
-                 k: int = 20) -> Generator[Tuple5, None, None]:
+                 el_scale14: float = 0.0, lj_scale14: float = 1.0,
+                 distance_upper_bound: float = np.inf, k: int = 20,
+                 shift_cutoff: bool = True, dump_csv: bool = False
+                 ) -> Generator[Tuple5, None, None]:
     """Iterate over an iterable of molecules; perform an MD followed by an ASA.
 
     The various energies are averaged over all molecules in the MD-trajectory.
@@ -157,11 +159,11 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         The MD iteration at which the ASA will be started.
         All preceding iteration are disgarded, treated as pre-equilibration steps.
 
-    scale_elstat : :class:`float`
+    el_scale14 : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded electrostatic interactions.
         Serves the same purpose as the cp2k ``EI_SCALE14`` keyword.
 
-    scale_lj : :class:`float`
+    lj_scale : :class:`float`
         Scaling factor to apply to all 1,4-nonbonded Lennard-Jones interactions.
         Serves the same purpose as the cp2k ``VDW_SCALE14`` keyword.
 
@@ -173,6 +175,14 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     k : :class:`int`
         The (maximum) number of to-be considered distances per atom.
         Only relevant when **distance_upper_bound** is not set to ``inf``.
+
+    shift_cutoff : :class:`bool`
+        Shift all potentials by a constant such that
+        it is equal to zero at **distance_upper_bound**.
+        Only relavent when ``distance_upper_bound < inf``.
+
+    dump_csv : :class:`bool`, optional
+        If ``True``, dump the raw energy terms to a set of .csv files.
 
     Returns
     -------
@@ -189,7 +199,15 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
     for mol in mol_list:
         # Identify the fragments
         ligands, _ = get_asa_fragments(mol)
-        lig = ligands[0]
+        prm_charged = PRMContainer.read(mol.properties.prm)
+        psf_lig = get_psf(ligands[0], charges=None)
+
+        # Find the best ligand
+        lig = _get_best_ligand(ligands, psf_lig, prm_charged,
+                               distance_upper_bound=distance_upper_bound,
+                               shift_cutoff=shift_cutoff,
+                               el_scale14=el_scale14,
+                               lj_scale14=lj_scale14)
         lig.round_coords()
         lig_count = len(ligands)
 
@@ -201,6 +219,8 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         md_trajec = MultiMolecule.from_xyz(md_results['cp2k-pos-1.xyz'])[iter_start:]
         psf_charged = PSFContainer.read(md_results['QD_MD.psf'])
+        psf_charged.charge = [(at.properties.charge_float if at.properties.charge_float else 0.0)
+                              for at in mol]
 
         # Optimize a single ligand
         opt_results = qd_opt_ff(lig, job, _md2opt(settings), new_psf=True, name='ligand_opt')
@@ -210,8 +230,6 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         # Prepare arguments for the intra-ligand interactions
         lig_opt = MultiMolecule.from_Molecule(lig)
-        prm_charged = PRMContainer.read(opt_results['ligand_opt.prm'])
-        psf_lig = join(opt_results.job.path, 'ligand_opt.psf')
 
         # Prepare arguments for the inter-ligand interactions
         lig_neutral = _get_neutral_frag(lig)
@@ -220,18 +238,45 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
                                        lig_count, mol.properties.indices)
 
         # Inter-ligand interaction
-        inter_nb = _inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral,
-                                    distance_upper_bound=distance_upper_bound, k=k)
+        qd_map = EnergyGatherer()
+        inter_nb = qd_map.inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral,
+                                          distance_upper_bound=distance_upper_bound, k=k)
 
         # Intra-ligand interaction
-        intra_nb = _intra_nonbonded(md_trajec, psf_charged, prm_charged)
-        intra_bond = _inter_bonded(md_trajec, psf_charged, prm_charged)
+        intra_bond = qd_map.intra_bonded(md_trajec, psf_charged, prm_charged)
+        intra_nb = qd_map.intra_nonbonded(md_trajec, psf_charged, prm_charged,
+                                          distance_upper_bound=distance_upper_bound,
+                                          shift_cutoff=shift_cutoff,
+                                          el_scale14=el_scale14,
+                                          lj_scale14=lj_scale14)
 
         # Intra-ligand interaction within a single optimized ligand
-        frag_opt = _intra_nonbonded(lig_opt, psf_lig, prm_charged)
-        frag_opt += _inter_bonded(lig_opt, psf_lig, prm_charged)
+        lig_map = EnergyGatherer()
+        frag_opt = lig_map.intra_bonded(lig_opt, psf_lig, prm_charged)
+        frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged,
+                                            distance_upper_bound=distance_upper_bound,
+                                            shift_cutoff=shift_cutoff,
+                                            el_scale14=el_scale14,
+                                            lj_scale14=lj_scale14)
+        if dump_csv:
+            qd_map.write_csv(Path(mol.properties.path) / 'asa' / f'{mol.properties.name}.qd.csv')
+            lig_map.write_csv(Path(mol.properties.path) / 'asa' / f'{mol.properties.name}.lig.csv')
 
         yield inter_nb, intra_nb, intra_bond, frag_opt, lig_count
+
+
+def _get_best_ligand(ligand_list: Sequence[Molecule], psf, prm, **kwargs) -> Molecule:
+    """Find and return the ligand with the lowest energy."""
+    mol = MultiMolecule.from_Molecule(ligand_list)
+
+    elstat, lj = get_intra_non_bonded(mol, psf, prm, **kwargs)
+    series = elstat.sum(axis=1) + lj.sum(axis=1)
+    for i in get_bonded(mol, psf, prm):
+        if i is not None:
+            series += i.sum(axis=1)
+
+    i = series.values.argmin()
+    return ligand_list[i]
 
 
 def _get_neutral_frag(frag: Molecule) -> Molecule:
@@ -241,7 +286,9 @@ def _get_neutral_frag(frag: Molecule) -> Molecule:
         if at.properties.anchor:
             at.properties.charge = 0
             break
+
     frag_neutral = add_Hs(frag_neutral, forcefield='uff')
+    frag_neutral.properties.pdb_info.IsHeteroAtom = False
     run_match_job(frag_neutral, MATCH_SETTINGS)
     return frag_neutral
 
@@ -271,33 +318,3 @@ def _md2opt(s: Settings) -> Settings:
     del s2.input.force_eval.mm.forcefield.charge
     del s2.input.force_eval.mm.forcefield.nonbonded
     return s2
-
-
-def _inter_nonbonded(multi_mol: MultiMolecule, s: Settings, psf: PSFContainer, prm: PRMContainer,
-                     distance_upper_bound: float = np.inf, k: int = 20) -> float:
-    """Collect all inter-ligand non-bonded interactions."""
-    atom_set = set(psf.atom_type[psf.residue_name != 'COR'])
-    atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
-
-    # Manually calculate all inter-ligand, ligand/core & core/core interactions
-    elstat_df, lj_df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s,
-                                      distance_upper_bound=distance_upper_bound, k=k,
-                                      atom_pairs=atom_pairs)
-
-    return elstat_df.mean().sum() + lj_df.mean().sum()
-
-
-def _intra_nonbonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer,
-                     scale_elstat: float = 0.0, scale_lj: float = 1.0) -> float:
-    """Collect all intra-ligand non-bonded interactions."""
-    elstat_df, lj_df = get_intra_non_bonded(multi_mol, psf, prm,
-                                            scale_elstat=scale_elstat,
-                                            scale_lj=scale_lj)
-
-    return elstat_df.mean().sum() + lj_df.mean().sum()
-
-
-def _inter_bonded(multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer) -> float:
-    """Collect all intra-ligand bonded interactions."""
-    E_tup = get_bonded(multi_mol, psf, prm)  # bonds, angles, dihedrals, impropers
-    return sum((df.mean().sum() if df is not None else 0.0) for df in E_tup)

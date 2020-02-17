@@ -49,6 +49,7 @@ from CAT.attachment.ligand_anchoring import _smiles_to_rdmol
 from FOX import group_by_values
 
 from .guess_core_dist import guess_core_core_dist
+from .identify_surface import identify_surface
 
 __all__ = ['MolDissociater']
 
@@ -366,30 +367,8 @@ class MolDissociater(AbstractDataClass):
         i: np.ndarray = self.core_idx
         max_dist: float = self.max_dist
 
-        # Construct the distance matrix and fill the diagonal
-        dist = cdist(xyz[i], xyz[i])
-        np.fill_diagonal(dist, max_dist)
-
-        x, y = np.where(dist <= max_dist)
-        bincount = np.bincount(x, minlength=len(i))
-
-        # Slice xyz_array, creating arrays of reference atoms and neighbouring atoms
-        ref_at = xyz[i]
-        neighbour_at = xyz[i[y]]
-
-        # Calculate the vector length from each reference atom to the mean position
-        # of its neighbours
-        # A vector length close to 0.0 implies that a reference atom is surrounded by neighbours in
-        # a more or less spherical pattern:
-        # i.e. the reference atom is in the bulk and not on the surface
-        indices = np.zeros(len(bincount), dtype=int)
-        indices[1:] = np.cumsum(bincount[:-1])
-        average = np.add.reduceat(neighbour_at, indices)
-        average /= bincount[:, None]
-        vec = ref_at - average
-
-        vec_norm = np.linalg.norm(vec, axis=1)
-        norm_accept, *_ = np.where(vec_norm > max_vec_len)
+        norm_accept = identify_surface(xyz[i], max_dist=max_dist,
+                                       tolerance=max_vec_len)
         self._core_idx = i[norm_accept]
 
     """################################## Topology assignment ##################################"""
@@ -637,9 +616,13 @@ class MolDissociater(AbstractDataClass):
             s.indices = indices
             s.job_path = []
             s.core_topology = f'{core.properties.topology}_{next(iter(core_idx))}'
-            s.lig_residue = sorted({
-                mol_new[i].properties.pdb_info.ResidueNumber for i in lig_idx
-            })
+            try:
+                s.lig_residue = sorted({
+                    mol_new[i].properties.pdb_info.ResidueNumber for i in lig_idx
+                })
+            except TypeError:
+                s.lig_residue = sorted(lig_idx)
+
             s.df_index: str = s.core_topology + ''.join(f' {i}' for i in s.lig_residue)
 
             for at in delete_at:

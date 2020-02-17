@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.4.5
+*****
+* Created a separate module for the ``identify_surface()`` function,
+  the latter being used for identifying which atoms are located on the surface,
+  rather than in the bulk.
+
+
 0.4.4
 *****
 * Added the ``EnenergyGatherer()`` class, a Mapping for managing all

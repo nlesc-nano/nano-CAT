@@ -18,7 +18,7 @@ API
 
 """
 
-from typing import Union
+from typing import Union, Optional
 
 import numpy as np
 from scipy.spatial.distance import cdist
@@ -29,9 +29,11 @@ from scm.plams import Molecule, MoleculeError
 from CAT.mol_utils import to_atnum
 from FOX.functions.rdf import get_rdf_lowmem as get_rdf
 
+__all__ = ['guess_core_core_dist']
 
-def guess_core_core_dist(mol: Molecule,
-                         atom: Union[str, int],
+
+def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
+                         atom: Optional[Union[str, int]] = None,
                          dr: float = 0.1,
                          r_max: float = 8.0,
                          window_length: int = 21,
@@ -48,7 +50,7 @@ def guess_core_core_dist(mol: Molecule,
 
     Parameters
     ----------
-    mol : |plams.Molecule|
+    mol : |plams.Molecule| or :class:`numpy.ndarray`
         A molecule.
 
     atom : :class:`str` or :class:`int`
@@ -86,13 +88,16 @@ def guess_core_core_dist(mol: Molecule,
     scipy.signal.savgol_filter_: Apply a Savitzky-Golay filter to an array.
 
     """  # noqa
-    atnum = to_atnum(atom)
+    if atom is not None:
+        atnum = to_atnum(atom)
+        xyz = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))
+        if not xyz.any():
+            raise MoleculeError(f"No atoms with atomic number/symbol '{atom}' in 'mol'")
+    else:
+        xyz = np.asarray(mol)
 
     # Create a disance matrix
-    ar = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))
-    if not ar.any():
-        raise MoleculeError(f"No atoms with atomic number/symbol '{atom}' in 'mol'")
-    dist = cdist(ar, ar)
+    dist = cdist(xyz, xyz)
 
     # Create and smooth the RDF
     rdf = get_rdf(dist, dr=dr, r_max=r_max)

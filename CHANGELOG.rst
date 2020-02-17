@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.4.4
+*****
+* Placeholder.
+
+
 0.4.3
 *****
 * Changed the a number of function signatures in md_asa.py to ensure signature

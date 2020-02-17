@@ -8,7 +8,12 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 0.4.4
 *****
-* Placeholder.
+* Added the ``EnenergyGatherer()`` class, a Mapping for managing all
+  forcefield potential energies.
+* Changed the minimum Pandas version to ``>= 0.24.0``.
+* Updated the keyword arguments of ``get_asa_md()``.
+* Fixed an issue were the charge was not properly set to an integer value
+  when optimizing individual ligands.
 
 
 0.4.3

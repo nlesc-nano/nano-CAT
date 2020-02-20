@@ -24,18 +24,18 @@ from itertools import chain
 
 import numpy as np
 
-from scm.plams import Settings, Molecule, Cp2kJob, Units
+from scm.plams import Settings, Molecule, Cp2kJob, Units, add_Hs
 from scm.plams.core.basejob import Job
-from scm.plams.interfaces.molecule.rdkit import add_Hs
 
 from FOX import MultiMolecule, PSFContainer, PRMContainer, get_intra_non_bonded, get_bonded
 
 from CAT.jobs import job_md
+from CAT.logger import logger
 from CAT.mol_utils import round_coords
-from CAT.attachment.qd_opt_ff import qd_opt_ff, get_psf
 
 from .asa_frag import get_asa_fragments
 from .energy_gatherer import EnergyGatherer
+from ..qd_opt_ff import qd_opt_ff, get_psf
 from ..ff.ff_assignment import run_match_job
 
 
@@ -239,11 +239,14 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         # Inter-ligand interaction
         qd_map = EnergyGatherer()
+        logger.debug('Calculating inter-ligand non-bonded interactions')
         inter_nb = qd_map.inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral,
                                           distance_upper_bound=distance_upper_bound, k=k)
 
         # Intra-ligand interaction
+        logger.debug('Calculating intra-ligand bonded interactions')
         intra_bond = qd_map.intra_bonded(md_trajec, psf_charged, prm_charged)
+        logger.debug('Calculating intra-ligand non-bonded interactions')
         intra_nb = qd_map.intra_nonbonded(md_trajec, psf_charged, prm_charged,
                                           distance_upper_bound=distance_upper_bound,
                                           shift_cutoff=shift_cutoff,
@@ -252,6 +255,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         # Intra-ligand interaction within a single optimized ligand
         lig_map = EnergyGatherer()
+        logger.debug('Calculating intra-ligand interactions of the optimized ligand')
         frag_opt = lig_map.intra_bonded(lig_opt, psf_lig, prm_charged)
         frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged,
                                             distance_upper_bound=distance_upper_bound,

@@ -25,8 +25,8 @@ from scm.plams.core.basejob import Job
 
 from CAT.jobs import _get_results_error
 from CAT.logger import logger
+from CAT.workflows import WorkFlow
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.workflows.workflow import WorkFlow
 from FOX import PRMContainer
 
 from .match_job import MatchJob

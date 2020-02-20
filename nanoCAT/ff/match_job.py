@@ -29,14 +29,14 @@ API
 
 import stat
 import os
-from typing import (Optional, Any, List)
+from typing import Optional, Any, List
 from itertools import chain
 
 from scm.plams.core.basejob import SingleJob
 from scm.plams import JobError, Results, Settings, Molecule, FileError
 
 try:
-    from scm.plams.interfaces.molecule.rdkit import (writepdb, readpdb)
+    from scm.plams.interfaces.molecule.rdkit import writepdb, readpdb
 except ImportError:
     writepdb = Molecule.write
     readpdb = Molecule

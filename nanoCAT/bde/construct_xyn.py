@@ -25,16 +25,15 @@ API
 """
 
 from itertools import chain
-from typing import (Tuple, Union)
+from typing import Tuple, Union
 
 import numpy as np
 
-from scm.plams import (MoleculeError, Molecule, Atom, AMSJob)
-from scm.plams.tools.geometry import axis_rotation_matrix
+from scm.plams import MoleculeError, Molecule, Atom, AMSJob, axis_rotation_matrix
 
 from CAT.jobs import job_geometry_opt
 from CAT.utils import get_template
-from CAT.mol_utils import (to_atnum, round_coords)
+from CAT.mol_utils import to_atnum, round_coords
 
 __all__ = ['get_xyn']
 

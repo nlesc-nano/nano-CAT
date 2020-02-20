@@ -48,17 +48,11 @@ import CAT
 from CAT.jobs import job_single_point, _get_name
 from CAT.utils import get_template
 from CAT.logger import logger
+from CAT.workflows import WorkFlow, MOL, JOB_SETTINGS_CRS
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.workflows.workflow import WorkFlow
 
 __all__ = ['init_solv']
-
-# Aliases for pd.MultiIndex columns
-MOL = ('mol', '')
-JOB_SETTINGS_CRS = ('job_settings_crs', '')
-SETTINGS1 = ('settings', 'solv 1')
-SETTINGS2 = ('settings', 'solv 2')
 
 
 def init_solv(ligand_df: SettingsDataFrame,

@@ -30,18 +30,14 @@ from rdkit.Chem import AllChem
 
 from CAT.jobs import job_single_point, job_geometry_opt
 from CAT.mol_utils import round_coords
-from CAT.workflows.workflow import WorkFlow
+from CAT.workflows import WorkFlow, MOL, JOB_SETTINGS_ASA
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.attachment.qd_opt_ff import qd_opt_ff
 
 from .md_asa import get_asa_md
 from .asa_frag import get_asa_fragments
+from ..qd_opt_ff import qd_opt_ff
 
 __all__ = ['init_asa']
-
-# Aliases for pd.MultiIndex columns
-MOL: Tuple[str, str] = ('mol', '')
-JOB_SETTINGS_ASA: Tuple[str, str] = ('job_settings_ASA', '')
 
 UFF = AllChem.UFFGetMoleculeForceField
 

@@ -432,10 +432,10 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
             assert len(df.columns.levels) == 2
         except AttributeError as ex:
             raise TypeError("'df' expected a 2-level MultiIndex as columns; observed type: "
-                            f"'{df.columns.__class__.__name__}'").with_traceback(ex.__traceback__)
+                            f"'{df.columns.__class__.__name__}'") from ex
         except AssertionError as ex:
             raise ValueError("'df' expected a 2-level MultiIndex as columns; observed number of "
-                             f"levels: {len(df.columns.levels)}").with_traceback(ex.__traceback__)
+                             f"levels: {len(df.columns.levels)}") from ex
 
         for key in df.columns.levels[0]:
             sub_df = ret[key] = df[key].copy()
@@ -500,7 +500,7 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
         except TypeError as ex:
             raise TypeError(f"'{self.__class__.__name__}' instances only support arithmetic "
                             "operations with scalars; observed type: "
-                            f"'{value.__class__.__name__}'").with_traceback(ex.__Traceback__)
+                            f"'{value.__class__.__name__}'") from ex
 
         for df in self.values():
             if df is not None:

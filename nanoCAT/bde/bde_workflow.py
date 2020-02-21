@@ -36,23 +36,17 @@ import numpy as np
 from scm.plams import AMSJob, Molecule, Settings, Cp2kJob
 from scm.plams.core.basejob import Job
 
-from CAT.jobs import (job_single_point, job_geometry_opt, job_freq)
+from CAT.jobs import job_single_point, job_geometry_opt, job_freq
 from CAT.logger import logger
 from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.attachment.qd_opt_ff import qd_opt_ff
-from CAT.workflows.workflow import WorkFlow
+from CAT.workflows import WorkFlow, MOL, JOB_SETTINGS_BDE
 
 from .construct_xyn import get_xyn
 from .dissociate_xyn import dissociate_ligand
+from ..qd_opt_ff import qd_opt_ff
 
 __all__ = ['init_bde']
-
-# Aliases for pd.MultiIndex columns
-MOL = ('mol', '')
-JOB_SETTINGS_BDE = ('job_settings_BDE', '')
-SETTINGS1 = ('settings', 'BDE 1')
-SETTINGS2 = ('settings', 'BDE 2')
 
 
 def init_bde(qd_df: SettingsDataFrame) -> None:

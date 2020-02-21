@@ -68,6 +68,17 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
     :class:`numpy.ndarray`
         The (0-based) indices of all atoms in **mol** located on the surface
 
+    Raises
+    ------
+    :exc:`ValueError`
+        Raised if no atom-pairs are found within the distance **max_dist**.
+        Implies that either the user-specified or guessed value is too small.
+
+    See Also
+    --------
+    :func:`guess_core_core_dist<nanoCAT.bde.guess_core_dist.guess_core_core_dist>`
+        Estimate a value for **max_dist** based on the radial distribution function of **mol**.
+
     """  # noqa
     xyz = np.asarray(mol)
     if max_dist is None:
@@ -75,7 +86,12 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
 
     # Construct the distance matrix and fill the diagonal
     dist = cdist(xyz, xyz)
-    x, y = np.where(dist <= max_dist)
+    np.fill_diagonal(dist, np.nan)
+    with np.errstate(invalid='ignore'):
+        x, y = np.where(dist <= max_dist)
+    if not x.any():
+        raise ValueError(f"No atom-pair found in 'mol' within a distance of {repr(max_dist)}"
+                         " Angstrom")
     neighbour_count = np.bincount(x, minlength=len(xyz))
 
     # Slice xyz_array, creating arrays of reference atoms and neighbouring atoms
@@ -89,8 +105,9 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
     indices = np.zeros(len(neighbour_count), dtype=int)
     indices[1:] = np.cumsum(neighbour_count[:-1])
 
-    average = np.add.reduceat(neighbours, indices)
-    average /= neighbour_count[:, None]
+    with np.errstate(divide='ignore'):
+        average = np.add.reduceat(neighbours, indices)
+        average /= neighbour_count[:, None]
     vec = xyz - average
 
     vec_len = np.linalg.norm(vec, axis=1)

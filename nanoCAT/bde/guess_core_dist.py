@@ -26,7 +26,7 @@ from scipy.signal import savgol_filter
 
 from scm.plams import Molecule, MoleculeError
 
-from CAT.mol_utils import to_atnum
+from CAT.mol_utils import to_atnum, to_symbol
 from FOX.functions.rdf import get_rdf_lowmem as get_rdf
 
 __all__ = ['guess_core_core_dist']
@@ -92,7 +92,8 @@ def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
         atnum = to_atnum(atom)
         xyz = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))
         if not xyz.any():
-            raise MoleculeError(f"No atoms with atomic number/symbol '{atom}' in 'mol'")
+            raise MoleculeError(f"No atoms with atomic symbol '{to_symbol(atom)}' "
+                                f"in '{mol.get_formula()}'")
     else:
         xyz = np.asarray(mol)
 

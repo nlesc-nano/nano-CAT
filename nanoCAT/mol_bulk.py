@@ -33,12 +33,9 @@ from scipy.spatial.distance import cdist
 from scm.plams import Molecule
 
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.workflows.workflow import WorkFlow
+from CAT.workflows import WorkFlow, MOL
 
 __all__ = ['init_lig_bulkiness']
-
-# Aliases for DataFrame column keys
-MOL: Tuple[str, str] = ('mol', '')
 
 
 def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,

@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.5.0
+*****
+* Moved the ``CAT.recipes`` module to Nano-CAT.
+* Moved the ``CAT.attachment.qd_opt_ff`` module to Nano-CAT.
+* Improved handling of Exceptions.
+* Updated tests.
+
+
 0.4.5
 *****
 * Created a separate module for the ``identify_surface()`` function,

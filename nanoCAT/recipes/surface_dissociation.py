@@ -22,7 +22,7 @@ from typing import Iterable, Optional, Generator, Any
 
 import numpy as np
 
-from scm.plams import Molecule
+from scm.plams import Molecule, MoleculeError
 
 from CAT.utils import get_nearest_neighbors
 from CAT.mol_utils import to_atnum
@@ -105,6 +105,7 @@ def dissociate_surface(mol: Molecule,
 
     k : :class:`int`
         The number of atoms specified in **symbol** which are surrounding a single atom in **idx**.
+        Must obey the following condition: :math:`k \ge 1`.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for
@@ -132,7 +133,7 @@ def dissociate_surface(mol: Molecule,
     idx = np.array(idx, ndmin=2, copy=True)
     if idx.ndim > 2:
         raise ValueError("'idx' expected a 2D array-like object; "
-                         f"observed dimensionality: {idx.ndim}D")
+                         f"observed number of dimensions: {idx.ndim}")
     idx.sort(axis=1)
     idx = idx[:, ::-1]
 
@@ -209,7 +210,11 @@ def _get_opposite_neighbor(mol: Molecule,
     # Indices of the **k** nearest neighbors in **neighbor** with respect to **center**
     xyz1 = xyz[idx_neighbor]
     xyz2 = xyz[idx_center.ravel()]
-    idx_nn = idx_neighbor[get_nearest_neighbors(xyz2, xyz1, k=k)]
+    try:
+        idx_nn = idx_neighbor[get_nearest_neighbors(xyz2, xyz1, k=k)]
+    except IndexError as ex:
+        raise ValueError("'k' should be smaller than the total number of surface atoms "
+                         f"(len(idx_neighbor)); observed value: {k}") from ex
     idx_nn.shape = -1, idx_nn.shape[1] * idx_center.shape[1]
 
     # Find the **n** atoms in **idx_nn** furthest removed from each other
@@ -224,7 +229,11 @@ def _get_surface(mol: Molecule, symbol: str, max_dist: Optional[float] = None) -
     xyz = np.asarray(mol)
 
     # Identify all atoms on the surface
-    return idx[identify_surface(xyz[idx], max_dist=max_dist)]
+    try:
+        return idx[identify_surface(xyz[idx], max_dist=max_dist)]
+    except ValueError as ex:
+        raise MoleculeError(f"No atoms with atomic symbol/number {repr(symbol)} available in "
+                            f"{repr(mol.get_formula())}") from ex
 
 
 def _mark_atoms(mol: Molecule, idx: Iterable[int]) -> None:

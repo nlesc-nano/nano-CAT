@@ -86,7 +86,9 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
 
     # Construct the distance matrix and fill the diagonal
     dist = cdist(xyz, xyz)
-    x, y = np.where(dist <= max_dist)
+    np.fill_diagonal(dist, np.nan)
+    with np.errstate(invalid='ignore'):
+        x, y = np.where(dist <= max_dist)
     if not x.any():
         raise ValueError(f"No atom-pair found in 'mol' within a distance of {repr(max_dist)}"
                          " Angstrom")
@@ -103,8 +105,9 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
     indices = np.zeros(len(neighbour_count), dtype=int)
     indices[1:] = np.cumsum(neighbour_count[:-1])
 
-    average = np.add.reduceat(neighbours, indices)
-    average /= neighbour_count[:, None]
+    with np.errstate(divide='ignore'):
+        average = np.add.reduceat(neighbours, indices)
+        average /= neighbour_count[:, None]
     vec = xyz - average
 
     vec_len = np.linalg.norm(vec, axis=1)

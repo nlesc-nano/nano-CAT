@@ -25,5 +25,5 @@ def test_replace_surface() -> None:
     idx = [i for i, at in enumerate(mol_new) if at.atnum == 1]
     np.testing.assert_array_equal(idx, ref)
 
-    assertion.assert_(replace_surface, symbol='I', exception=MoleculeError)
-    assertion.assert_(replace_surface, symbol='bob', exception=PTError)
+    assertion.assert_(replace_surface, MOL, symbol='I', exception=MoleculeError)
+    assertion.assert_(replace_surface, MOL, symbol='bob', exception=PTError)

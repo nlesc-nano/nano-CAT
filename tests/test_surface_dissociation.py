@@ -1,10 +1,11 @@
 """Tests for :mod:`nanoCAT.recipes.dissociate_surface`."""
 
+from itertools import chain
 from pathlib import Path
 
 import numpy as np
 
-from scm.plams import Molecule, MoleculeError, PTError
+from scm.plams import Molecule, PTError
 from assertionlib import assertion
 
 from nanoCAT.recipes import dissociate_surface
@@ -21,12 +22,28 @@ def test_dissociate_surface() -> None:
 
         [319],
 
-        [319, 320],
+        [320, 319],
 
-        [[319, 320],
+        [[320, 319],
          [158, 57],
          [156, 155]]
     )
 
-    for idx in idx_tup:
-        mol_iter = dissociate_surface(MOL, idx)
+    at_idx_iter = iter([
+        319,
+        319,
+        320, 319,
+        320, 319, 158, 57, 156, 155
+    ])
+
+    mol_iter = chain.from_iterable(dissociate_surface(MOL, i) for i in idx_tup)
+    for i, mol in zip(at_idx_iter, mol_iter):
+        assertion.contains(np.asarray(mol), XYZ[i], invert=True)
+
+    assertion.assert_(next, dissociate_surface(MOL, i, k=0), exception=ValueError)
+    assertion.assert_(next, dissociate_surface(MOL, i, k=999), exception=ValueError)
+    assertion.assert_(next, dissociate_surface(MOL, i, lig_count=999), exception=ValueError)
+    assertion.assert_(next, dissociate_surface(MOL, i, lig_count=-1), exception=ValueError)
+    assertion.assert_(next, dissociate_surface(MOL, i, symbol='bob'), exception=PTError)
+    assertion.assert_(next, dissociate_surface(MOL, i, symbol=999), exception=PTError)
+    assertion.assert_(next, dissociate_surface(MOL, i, symbol=9.5), exception=TypeError)

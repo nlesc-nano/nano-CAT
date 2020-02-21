@@ -27,7 +27,8 @@ setup(
         'nanoCAT.bde',
         'nanoCAT.asa',
         'nanoCAT.data',
-        'nanoCAT.ff'
+        'nanoCAT.ff',
+        'nanoCAT.recipes'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
     package_data={'nanoCAT': ['data/*csv']},
@@ -47,7 +48,7 @@ setup(
         'scientific-workflows'
     ],
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Chemistry',
         'License :: OSI Approved :: GNU Lesser General Public License',

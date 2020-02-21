@@ -1,5 +1,7 @@
 .. image:: https://travis-ci.org/nlesc-nano/nano-CAT.svg?branch=master
    :target: https://travis-ci.org/nlesc-nano/nano-CAT
+.. image:: https://readthedocs.org/projects/cat/badge/?version=latest
+   :target: https://cat.readthedocs.io/en/latest/
 
 |
 

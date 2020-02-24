@@ -62,8 +62,8 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
 
     compare_func : :data:`Callable<typing.Callable>`
         The function for evaluating the direct-neighbor distance.
-        The default, :func:`__gt__<operator.__gt__>`, is equivalent to identifying the surface,
-        while *e.g.* :func:`__lt__<operator.__lt__>` identifies the bulk.
+        The default, :func:`__gt__()<operator.__gt__>`, is equivalent to identifying the surface,
+        while *e.g.* :func:`__lt__()<operator.__lt__>` identifies the bulk.
 
     Returns
     -------
@@ -78,7 +78,7 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
 
     See Also
     --------
-    :func:`guess_core_core_dist<nanoCAT.bde.guess_core_dist.guess_core_core_dist>`
+    :func:`guess_core_core_dist()<nanoCAT.bde.guess_core_dist.guess_core_core_dist>`
         Estimate a value for **max_dist** based on the radial distribution function of **mol**.
 
     """  # noqa

@@ -9,12 +9,10 @@ Index
 .. currentmodule:: nanoCAT.bde.guess_core_dist
 .. autosummary::
     guess_core_core_dist
-    get_rdf
 
 API
 ---
 .. autofunction:: guess_core_core_dist
-.. autofunction:: get_rdf
 
 """
 
@@ -45,8 +43,6 @@ def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
     After smoothing the RDF wth a Savitzky-Golay filer, the gradient of the RDF
     is explored (starting from the RDFs' global maximum) until a stationary point is found with
     a positive second derivative (*i.e.* a minimum).
-
-    .. _scipy.signal.savgol_filter: https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.savgol_filter.html
 
     Parameters
     ----------
@@ -85,9 +81,10 @@ def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
 
     See Also
     --------
-    scipy.signal.savgol_filter_: Apply a Savitzky-Golay filter to an array.
+    :func:`savgol_filter()<scipy.signal.savgol_filter>`
+        Apply a Savitzky-Golay filter to an array.
 
-    """  # noqa
+    """
     if atom is not None:
         atnum = to_atnum(atom)
         xyz = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))

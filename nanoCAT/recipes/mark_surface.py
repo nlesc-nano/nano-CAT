@@ -16,7 +16,7 @@ API
 
 """
 
-from typing import Any, Union
+from typing import Any, Union, Optional
 
 import numpy as np
 
@@ -34,6 +34,8 @@ def replace_surface(mol: Molecule,
                     symbol_new: Union[str, int] = 'Cl',
                     f: float = 0.5,
                     mode: str = 'uniform',
+                    max_dist: Optional[float] = None,
+                    tolerance: float = 0.5,
                     **kwargs: Any) -> Molecule:
     r"""A workflow for identifying all surface atoms in **mol** and replacing a subset of them.
 
@@ -81,6 +83,18 @@ def replace_surface(mol: Molecule,
         * ``"uniform"``: A uniform distribution; maximizes the nearest-neighbor distance.
         * ``"cluster"``: A clustered distribution; minimizes the nearest-neighbor distance.
 
+    max_dist : :class:`float`, optional
+        Keyword for `identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
+        The radius for defining which atoms constitute as neighbors.
+        If ``None``, estimate this value using the radial distribution function of **mol**.
+
+    tolerance : :class:`float`
+        Keyword for `identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
+        The tolerance for considering atoms part of the surface.
+        A higher value will impose stricter criteria,
+        which might be necasary as the local symmetry of **mol** becomes less pronounced.
+        Should be in the same units as the coordinates of **mol**.
+
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for
         :func:`distribute_idx()<CAT.attachment.distribution.distribute_idx>`.
@@ -108,7 +122,9 @@ def replace_surface(mol: Molecule,
     # Define the surface-atom subset
     idx = np.fromiter((i for i, at in enumerate(mol) if at.atnum == atnum), dtype=int)
     try:
-        idx_surface = idx[identify_surface(xyz[idx])]
+        idx_surface = idx[identify_surface(xyz[idx],
+                                           max_dist=max_dist,
+                                           tolerance=tolerance)]
     except ValueError:
         raise MoleculeError(f"No atoms with atomic symbol {to_symbol(symbol)!r} available in "
                             f"{mol.get_formula()!r}")

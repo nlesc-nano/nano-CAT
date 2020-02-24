@@ -56,7 +56,9 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
 
     tolerance : :class:`float`
         The tolerance for considering atoms part of the surface.
-        Units are in Angstrom.
+        A higher value will impose stricter criteria,
+        which might be necasary as the local symmetry of **mol** becomes less pronounced.
+        Should be in the same units as the coordinates of **mol**.
 
     compare_func : :data:`Callable<typing.Callable>`
         The function for evaluating the direct-neighbor distance.

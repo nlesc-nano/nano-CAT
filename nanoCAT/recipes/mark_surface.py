@@ -16,7 +16,7 @@ API
 
 """
 
-from typing import Any, Union
+from typing import Any, Union, Optional
 
 import numpy as np
 
@@ -34,6 +34,8 @@ def replace_surface(mol: Molecule,
                     symbol_new: Union[str, int] = 'Cl',
                     f: float = 0.5,
                     mode: str = 'uniform',
+                    max_dist: Optional[float] = None,
+                    tolerance: float = 0.5,
                     **kwargs: Any) -> Molecule:
     r"""A workflow for identifying all surface atoms in **mol** and replacing a subset of them.
 
@@ -120,7 +122,9 @@ def replace_surface(mol: Molecule,
     # Define the surface-atom subset
     idx = np.fromiter((i for i, at in enumerate(mol) if at.atnum == atnum), dtype=int)
     try:
-        idx_surface = idx[identify_surface(xyz[idx])]
+        idx_surface = idx[identify_surface(xyz[idx],
+                                           max_dist=max_dist,
+                                           tolerance=tolerance)]
     except ValueError:
         raise MoleculeError(f"No atoms with atomic symbol {to_symbol(symbol)!r} available in "
                             f"{mol.get_formula()!r}")

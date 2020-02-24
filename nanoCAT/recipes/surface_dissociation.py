@@ -38,7 +38,10 @@ def dissociate_surface(mol: Molecule,
                        idx: np.ndarray,
                        symbol: str = 'Cl',
                        lig_count: int = 1,
-                       k: int = 4, **kwargs: Any) -> Generator[Molecule, None, None]:
+                       k: int = 4,
+                       max_dist: Optional[float] = None,
+                       tolerance: float = 0.5,
+                       **kwargs: Any) -> Generator[Molecule, None, None]:
     r"""A workflow for dissociating :math:`(XY_{n})_{\le m}` compounds from the surface of **mol**.
 
     The workflow consists of four distinct steps:
@@ -156,7 +159,9 @@ def dissociate_surface(mol: Molecule,
     idx = idx[:, ::-1]
 
     # Identify all atoms in **idx** located on the surface
-    idx_surface_superset = _get_surface(mol, symbol=symbol)
+    idx_surface_superset = _get_surface(mol, symbol=symbol,
+                                        max_dist=max_dist,
+                                        tolerance=tolerance)
 
     # Construct an array with the indices of opposing surface-atoms
     n = lig_count * idx.shape[1]
@@ -239,7 +244,9 @@ def _get_opposite_neighbor(mol: Molecule,
     return brute_uniform_idx(xyz, idx_nn, n=n, **kwargs)
 
 
-def _get_surface(mol: Molecule, symbol: str, max_dist: Optional[float] = None) -> np.ndarray:
+def _get_surface(mol: Molecule, symbol: str,
+                 max_dist: Optional[float] = None,
+                 tolerance: float = 0.5) -> np.ndarray:
     """Return the indices of all atoms, whose atomic symbol is equal to **atom_symbol**, located on the surface."""  # noqa
     # Identify all atom with atomic symbol **atom_symbol**
     atnum = to_atnum(symbol)
@@ -248,7 +255,9 @@ def _get_surface(mol: Molecule, symbol: str, max_dist: Optional[float] = None) -
 
     # Identify all atoms on the surface
     try:
-        return idx[identify_surface(xyz[idx], max_dist=max_dist)]
+        return idx[identify_surface(xyz[idx],
+                                    max_dist=max_dist,
+                                    tolerance=tolerance)]
     except ValueError as ex:
         raise MoleculeError(f"No atoms with atomic symbol/number {repr(symbol)} available in "
                             f"{mol.get_formula()!r}") from ex

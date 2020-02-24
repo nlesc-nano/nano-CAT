@@ -52,6 +52,10 @@ def dissociate_surface(mol: Molecule,
        of **idx**.
     4. Yield :math:`(XY_{n})_{\le m}` molecules constructed from **mol**.
 
+    Note
+    ----
+    The indices supplied in **idx** will, when applicable, be sorted along its last axis.
+
     Examples
     --------
     .. code:: python
@@ -91,7 +95,8 @@ def dissociate_surface(mol: Molecule,
         The input molecule.
 
     idx : array-like, dimensions: :math:`\le 2`
-        An array of indices denoting to-be dissociated atoms (*i.e.* :math:`X`).
+        An array of indices denoting to-be dissociated atoms (*i.e.* :math:`X`);
+        its elements will, if applicable, be sorted along the last axis.
         If a 2D array is provided then all elements along axis 1 will be dissociated
         in a cumulative manner.
         :math:`m` is herein defined as the index along axis 1.

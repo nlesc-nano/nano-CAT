@@ -113,6 +113,18 @@ def dissociate_surface(mol: Molecule,
         The number of atoms specified in **symbol** which are surrounding a single atom in **idx**.
         Must obey the following condition: :math:`k \ge 1`.
 
+    max_dist : :class:`float`, optional
+        Keyword for :func:`identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
+        The radius for defining which atoms constitute as neighbors.
+        If ``None``, estimate this value using the radial distribution function of **mol**.
+
+    tolerance : :class:`float`
+        Keyword for :func:`identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
+        The tolerance for considering atoms part of the surface.
+        A higher value will impose stricter criteria,
+        which might be necasary as the local symmetry of **mol** becomes less pronounced.
+        Should be in the same units as the coordinates of **mol**.
+
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for
         :func:`brute_uniform_idx()<CAT.attachment.distribution_brute.brute_uniform_idx>`.

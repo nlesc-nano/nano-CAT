@@ -22,7 +22,7 @@ import numpy as np
 
 from scm.plams import Molecule, MoleculeError
 
-from CAT.mol_utils import to_atnum
+from CAT.mol_utils import to_atnum, to_symbol
 from CAT.attachment.distribution import distribute_idx
 from nanoCAT.bde.identify_surface import identify_surface
 
@@ -110,14 +110,14 @@ def replace_surface(mol: Molecule,
     try:
         idx_surface = idx[identify_surface(xyz[idx])]
     except ValueError:
-        raise MoleculeError(f"No atoms with atomic symbol/number {repr(symbol)} available in "
-                            f"{repr(mol.get_formula())}")
+        raise MoleculeError(f"No atoms with atomic symbol {to_symbol(symbol)!r} available in "
+                            f"{mol.get_formula()!r}")
 
     try:
         idx_surface_subset = distribute_idx(xyz, idx_surface, f=f, mode=mode, **kwargs)
     except ValueError:
-        raise MoleculeError("Failed to identify any surface atoms with atomic symbol/number "
-                            f"{repr(symbol)} in {repr(mol.get_formula())}")
+        raise MoleculeError("Failed to identify any surface atoms with atomic symbol "
+                            f"{to_symbol(symbol)!r} in {mol.get_formula()!r}")
     else:
         idx_surface_subset += 1
 

@@ -56,7 +56,7 @@ def dissociate_surface(mol: Molecule,
     --------
     .. code:: python
 
-        >>> from pathlib import path
+        >>> from pathlib import Path
 
         >>> import numpy as np
 
@@ -79,7 +79,8 @@ def dissociate_surface(mol: Molecule,
         # Convert 1- to 0-based indices by substracting 1 from idx
         >>> mol_generator = dissociate_surface(mol, idx-1, symbol='Cl', lig_count=1)
 
-        >>> iterator = zip(row_accumulator(idx), mol_generator)
+        # Note: The indices in idx are (always) be sorted along axis 1
+        >>> iterator = zip(row_accumulator(np.sort(idx, axis=1)), mol_generator)
         >>> for i, mol in iterator:
         ...     mol.write(base_path / f'output{i}.xyz')
 
@@ -214,7 +215,7 @@ def _get_opposite_neighbor(mol: Molecule,
         idx_nn = idx_neighbor[get_nearest_neighbors(xyz2, xyz1, k=k)]
     except IndexError as ex:
         raise ValueError("'k' should be smaller than the total number of surface atoms "
-                         f"(len(idx_neighbor)); observed value: {k}") from ex
+                         f"(len(idx_neighbor)); observed value: {k!r}") from ex
     idx_nn.shape = -1, idx_nn.shape[1] * idx_center.shape[1]
 
     # Find the **n** atoms in **idx_nn** furthest removed from each other
@@ -233,7 +234,7 @@ def _get_surface(mol: Molecule, symbol: str, max_dist: Optional[float] = None) -
         return idx[identify_surface(xyz[idx], max_dist=max_dist)]
     except ValueError as ex:
         raise MoleculeError(f"No atoms with atomic symbol/number {repr(symbol)} available in "
-                            f"{repr(mol.get_formula())}") from ex
+                            f"{mol.get_formula()!r}") from ex
 
 
 def _mark_atoms(mol: Molecule, idx: Iterable[int]) -> None:

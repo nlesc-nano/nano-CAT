@@ -38,7 +38,10 @@ def dissociate_surface(mol: Molecule,
                        idx: np.ndarray,
                        symbol: str = 'Cl',
                        lig_count: int = 1,
-                       k: int = 4, **kwargs: Any) -> Generator[Molecule, None, None]:
+                       k: int = 4,
+                       max_dist: Optional[float] = None,
+                       tolerance: float = 0.5,
+                       **kwargs: Any) -> Generator[Molecule, None, None]:
     r"""A workflow for dissociating :math:`(XY_{n})_{\le m}` compounds from the surface of **mol**.
 
     The workflow consists of four distinct steps:
@@ -113,6 +116,18 @@ def dissociate_surface(mol: Molecule,
         The number of atoms specified in **symbol** which are surrounding a single atom in **idx**.
         Must obey the following condition: :math:`k \ge 1`.
 
+    max_dist : :class:`float`, optional
+        Keyword for `identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
+        The radius for defining which atoms constitute as neighbors.
+        If ``None``, estimate this value using the radial distribution function of **mol**.
+
+    tolerance : :class:`float`
+        Keyword for `identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
+        The tolerance for considering atoms part of the surface.
+        A higher value will impose stricter criteria,
+        which might be necasary as the local symmetry of **mol** becomes less pronounced.
+        Should be in the same units as the coordinates of **mol**.
+
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for
         :func:`brute_uniform_idx()<CAT.attachment.distribution_brute.brute_uniform_idx>`.
@@ -144,7 +159,9 @@ def dissociate_surface(mol: Molecule,
     idx = idx[:, ::-1]
 
     # Identify all atoms in **idx** located on the surface
-    idx_surface_superset = _get_surface(mol, symbol=symbol)
+    idx_surface_superset = _get_surface(mol, symbol=symbol,
+                                        max_dist=max_dist,
+                                        tolerance=tolerance)
 
     # Construct an array with the indices of opposing surface-atoms
     n = lig_count * idx.shape[1]
@@ -227,7 +244,9 @@ def _get_opposite_neighbor(mol: Molecule,
     return brute_uniform_idx(xyz, idx_nn, n=n, **kwargs)
 
 
-def _get_surface(mol: Molecule, symbol: str, max_dist: Optional[float] = None) -> np.ndarray:
+def _get_surface(mol: Molecule, symbol: str,
+                 max_dist: Optional[float] = None,
+                 tolerance: float = 0.5) -> np.ndarray:
     """Return the indices of all atoms, whose atomic symbol is equal to **atom_symbol**, located on the surface."""  # noqa
     # Identify all atom with atomic symbol **atom_symbol**
     atnum = to_atnum(symbol)
@@ -236,7 +255,9 @@ def _get_surface(mol: Molecule, symbol: str, max_dist: Optional[float] = None) -
 
     # Identify all atoms on the surface
     try:
-        return idx[identify_surface(xyz[idx], max_dist=max_dist)]
+        return idx[identify_surface(xyz[idx],
+                                    max_dist=max_dist,
+                                    tolerance=tolerance)]
     except ValueError as ex:
         raise MoleculeError(f"No atoms with atomic symbol/number {repr(symbol)} available in "
                             f"{mol.get_formula()!r}") from ex

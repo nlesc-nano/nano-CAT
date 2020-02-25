@@ -113,6 +113,9 @@ def replace_surface(mol: Molecule,
         Take a molecule and identify which atoms are located on the surface,
         rather than in the bulk.
 
+    :func:`identify_surface_ch()<nanoCAT.bde.identify_surface.identify_surface_ch>`
+        Identify the surface of a molecule using a convex hull-based approach.
+
     """
     # Parse input arguments
     xyz = np.array(mol, dtype=float, ndmin=2, copy=False)

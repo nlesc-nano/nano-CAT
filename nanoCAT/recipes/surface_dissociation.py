@@ -146,6 +146,9 @@ def dissociate_surface(mol: Molecule,
         Take a molecule and identify which atoms are located on the surface,
         rather than in the bulk.
 
+    :func:`identify_surface_ch()<nanoCAT.bde.identify_surface.identify_surface_ch>`
+        Identify the surface of a molecule using a convex hull-based approach.
+
     :func:`dissociate_ligand()<nanoCAT.bde.dissociate_xyn.dissociate_ligand>`
         Remove :math:`XY_{n}` from **mol** with the help of the
         :class:`MolDissociater<nanoCAT.bde.dissociate_xyn.MolDissociater>` class.

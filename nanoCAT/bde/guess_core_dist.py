@@ -46,7 +46,7 @@ def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
 
     Parameters
     ----------
-    mol : |plams.Molecule| or :class:`numpy.ndarray`
+    mol : array-like [:class:`float`], shape :math:`(n, 3)`
         A molecule.
 
     atom : :class:`str` or :class:`int`

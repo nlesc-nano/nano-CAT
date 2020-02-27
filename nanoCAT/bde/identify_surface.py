@@ -9,10 +9,12 @@ Index
 .. currentmodule:: nanoCAT.bde.identify_surface
 .. autosummary::
     identify_surface
+    identify_surface_ch
 
 API
 ---
 .. autofunction:: identify_surface
+.. autofunction:: identify_surface_ch
 
 """
 
@@ -20,15 +22,64 @@ import operator
 from typing import Optional, Union, Callable
 
 import numpy as np
+from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist
 
 from scm.plams import Molecule
 
+from CAT.attachment.edge_distance import to_convex
 from .guess_core_dist import guess_core_core_dist
 
-__all__ = ['identify_surface']
+__all__ = ['identify_surface', 'identify_surface_ch']
 
 CompareFunc = Callable[[np.ndarray, float], np.ndarray]
+
+
+def identify_surface_ch(mol: Union[Molecule, np.ndarray],
+                        n: float = 0.5,
+                        invert: bool = False) -> np.ndarray:
+    """Identify the surface of **mol** using a convex hull-based approach.
+
+    A convex hull represents the smallest set of points enclosing itself, thus defining a surface.
+
+    Parameters
+    ----------
+    mol : array-like [:class:`float`], shape :math:`(n, 3)`
+        A 2D array-like object of Cartesian coordinates representing a polyhedron.
+        The supplied polyhedron should be convex in shape.
+
+    n : :class:`float`
+        Smoothing factor for constructing a convex hull.
+        Should obey :math:`0 <= n <= 1`.
+        A non-zero value is recomended here,
+        as the herein utilized :class:`ConvexHull<scipy.spatial.ConvexHull>` class
+        requires an adequate degree of surface-convexness,
+        lest it fails to properly identify all valid surface points.
+
+    invert : :class:`bool`
+        If ``True``, return the indices of all atoms in the bulk rather than on the surface.
+
+    Returns
+    -------
+    :class:`numpy.ndarray` [:class:`int`], shape :math:`(n,)`
+        The (0-based) indices of all atoms in **mol** located on the surface.
+
+    See Also
+    --------
+    :class:`ConvexHull<scipy.spatial.ConvexHull>`
+        Convex hulls in N dimensions.
+
+    """
+    xyz = np.asarray(mol)
+    xyz_convex = xyz if n == 0 else to_convex(xyz, n=n)
+    idx = ConvexHull(xyz_convex).vertices
+
+    if not invert:
+        return idx
+    else:
+        bool_ar = np.ones(len(xyz), dtype=bool)
+        bool_ar[idx] = False
+        return np.arange(len(xyz))[bool_ar]
 
 
 def identify_surface(mol: Union[Molecule, np.ndarray],
@@ -47,7 +98,7 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
 
     Parameters
     ----------
-    mol : array-like
+    mol : array-like [:class:`float`], shape :math:`(n, 3)`
         An array-like object with the Cartesian coordinates of the molecule.
 
     max_dist : :class:`float`, optional
@@ -67,8 +118,8 @@ def identify_surface(mol: Union[Molecule, np.ndarray],
 
     Returns
     -------
-    :class:`numpy.ndarray`
-        The (0-based) indices of all atoms in **mol** located on the surface
+    :class:`numpy.ndarray` [:class:`int`], shape :math:`(n,)`
+        The (0-based) indices of all atoms in **mol** located on the surface.
 
     Raises
     ------

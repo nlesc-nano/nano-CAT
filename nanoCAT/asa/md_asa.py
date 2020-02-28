@@ -24,7 +24,7 @@ from itertools import chain
 
 import numpy as np
 
-from scm.plams import Settings, Molecule, Cp2kJob, Units, add_Hs
+from scm.plams import Settings, Molecule, Cp2kJob, Units, MoleculeError, add_Hs
 from scm.plams.core.basejob import Job
 
 from FOX import MultiMolecule, PSFContainer, PRMContainer, get_intra_non_bonded, get_bonded
@@ -37,6 +37,7 @@ from .asa_frag import get_asa_fragments
 from .energy_gatherer import EnergyGatherer
 from ..qd_opt_ff import qd_opt_ff, get_psf
 from ..ff.ff_assignment import run_match_job
+from ..ff.ff_cationic import run_ff_cationic
 
 
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
@@ -286,14 +287,27 @@ def _get_best_ligand(ligand_list: Sequence[Molecule], psf, prm, **kwargs) -> Mol
 def _get_neutral_frag(frag: Molecule) -> Molecule:
     """Return a neutral fragment for :func:`md_generator`."""
     frag_neutral = frag.copy()
-    for at in frag_neutral:
-        if at.properties.anchor:
-            at.properties.charge = 0
-            break
+    for anchor in frag_neutral:
+        if anchor.properties.anchor:
+            charge = anchor.properties.charge
 
-    frag_neutral = add_Hs(frag_neutral, forcefield='uff')
-    frag_neutral.properties.pdb_info.IsHeteroAtom = False
-    run_match_job(frag_neutral, MATCH_SETTINGS)
+            if charge == 0:
+                charge_type = 'neutral'
+            elif charge > 0:
+                charge_type = 'cation'
+            else:
+                charge_type = 'anion'
+            break
+    else:
+        raise MoleculeError("Failed to identify the anchor atom within 'frag'")
+
+    if charge_type == 'anion':
+        anchor.properties.charge = 0
+        frag_neutral = add_Hs(frag_neutral, forcefield='uff')
+        frag_neutral[-1].properties.pdb_info.IsHeteroAtom = False
+        run_match_job(frag_neutral, MATCH_SETTINGS)
+    elif charge_type == 'cationic':
+        run_ff_cationic(frag_neutral, anchor, MATCH_SETTINGS)
     return frag_neutral
 
 

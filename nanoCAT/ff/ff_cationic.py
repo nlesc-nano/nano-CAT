@@ -24,7 +24,7 @@ from .ff_assignment import run_match_job
 __all__ = ['run_ff_cationic']
 
 
-def run_ff_cationic(mol: Molecule, anchor: Atom, forcefield: str = 'top_all36_cgenff') -> None:
+def run_ff_cationic(mol: Molecule, anchor: Atom, s: Settings) -> None:
     r"""A workflow for assigning neutral parameters to cationic specifes (*e.g.* ammonium).
 
     Consists of N distinct steps:
@@ -48,19 +48,8 @@ def run_ff_cationic(mol: Molecule, anchor: Atom, forcefield: str = 'top_all36_cg
     anchor : :class:`Atom<scm.plams.mol.atom.Atom>`
         The atom in **mol** with the formal positive charge.
 
-    forcefield : :class:`str`
-        The type of to-be assigned forcefield atom types.
-
-        See the ``-Forcefield`` paramater in the MATCH_ user guide for more details.
-        By default the allowed values are:
-
-        * ``"top_all22_prot"``
-        * ``"top_all27_na"``
-        * ``"top_all35_carb"``
-        * ``"top_all35_ether"``
-        * ``"top_all36_cgenff"``
-        * ``"top_all36_cgenff_new"``
-        * ``"top_all36_lipid"``
+    s : :class:`Settings<scm.plams.core.settings.Settings>`
+        The job Settings to-be passed to :class:`MATCHJob<nanoCAT.ff.match_job.MATCHJob>`.
 
     See Also
     --------
@@ -68,7 +57,9 @@ def run_ff_cationic(mol: Molecule, anchor: Atom, forcefield: str = 'top_all36_cg
         Assign atom types and charges to **mol** based on the results of MATCH_.
 
     """  # noqa
-    s = Settings({'input': {'forcefield': forcefield}})
+    if anchor not in mol:
+        raise MoleculeError("Passed 'anchor' is not part of 'mol'")
+
     anchor.properties.charge = 0
 
     # Find the first bond attached to the anchor atom which is not part of a ring
@@ -99,7 +90,7 @@ def run_ff_cationic(mol: Molecule, anchor: Atom, forcefield: str = 'top_all36_cg
         # Change X into XH_n
         alkyl_with_h = add_Hs(alkyl)
         for at in alkyl_with_h.atoms[len(alkyl):]:
-            cap_h = Atom(atnum=at.atnum, coords=at.coords, mol=alkyl)
+            cap_h = Atom(atnum=at.atnum, coords=at.coords, mol=alkyl, settings=at.settings)
             alkyl.add_atom(cap_h)
             alkyl.add_bond(Bond(alkyl_cap, cap_h, mol=alkyl))
 

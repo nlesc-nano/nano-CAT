@@ -272,30 +272,22 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
     def __copy__(self): return self.copy(deep=True)
 
     def inter_nonbonded(self, multi_mol: MultiMolecule, s: Settings, psf: PSFContainer,
-                        prm: PRMContainer, distance_upper_bound: float = np.inf,
-                        k: int = 20, shift_cutoff: bool = True) -> float:
+                        prm: PRMContainer, **kwargs) -> float:
         """Collect, assign and return all inter-ligand non-bonded interactions."""
         atom_set = set(psf.atom_type[psf.residue_name != 'COR'])
         atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
 
         # Manually calculate all inter-ligand, ligand/core & core/core interactions
         elstat_df, lj_df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s,
-                                          distance_upper_bound=distance_upper_bound, k=k,
-                                          shift_cutoff=shift_cutoff,
-                                          atom_pairs=atom_pairs)
+                                          atom_pairs=atom_pairs, **kwargs)
         self.inter_elstat = elstat_df
         self.inter_lj = lj_df
         return elstat_df.mean().sum() + lj_df.mean().sum()
 
-    def intra_nonbonded(self, multi_mol: MultiMolecule, psf: PSFContainer, prm: PRMContainer,
-                        distance_upper_bound: float = np.inf, shift_cutoff: bool = True,
-                        el_scale14: float = 1.0, lj_scale14: float = 1.0) -> float:
+    def intra_nonbonded(self, multi_mol: MultiMolecule, psf: PSFContainer,
+                        prm: PRMContainer, **kwargs: Any) -> float:
         """Collect, assign and return all intra-ligand non-bonded interactions."""
-        elstat_df, lj_df = get_intra_non_bonded(multi_mol, psf, prm,
-                                                distance_upper_bound=distance_upper_bound,
-                                                shift_cutoff=shift_cutoff,
-                                                el_scale14=el_scale14,
-                                                lj_scale14=lj_scale14)
+        elstat_df, lj_df = get_intra_non_bonded(multi_mol, psf, prm, **kwargs)
         self.intra_elstat = elstat_df
         self.intra_lj = lj_df
         return elstat_df.mean().sum() + lj_df.mean().sum()
@@ -432,7 +424,7 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
             assert len(df.columns.levels) == 2
         except AttributeError as ex:
             raise TypeError("'df' expected a 2-level MultiIndex as columns; observed type: "
-                            f"'{df.columns.__class__.__name__}'") from ex
+                            f"{df.columns.__class__.__name__!r}") from ex
         except AssertionError as ex:
             raise ValueError("'df' expected a 2-level MultiIndex as columns; observed number of "
                              f"levels: {len(df.columns.levels)}") from ex
@@ -498,9 +490,9 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
         try:
             value_ = float(value)
         except TypeError as ex:
-            raise TypeError(f"'{self.__class__.__name__}' instances only support arithmetic "
+            raise TypeError(f"{self.__class__.__name__!r} instances only support arithmetic "
                             "operations with scalars; observed type: "
-                            f"'{value.__class__.__name__}'") from ex
+                            f"{value.__class__.__name__!r}") from ex
 
         for df in self.values():
             if df is not None:

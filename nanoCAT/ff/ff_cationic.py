@@ -25,9 +25,9 @@ __all__ = ['run_ff_cationic']
 
 
 def run_ff_cationic(mol: Molecule, anchor: Atom, s: Settings) -> None:
-    r"""A workflow for assigning neutral parameters to cationic specifes (*e.g.* ammonium).
+    r"""Assign neutral parameters to a cationic species (*e.g.* ammonium).
 
-    Consists of N distinct steps:
+    Consists of 3 distinct steps:
 
     * **mol** is converted into two neutral fragments,
       *e.g.* ammonium is converted into two amines:
@@ -56,10 +56,12 @@ def run_ff_cationic(mol: Molecule, anchor: Atom, s: Settings) -> None:
     :func:`run_match_job()<nanoCAT.ff.ff_assignment.run_match_job>`
         Assign atom types and charges to **mol** based on the results of MATCH_.
 
+    :func:`run_ff_anionic()<nanoCAT.ff.ff_anionic.run_ff_anionic>`
+        Assign neutral parameters to an anionic species (*e.g.* carboxylate).
+
     """  # noqa
     if anchor not in mol:
         raise MoleculeError("Passed 'anchor' is not part of 'mol'")
-
     anchor.properties.charge = 0
 
     # Find the first bond attached to the anchor atom which is not part of a ring

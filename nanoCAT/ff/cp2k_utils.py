@@ -39,7 +39,7 @@ def set_cp2k_element(settings: Settings, mol: Molecule) -> None:
 
     """
     def _get_symbol(at: Atom) -> str:
-        return at.properties.symbol or at.symbol
+        return at.properties.get('symbol', at.symbol)
 
     symbol_dict = {_get_symbol(at): at.symbol for at in mol}
     subsys = settings.input.force_eval.subsys

@@ -69,7 +69,7 @@ def run_ff_anionic(mol: Molecule, anchor: Atom, s: Settings) -> None:
     cap_h = Atom(atnum=_cap_h.atnum,
                  coords=_cap_h.coords,
                  mol=mol,
-                 settings=mol_with_h[1].properties.copy())
+                 settings=mol[1].properties.copy())
 
     cap_h.properties.pdb_info.IsHeteroAtom = False
     cap_h.properties.pdb_info.Name = 'Hxx'

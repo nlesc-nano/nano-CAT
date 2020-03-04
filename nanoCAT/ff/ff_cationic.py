@@ -91,7 +91,7 @@ def run_ff_cationic(mol: Molecule, anchor: Atom, s: Settings) -> None:
 
         # Change X into XH_n
         alkyl_with_h = add_Hs(alkyl)
-        properties = alkyl[1].properties
+        properties = mol[1].properties
         for at in alkyl_with_h.atoms[len(alkyl):]:
             cap_h = Atom(atnum=at.atnum, coords=at.coords, mol=alkyl, settings=properties.copy())
             cap_h.properties.pdb_info.IsHeteroAtom = False

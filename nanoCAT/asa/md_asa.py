@@ -24,7 +24,7 @@ from itertools import chain
 
 import numpy as np
 
-from scm.plams import Settings, Molecule, Cp2kJob, Units, add_Hs
+from scm.plams import Settings, Molecule, Cp2kJob, Units, MoleculeError
 from scm.plams.core.basejob import Job
 
 from FOX import MultiMolecule, PSFContainer, PRMContainer, get_intra_non_bonded, get_bonded
@@ -36,7 +36,8 @@ from CAT.mol_utils import round_coords
 from .asa_frag import get_asa_fragments
 from .energy_gatherer import EnergyGatherer
 from ..qd_opt_ff import qd_opt_ff, get_psf
-from ..ff.ff_assignment import run_match_job
+from ..ff.ff_cationic import run_ff_cationic
+from ..ff.ff_anionic import run_ff_anionic
 
 
 def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
@@ -197,17 +198,19 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
     """
     for mol in mol_list:
+        # Keyword arguments
+        kwargs = {'distance_upper_bound': distance_upper_bound,
+                  'shift_cutoff': shift_cutoff,
+                  'el_scale14': el_scale14,
+                  'lj_scale14': lj_scale14}
+
         # Identify the fragments
         ligands, _ = get_asa_fragments(mol)
         prm_charged = PRMContainer.read(mol.properties.prm)
         psf_lig = get_psf(ligands[0], charges=None)
 
         # Find the best ligand
-        lig = _get_best_ligand(ligands, psf_lig, prm_charged,
-                               distance_upper_bound=distance_upper_bound,
-                               shift_cutoff=shift_cutoff,
-                               el_scale14=el_scale14,
-                               lj_scale14=lj_scale14)
+        lig = _get_best_ligand(ligands, psf_lig, prm_charged, **kwargs)
         lig.round_coords()
         lig_count = len(ligands)
 
@@ -234,34 +237,25 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         # Prepare arguments for the inter-ligand interactions
         lig_neutral = _get_neutral_frag(lig)
         prm_neutral = PRMContainer.read(lig_neutral.properties.prm)
-        psf_neutral = _get_neutral_psf(psf_charged, lig_neutral,
-                                       lig_count, mol.properties.indices)
+        psf_neutral = _get_neutral_psf(psf_charged, lig_neutral, lig_count)
 
         # Inter-ligand interaction
         qd_map = EnergyGatherer()
         logger.debug('Calculating inter-ligand non-bonded interactions')
-        inter_nb = qd_map.inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral,
-                                          distance_upper_bound=distance_upper_bound, k=k)
+        inter_nb = qd_map.inter_nonbonded(md_trajec, settings, psf_neutral, prm_neutral, k=k,
+                                          **kwargs)
 
         # Intra-ligand interaction
         logger.debug('Calculating intra-ligand bonded interactions')
         intra_bond = qd_map.intra_bonded(md_trajec, psf_charged, prm_charged)
         logger.debug('Calculating intra-ligand non-bonded interactions')
-        intra_nb = qd_map.intra_nonbonded(md_trajec, psf_charged, prm_charged,
-                                          distance_upper_bound=distance_upper_bound,
-                                          shift_cutoff=shift_cutoff,
-                                          el_scale14=el_scale14,
-                                          lj_scale14=lj_scale14)
+        intra_nb = qd_map.intra_nonbonded(md_trajec, psf_charged, prm_charged, **kwargs)
 
         # Intra-ligand interaction within a single optimized ligand
         lig_map = EnergyGatherer()
         logger.debug('Calculating intra-ligand interactions of the optimized ligand')
         frag_opt = lig_map.intra_bonded(lig_opt, psf_lig, prm_charged)
-        frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged,
-                                            distance_upper_bound=distance_upper_bound,
-                                            shift_cutoff=shift_cutoff,
-                                            el_scale14=el_scale14,
-                                            lj_scale14=lj_scale14)
+        frag_opt += lig_map.intra_nonbonded(lig_opt, psf_lig, prm_charged, **kwargs)
         if dump_csv:
             qd_map.write_csv(Path(mol.properties.path) / 'asa' / f'{mol.properties.name}.qd.csv')
             lig_map.write_csv(Path(mol.properties.path) / 'asa' / f'{mol.properties.name}.lig.csv')
@@ -286,28 +280,32 @@ def _get_best_ligand(ligand_list: Sequence[Molecule], psf, prm, **kwargs) -> Mol
 def _get_neutral_frag(frag: Molecule) -> Molecule:
     """Return a neutral fragment for :func:`md_generator`."""
     frag_neutral = frag.copy()
-    for at in frag_neutral:
-        if at.properties.anchor:
-            at.properties.charge = 0
-            break
+    for anchor in frag_neutral:
+        if anchor.properties.anchor:
+            charge = anchor.properties.charge
 
-    frag_neutral = add_Hs(frag_neutral, forcefield='uff')
-    frag_neutral.properties.pdb_info.IsHeteroAtom = False
-    run_match_job(frag_neutral, MATCH_SETTINGS)
+            if charge > 0:
+                run_ff_cationic(frag_neutral, anchor, MATCH_SETTINGS)
+            elif charge < 0:
+                run_ff_anionic(frag_neutral, anchor, MATCH_SETTINGS)
+            break
+    else:
+        raise MoleculeError("Failed to identify the anchor atom within 'frag'")
+
     return frag_neutral
 
 
-def _get_neutral_psf(psf: PSFContainer, frag_neutral: Molecule, frag_count: int,
-                     anchor_idx: np.ndarray) -> PSFContainer:
+def _get_neutral_psf(psf: PSFContainer, frag_neutral: Molecule, frag_count: int) -> PSFContainer:
     """Return a net-neutral :class:`PSFContainer` for :func:`md_generator`."""
     psf_neutral = psf.copy()
-    symbol_list = [at.properties.symbol for at in frag_neutral.atoms[:-1]] * frag_count
-    charge_list = [at.properties.charge_float for at in frag_neutral.atoms[:-1]] * frag_count
 
+    # Extract the new atom types and charges from **frag_neutral**
+    symbol_list = [at.properties.symbol for at in frag_neutral] * frag_count
+    charge_list = [at.properties.charge_float for at in frag_neutral] * frag_count
+
+    # Update the PSFContainer and set all charges in the core to 0
     psf_neutral.atom_type.loc[psf_neutral.residue_name == 'LIG'] = symbol_list
     psf_neutral.charge.loc[psf_neutral.residue_name == 'LIG'] = charge_list
-
-    psf_neutral.charge.loc[anchor_idx] += frag_neutral[-1].properties.charge_float
     psf_neutral.charge.loc[psf_neutral.residue_name == 'COR'] = 0.0
     return psf_neutral
 

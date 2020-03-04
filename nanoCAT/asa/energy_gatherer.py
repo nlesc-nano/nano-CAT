@@ -222,51 +222,20 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
         """Get the :meth:`values<types.MappingProxyType.values>` method of :attr:`EnergyGatherer.vars_view`."""  # noqa
         return self.vars_view.values
 
+    @staticmethod
     @AbstractDataClass.inherit_annotations()
-    def __repr__(self):
-        def _str(k: str, v: Any) -> str:
-            if isinstance(v, pd.DataFrame):
-                value = f'{v.__class__.__name__}(..., shape={v.shape})'
-            else:
-                value = repr(v)
-            return f'{k:{width}} = ' + textwrap.indent(value, indent2)[len(indent2):]
+    def _str(key: str, value: Any,
+             width: Optional[int] = None,
+             indent: Optional[int] = None) -> str:
+        """Return a string representation of a single **key**/**value** pair."""
+        key_str = f'{key} = ' if width is None else f'{key:{width}} = '
+        val = repr(value) if not isinstance(value, pd.DataFrame) else f'{value.__class__.__name__}(..., shape={value.shape})'  # noqa
+        value_str = textwrap.indent(val, ' ' * indent)[indent:]
+        return f'{key_str}{value_str}'  # e.g.: "key   =     'value'"
 
-        # Return the hexed ID of this instance
-        if self._repr_open:
-            return object.__repr__(self).rstrip('>').rsplit(maxsplit=1)[1]
-
-        # A precaution against recursive __repr__() calls
-        with self._repr_open:
-            try:
-                width = max(len(k) for k, _ in self._str_iterator())
-            except ValueError:  # Raised if this instance has no instance variables
-                return f'{self.__class__.__name__}()'
-
-            indent1 = ' ' * 4
-            indent2 = ' ' * (3 + width)
-            ret = ',\n'.join(_str(k, v) for k, v in self._str_iterator())
-
-            return f'{self.__class__.__name__}(\n{textwrap.indent(ret, indent1)}\n)'
-
+    @staticmethod
     @AbstractDataClass.inherit_annotations()
-    def __eq__(self, value):
-        if self._eq_open:  # Compare the IDs' of this instance and value
-            return id(self) == id(value)
-
-        if type(self) is not type(value):  # Compare instance types
-            return False
-
-        with self._eq_open:
-            try:  # Compare instance variables
-                for k, v1 in vars(self).items():
-                    if k in self._PRIVATE_ATTR:
-                        continue
-                    v2 = getattr(value, k)
-                    np.testing.assert_array_equal(v1, v2)
-            except (TypeError, AssertionError):
-                return False
-            else:
-                return True
+    def _eq(v1, v2): np.testing.assert_array_equal(v1, v2)
 
     @AbstractDataClass.inherit_annotations()
     def __copy__(self): return self.copy(deep=True)
@@ -276,6 +245,7 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
         """Collect, assign and return all inter-ligand non-bonded interactions."""
         atom_set = set(psf.atom_type[psf.residue_name != 'COR'])
         atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
+        atom_pairs = None
 
         # Manually calculate all inter-ligand, ligand/core & core/core interactions
         elstat_df, lj_df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s,

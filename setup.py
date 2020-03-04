@@ -62,7 +62,7 @@ setup(
         'numpy',
         'scipy',
         'pandas>=0.24.0',
-        'AssertionLib>=1.0',
+        'AssertionLib>=2.1',
         'plams@git+https://github.com/SCM-NV/PLAMS@master',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
         'CAT@git+https://github.com/nlesc-nano/CAT@master',

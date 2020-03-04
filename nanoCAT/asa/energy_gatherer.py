@@ -245,7 +245,6 @@ class EnergyGatherer(AbstractDataClass, abc.Mapping):
         """Collect, assign and return all inter-ligand non-bonded interactions."""
         atom_set = set(psf.atom_type[psf.residue_name != 'COR'])
         atom_pairs = combinations_with_replacement(sorted(atom_set), r=2)
-        atom_pairs = None
 
         # Manually calculate all inter-ligand, ligand/core & core/core interactions
         elstat_df, lj_df = get_non_bonded(multi_mol, psf=psf, prm=prm, cp2k_settings=s,

@@ -242,7 +242,8 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
         # Inter-ligand interaction
         qd_map = EnergyGatherer()
         logger.debug('Calculating inter-ligand non-bonded interactions')
-        inter_nb = qd_map.inter_nonbonded(md_trajec, None, psf_neutral, prm_neutral, k=k, **kwargs)
+        inter_nb = qd_map.inter_nonbonded(md_trajec, settings, psf_neutral, prm_neutral, k=k,
+                                          **kwargs)
 
         # Intra-ligand interaction
         logger.debug('Calculating intra-ligand bonded interactions')

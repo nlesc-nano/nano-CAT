@@ -130,7 +130,7 @@ def get_asa_md(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...],
     return np.array([E_int, E_strain, E_int + E_strain]).T
 
 
-MATCH_SETTINGS = Settings({'input': {'forcefield': 'top_all36_cgenff'}})
+MATCH_SETTINGS = Settings({'input': {'forcefield': 'top_all36_cgenff_new'}})
 Tuple5 = Tuple[float, float, float, float, int]
 
 

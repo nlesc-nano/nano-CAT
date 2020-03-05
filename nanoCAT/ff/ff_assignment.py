@@ -34,7 +34,8 @@ from .match_job import MatchJob
 __all__ = ['init_ff_assignment', 'run_match_job']
 
 
-def init_ff_assignment(ligand_df: SettingsDataFrame, forcefield: str = 'top_all36_cgenff') -> None:
+def init_ff_assignment(ligand_df: SettingsDataFrame,
+                       forcefield: str = 'top_all36_cgenff_new') -> None:
     """Initialize the forcefield assignment procedure using MATCH_.
 
     .. _MATCH: http://brooks.chem.lsa.umich.edu/index.php?page=match&subdir=articles/resources/software

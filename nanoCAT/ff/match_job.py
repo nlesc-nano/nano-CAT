@@ -27,19 +27,28 @@ API
 
 """  # noqa
 
-import stat
 import os
-from typing import Optional, Any, List
+import io
+import sys
+import stat
+from typing import Generator, Any, List, Tuple, Hashable, Optional
+from os.path import join, isfile
 from itertools import chain
 
 from scm.plams.core.basejob import SingleJob
+from scm.plams.core.private import sha256
 from scm.plams import JobError, Results, Settings, Molecule, FileError
 
 try:
-    from scm.plams.interfaces.molecule.rdkit import writepdb, readpdb
-except ImportError:
-    writepdb = Molecule.write
-    readpdb = Molecule
+    from scm.plams import writepdb, readpdb
+except ImportError as ex:
+    RDKIT_EX: Optional[ImportError] = ex
+else:
+    RDKIT_EX: Optional[ImportError] = None
+
+# The pickling of Job instances can lead to RecursionError when handling Molecules
+# Increaing the recursion limit a bit fixes this issue
+sys.setrecursionlimit(3 * sys.getrecursionlimit())
 
 __all__ = ['MatchJob', 'MatchResults']
 
@@ -49,17 +58,12 @@ class MatchResults(Results):
 
     def recreate_molecule(self) -> Molecule:
         """Create a |Molecule| instance from ``"$JN.pdb"``."""
-        # Read $JN.pdb
+        pdb_file = self['$JN.pdb']
         try:
             return readpdb(self['$JN.pdb'])
-        except FileError:
-            pass
-
-        # No .pdb file is present; check for of .mol and .mol2 files
-        for extension, read_func in Molecule._readformat:
-            filename = f'{self.name}.{extension}'
-            if filename in self.files:
-                return read_func(self[filename])
+        except AttributeError as ex:
+            # readpdb() will pass None to from_rdmol(), resulting in an AttributeError down the line
+            raise FileError(f"Failed to parse the content of ...{os.sep}{pdb_file!r}") from ex
 
     def recreate_settings(self) -> Settings:
         """Construct a |Settings| instance from ``"$JN.run"``."""
@@ -67,14 +71,12 @@ class MatchResults(Results):
 
         # Ignore the first 2 lines
         with open(runfile, 'r') as f:
-            args = None
             for i in f:
                 if 'MATCH.pl' in i:
                     args = next(f).split()
                     break
-
-        if args is None:
-            raise FileError(f"recreate_settings: Failed to parse the content of '{runfile}'")
+            else:
+                raise FileError(f"Failed to parse the content of ...{os.sep}{runfile!r}")
 
         # Delete the executable and pop the .pdb filename
         del args[0]
@@ -82,7 +84,7 @@ class MatchResults(Results):
 
         s = Settings()
         for k, v in zip(args[0::2], args[1::2]):
-            k = k[1:]
+            k = k[1:].lower()
             s.input[k] = v
         s.input.filename = pdb_file
 
@@ -128,10 +130,10 @@ class MatchJob(SingleJob):
     .. code:: python
 
         >>> s = Settings()
-        >>> s.input.forcefield = 'top_all36_cgenff'
+        >>> s.input.forcefield = 'top_all36_cgenff_new'
         >>> s.input.filename = 'ala.pdb'
 
-        # Command line equivalent: MATCH.pl -forcefield top_all36_cgenff ala.pdb
+        # Command line equivalent: MATCH.pl -forcefield top_all36_cgenff_new ala.pdb
         >>> job = MatchJob(settings=s)
         >>> results = job.run()
 
@@ -141,28 +143,35 @@ class MatchJob(SingleJob):
 
         >>> mol = Molecule('ala.pdb')
         >>> s = Settings()
-        >>> s.input.forcefield = 'top_all36_cgenff'
+        >>> s.input.forcefield = 'top_all36_cgenff_new'
 
-        # Command line equivalent: MATCH.pl -forcefield top_all36_cgenff ala.pdb
+        # Command line equivalent: MATCH.pl -forcefield top_all36_cgenff_new ala.pdb
         >>> job = MatchJob(molecule=mol, settings=s)
         >>> results = job.run()
 
     See Also
     --------
-    Publication:
-        `MATCH: An atom-typing toolset for molecular mechanics force fields,
+    `10.1002/jcc.21963<https://doi.org/10.1002/jcc.21963>`_
+        MATCH: An atom-typing toolset for molecular mechanics force fields,
         J.D. Yesselman, D.J. Price, J.L. Knight and C.L. Brooks III,
-        J. Comput. Chem., 2011 <https://doi.org/10.1002/jcc.21963>`_
+        J. Comput. Chem., 2011.
 
     """
 
     _result_type = MatchResults
 
-    def __init__(self, **kwargs: Any) -> None:
-        """Initialize a :class:`MathcJob` instance."""
-        if self.MATCH is None:
-            raise JobError("The 'MATCH' environment variables has not been set")
+    MATCH: str = os.path.join('$MATCH', 'scripts', 'MATCH.pl')
+
+    def __init__(self, settings: Settings, **kwargs: Any) -> None:
+        """Initialize a :class:`MatchJob` instance."""
+        if RDKIT_EX is not None:
+            raise ImportError(f"{RDKIT_EX}; usage of {self.__class__.__name__!r} requires "
+                              "the 'rdkit' package") from RDKIT_EX
+
+        self.pdb = None  # To-be set by MatchJob._prepare_pdb()
         super().__init__(**kwargs)
+        self._prepare_settings()
+        self._prepare_pdb(io.StringIO())
 
     def _get_ready(self) -> None:
         """Create the runfile."""
@@ -171,43 +180,67 @@ class MatchJob(SingleJob):
             run.write(self.full_runscript())
         os.chmod(runfile, os.stat(runfile).st_mode | stat.S_IEXEC)
 
-    def get_input(self) -> None: return None
-    def hash_input(self) -> str: return self.hash_runscript()
+    def get_input(self) -> None:
+        """Not implemented; see :meth:`MatchJob.get_runscript`."""
+        cls_name = self.__class__.__name__
+        raise NotImplementedError(f"`{cls_name}.get_input()` is not implemented; "
+                                  f"see `{cls_name}.get_runscript()`")
+
+    def hash_input(self) -> str:
+        def get_2tups() -> Generator[Tuple[str, Hashable], None, None]:
+            for k, v in self.settings.input.items():
+                if isinstance(v, list):
+                    v = tuple(v)
+                yield k, v
+            yield 'pdb', self.pdb
+            yield 'type', type(self)
+
+        return sha256(frozenset(get_2tups()))
 
     def get_runscript(self) -> str:
         """Run a MACTH runscript."""
-        # Create a .pdb file from self.molecule
-        if self.molecule:
-            self._writepdb()
+        self._writepdb()  # Write the .pdb file stored in MatchJob.pdb
 
-        kwargs = {self._sanitize_key(k): str(v) for k, v in self.settings.input.items()}
-        filename = kwargs.pop('-filename')
+        kv_iterator = ((k.strip('-'), str(v)) for k, v in self.settings.input.items())
+        args = ' '.join(i for i in chain.from_iterable(kv_iterator))
+        return f'"{self.MATCH}" {args} ".{os.sep}{self.name}.pdb"'
 
-        kwargs_iter = chain.from_iterable(kwargs.items())
-        args = ' '.join(i for i in kwargs_iter)
-        return f'{repr(self.MATCH)} {args} {filename}'
+    def hash_runscript(self) -> str:
+        """Alias for :meth:`MatchJob.hash_input`."""
+        return self.hash_input()
 
     def check(self) -> bool:
-        files = (f'{self.name}.prm', f'{self.name}.rtf', f'top_{self.name}.rtf')
-        return all(i in self.results.files for i in files)
+        """Check if the .prm, .rtf and top_...rtf files are present."""
+        files = {f'{self.name}.prm', f'{self.name}.rtf', f'top_{self.name}.rtf'}
+        return files.issubset(self.results.files)
 
     """###################################### New methods ######################################"""
 
-    try:
-        #: The path to ``"$MATCH/scripts/MATCH.pl"`` executable.
-        MATCH: Optional[str] = os.path.join(os.environ['MATCH'], 'scripts', 'MATCH.pl')
-    except KeyError:
-        #: The path to ``"$MATCH/scripts/MATCH.pl"`` executable.
-        MATCH: Optional[str] = None
+    def _prepare_settings(self) -> None:
+        """Take :attr:`MatchJob.settings` and lower all its keys and strip ``"-"`` characters."""
+        s = self.settings.input
+        self.settings.input = Settings({k.lower().strip('-'): v for k, v in s.items()})
 
-    @staticmethod
-    def _sanitize_key(key: str) -> str:
-        """Lower *key* and prepended it with the ``"-"`` character."""
-        ret = key if key.startswith('-') else f'-{key}'
-        return ret.lower()
+    def _prepare_pdb(self, stream):
+        """Fill :attr:`MatchJob.pdb` with a string-representation of the .pdb file."""
+        conitions = {'filename' in self.settings.input, bool(self.molecule)}
+        if not any(conitions):
+            raise JobError("Ambiguous input: either `molecule` or "
+                           "`settings.input.filename` must be specified")
+        if all(conitions):
+            raise JobError("Ambiguous input: `molecule` and "
+                           "`settings.input.filename` cannot be both specified")
+
+        if self.molecule:
+            writepdb(self.molecule, stream)
+        else:
+            filename = self.settings.input.pop('filename')
+            writepdb(readpdb(filename), stream)
+
+        self.pdb: str = stream.getvalue()
 
     def _writepdb(self) -> None:
-        """Convert :attr:`MatchJob.molecule` into a pdb file."""
-        filename = os.path.join(self.path, self.name + '.pdb')
-        writepdb(self.molecule, filename)
-        self.settings.input.filename = repr(filename)
+        """Convert :attr:`MatchJob.pdb` into a pdb file."""
+        filename = join(self.path, f'{self.name}.pdb')
+        if not isfile(filename):
+            writepdb(self.molecule, filename)

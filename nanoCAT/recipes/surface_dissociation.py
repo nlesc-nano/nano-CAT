@@ -29,7 +29,7 @@ from CAT.mol_utils import to_atnum
 from CAT.attachment.distribution_brute import brute_uniform_idx
 
 from nanoCAT.bde.dissociate_xyn import dissociate_ligand
-from nanoCAT.bde.identify_surface import identify_surface
+from nanoCAT.bde.identify_surface import identify_surface_ch
 
 __all__ = ['dissociate_surface', 'row_accumulator']
 
@@ -39,8 +39,7 @@ def dissociate_surface(mol: Molecule,
                        symbol: str = 'Cl',
                        lig_count: int = 1,
                        k: int = 4,
-                       max_dist: Optional[float] = None,
-                       tolerance: float = 0.5,
+                       displacement_factor: float = 0.5,
                        **kwargs: Any) -> Generator[Molecule, None, None]:
     r"""A workflow for dissociating :math:`(XY_{n})_{\le m}` compounds from the surface of **mol**.
 
@@ -116,17 +115,16 @@ def dissociate_surface(mol: Molecule,
         The number of atoms specified in **symbol** which are surrounding a single atom in **idx**.
         Must obey the following condition: :math:`k \ge 1`.
 
-    max_dist : :class:`float`, optional
-        Keyword for :func:`identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
-        The radius for defining which atoms constitute as neighbors.
-        If ``None``, estimate this value using the radial distribution function of **mol**.
+    displacement_factor : :class:`float`
+        The smoothing factor :math:`n` for constructing a convex hull;
+        should obey :math:`0 <= n <= 1`.
+        Represents the degree of displacement of all atoms with respect to a spherical surface;
+        :math:`n = 1` is a complete projection while :math:`n = 0` means no displacement at all.
 
-    tolerance : :class:`float`
-        Keyword for :func:`identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
-        The tolerance for considering atoms part of the surface.
-        A higher value will impose stricter criteria,
-        which might be necasary as the local symmetry of **mol** becomes less pronounced.
-        Should be in the same units as the coordinates of **mol**.
+        A non-zero value is generally recomended here,
+        as the herein utilized :class:`ConvexHull<scipy.spatial.ConvexHull>` class
+        requires an adequate degree of surface-convexness,
+        lest it fails to properly identify all valid surface points.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for
@@ -162,9 +160,9 @@ def dissociate_surface(mol: Molecule,
     idx = idx[:, ::-1]
 
     # Identify all atoms in **idx** located on the surface
-    idx_surface_superset = _get_surface(mol, symbol=symbol,
-                                        max_dist=max_dist,
-                                        tolerance=tolerance)
+    idx_surface_superset = _get_surface(
+        mol, symbol=symbol, displacement_factor=displacement_factor
+    )
 
     # Construct an array with the indices of opposing surface-atoms
     n = lig_count * idx.shape[1]
@@ -247,9 +245,7 @@ def _get_opposite_neighbor(mol: Molecule,
     return brute_uniform_idx(xyz, idx_nn, n=n, **kwargs)
 
 
-def _get_surface(mol: Molecule, symbol: str,
-                 max_dist: Optional[float] = None,
-                 tolerance: float = 0.5) -> np.ndarray:
+def _get_surface(mol: Molecule, symbol: str, displacement_factor: float = 0.5) -> np.ndarray:
     """Return the indices of all atoms, whose atomic symbol is equal to **atom_symbol**, located on the surface."""  # noqa
     # Identify all atom with atomic symbol **atom_symbol**
     atnum = to_atnum(symbol)
@@ -258,9 +254,7 @@ def _get_surface(mol: Molecule, symbol: str,
 
     # Identify all atoms on the surface
     try:
-        return idx[identify_surface(xyz[idx],
-                                    max_dist=max_dist,
-                                    tolerance=tolerance)]
+        return idx[identify_surface_ch(xyz[idx], n=displacement_factor)]
     except ValueError as ex:
         raise MoleculeError(f"No atoms with atomic symbol/number {repr(symbol)} available in "
                             f"{mol.get_formula()!r}") from ex

@@ -24,7 +24,7 @@ from scm.plams import Molecule, MoleculeError
 
 from CAT.mol_utils import to_atnum, to_symbol
 from CAT.attachment.distribution import distribute_idx
-from nanoCAT.bde.identify_surface import identify_surface
+from nanoCAT.bde.identify_surface import identify_surface_ch
 
 __all__ = ['replace_surface']
 
@@ -34,8 +34,7 @@ def replace_surface(mol: Molecule,
                     symbol_new: Union[str, int] = 'Cl',
                     f: float = 0.5,
                     mode: str = 'uniform',
-                    max_dist: Optional[float] = None,
-                    tolerance: float = 0.5,
+                    displacement_factor: float = 0.5,
                     **kwargs: Any) -> Molecule:
     r"""A workflow for identifying all surface atoms in **mol** and replacing a subset of them.
 
@@ -83,17 +82,16 @@ def replace_surface(mol: Molecule,
         * ``"uniform"``: A uniform distribution; maximizes the nearest-neighbor distance.
         * ``"cluster"``: A clustered distribution; minimizes the nearest-neighbor distance.
 
-    max_dist : :class:`float`, optional
-        Keyword for :func:`identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
-        The radius for defining which atoms constitute as neighbors.
-        If ``None``, estimate this value using the radial distribution function of **mol**.
+    displacement_factor : :class:`float`
+        The smoothing factor :math:`n` for constructing a convex hull;
+        should obey :math:`0 <= n <= 1`.
+        Represents the degree of displacement of all atoms with respect to a spherical surface;
+        :math:`n = 1` is a complete projection while :math:`n = 0` means no displacement at all.
 
-    tolerance : :class:`float`
-        Keyword for :func:`identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`.
-        The tolerance for considering atoms part of the surface.
-        A higher value will impose stricter criteria,
-        which might be necasary as the local symmetry of **mol** becomes less pronounced.
-        Should be in the same units as the coordinates of **mol**.
+        A non-zero value is generally recomended here,
+        as the herein utilized :class:`ConvexHull<scipy.spatial.ConvexHull>` class
+        requires an adequate degree of surface-convexness,
+        lest it fails to properly identify all valid surface points.
 
     \**kwargs : :data:`Any<typing.Any>`
         Further keyword arguments for
@@ -125,9 +123,7 @@ def replace_surface(mol: Molecule,
     # Define the surface-atom subset
     idx = np.fromiter((i for i, at in enumerate(mol) if at.atnum == atnum), dtype=int)
     try:
-        idx_surface = idx[identify_surface(xyz[idx],
-                                           max_dist=max_dist,
-                                           tolerance=tolerance)]
+        idx_surface = idx[identify_surface_ch(xyz[idx], n=displacement_factor)]
     except ValueError:
         raise MoleculeError(f"No atoms with atomic symbol {to_symbol(symbol)!r} available in "
                             f"{mol.get_formula()!r}")

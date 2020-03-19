@@ -16,7 +16,7 @@ API
 
 """
 
-from typing import Union, Optional
+from typing import Union, Tuple
 
 import numpy as np
 from scipy.spatial.distance import cdist
@@ -29,9 +29,26 @@ from FOX.functions.rdf import get_rdf_lowmem as get_rdf
 
 __all__ = ['guess_core_core_dist']
 
+#: An atomic symbol or number.
+AtomSymbol = Union[str, int]
+
+#: A 2-tuple of atomc symbols/numbers.
+AtomSymbolTup = Tuple[AtomSymbol, AtomSymbol]
+
+
+def _get_xyz(mol: Molecule, atom: AtomSymbol) -> np.ndarray:
+    """Return the Cartesian coordinates of **mol** belonging to the atom subset of *atom*."""
+    atnum = to_atnum(atom)
+    xyz = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))
+
+    if not xyz.any():
+        raise MoleculeError(f"No atoms with atomic symbol {to_symbol(atom)!r} "
+                            f"in {mol.get_formula()!r}")
+    return xyz
+
 
 def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
-                         atom: Optional[Union[str, int]] = None,
+                         atom: Union[None, AtomSymbol, AtomSymbolTup] = None,
                          dr: float = 0.1,
                          r_max: float = 8.0,
                          window_length: int = 21,
@@ -44,14 +61,31 @@ def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
     is explored (starting from the RDFs' global maximum) until a stationary point is found with
     a positive second derivative (*i.e.* a minimum).
 
+    Examples
+    --------
+    .. code:: python
+
+        >>> from scm.plams import Molecule
+        >>> from nanoCAT.bde.guess_core_dist import guess_core_core_dist
+
+        >>> atom1 = 'Cl'  # equivalent to ('Cl', 'Cl')
+        >>> atom2 = 'Cl', 'Br'
+
+        >>> mol = Molecule(...)
+
+        >>> guess_core_core_dist(mol, atom1)
+        >>> guess_core_core_dist(mol, atom2)
+
+
     Parameters
     ----------
     mol : array-like [:class:`float`], shape :math:`(n, 3)`
         A molecule.
 
-    atom : :class:`str` or :class:`int`
+    atom : :class:`str` or :class:`int`, optional
         An atomic number or symbol for defining an atom subset within **mol**.
         The RDF is constructed for this subset.
+        Providing a 2-tuple will construct the RDF between these 2 atom subsets.
 
     dr : :class:`float`
         The RDF integration step-size in Angstrom, *i.e.* the distance between concentric spheres.
@@ -85,17 +119,18 @@ def guess_core_core_dist(mol: Union[Molecule, np.ndarray],
         Apply a Savitzky-Golay filter to an array.
 
     """
-    if atom is not None:
-        atnum = to_atnum(atom)
-        xyz = mol.as_array(atom_subset=(at for at in mol if at.atnum == atnum))
-        if not xyz.any():
-            raise MoleculeError(f"No atoms with atomic symbol '{to_symbol(atom)}' "
-                                f"in '{mol.get_formula()}'")
+    if atom is None:
+        xyz1 = xyz2 = np.asarray(mol)
+    elif isinstance(atom, tuple):
+        if len(atom) != 2:
+            raise ValueError(f"'atom' expected a tuple of length 2; observed length: {len(atom)}")
+        xyz1 = _get_xyz(mol, atom[0])
+        xyz2 = _get_xyz(mol, atom[1])
     else:
-        xyz = np.asarray(mol)
+        xyz1 = xyz2 = _get_xyz(mol, atom)
 
     # Create a disance matrix
-    dist = cdist(xyz, xyz)
+    dist = cdist(xyz1, xyz2)
 
     # Create and smooth the RDF
     rdf = get_rdf(dist, dr=dr, r_max=r_max)

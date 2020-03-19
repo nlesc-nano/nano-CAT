@@ -51,7 +51,10 @@ def identify_surface_ch(mol: Union[Molecule, np.ndarray],
     n : :class:`float`
         Smoothing factor for constructing a convex hull.
         Should obey :math:`0 <= n <= 1`.
-        A non-zero value is recomended here,
+        Represents the degree of displacement of all atoms to a spherical surface;
+        :math:`n = 1` is a complete projection while :math:`n = 0` means no displacement at all.
+
+        A non-zero value is generally recomended here,
         as the herein utilized :class:`ConvexHull<scipy.spatial.ConvexHull>` class
         requires an adequate degree of surface-convexness,
         lest it fails to properly identify all valid surface points.

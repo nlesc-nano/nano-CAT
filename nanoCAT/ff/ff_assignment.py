@@ -87,7 +87,9 @@ def start_ff_assignment(mol_list: Iterable[Molecule], jobs: Tuple[Type[Job], ...
         run_match_job(mol, s, job)
 
 
-def run_match_job(mol: Molecule, s: Settings, job_type: Type[Job] = MatchJob) -> None:
+def run_match_job(mol: Molecule, s: Settings,
+                  job_type: Type[Job] = MatchJob,
+                  action: str = 'warn') -> None:
     """Assign atom types and charges to **mol** based on the results of MATCH_.
 
     Performs an inplace update of :attr:`Atom.properties` ``["symbol"]``,
@@ -105,6 +107,10 @@ def run_match_job(mol: Molecule, s: Settings, job_type: Type[Job] = MatchJob) ->
 
     job_type : :class:`type` [|plams.Job|]
         The type of Job.
+
+    action : :class:`str`
+        The to-be undertaken action when the Job crashes.
+        Accepted values are ``"raise"``, ``"warn"`` and ``"ignore"``.
 
     See Also
     --------
@@ -125,10 +131,13 @@ def run_match_job(mol: Molecule, s: Settings, job_type: Type[Job] = MatchJob) ->
         logger.info(f'{job.__class__.__name__}: {mol.properties.name} parameter assignment '
                     f'({job.name}) is successful')
     except Exception as ex:
-        logger.info(f'{job.__class__.__name__}: {mol.properties.name} parameter assignment '
-                    f'({job.name}) has failed')
-        logger.debug(f'{ex.__class__.__name__}: {ex}', exc_info=True)
-        return None
+        if action == 'raise':
+            raise ex
+        elif 'action' == 'warm':
+            logger.info(f'{job.__class__.__name__}: {mol.properties.name} parameter assignment '
+                        f'({job.name}) has failed')
+            logger.debug(f'{ex.__class__.__name__}: {ex}', exc_info=True)
+            return None
 
     # Update properties with new symbols, charges and the consntructed parameter (.prm) file
     mol.properties.prm = prm = results['$JN.prm']

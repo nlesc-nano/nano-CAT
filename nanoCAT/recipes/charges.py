@@ -17,26 +17,28 @@ API
 """
 
 from os import PathLike
-from typing import Optional, Union
+from typing import Optional, Union, Iterable
 
+import numpy as np
 import pandas as pd
-from scm.plams import Molecule, Atom, Settings, MoleculeError, JobError, init, finish
 
+from scm.plams import Molecule, Settings, init, finish
+from CAT.utils import as_1d_array
 from nanoCAT.ff import run_match_job
 
 __all__ = ['get_lig_charge']
 
 
 def get_lig_charge(ligand: Molecule,
-                   ligand_anchor: int,
-                   core_anchor_charge: float,
+                   desired_charge: float,
+                   ligand_idx: Union[None, int, Iterable[int], slice] = None,
                    settings: Optional[Settings] = None,
                    path: Union[None, str, PathLike] = None,
                    folder: Union[None, str, PathLike] = None) -> pd.Series:
     """Calculate and rescale the **ligand** charges using MATCH_.
 
-    The atomic charge of **ligand_anchor**, as deterimined by MATCH, is rescaled such that
-    the molecular charge of **ligand** will be equal to **core_anchor_charge**.
+    The atomic charges in **ligand_idx** wil be altered such that the molecular
+    charge of **ligand** is equal to **desired_charge**.
 
     .. _MATCH: http://brooks.chem.lsa.umich.edu/index.php?page=match&subdir=articles/resources/software
 
@@ -50,14 +52,14 @@ def get_lig_charge(ligand: Molecule,
         >>> from CAT.recipes import get_lig_charge
 
         >>> ligand = Molecule(...)
-        >>> ligand_anchor = int(...)  # 1-based index
-        >>> core_anchor_charge = float(...)
+        >>> desired_charge = 0.66
+        >>> ligand_idx = 0, 1, 2, 3, 4
 
         >>> charge_series: pd.Series = get_lig_charge(
-        ...     ligand, ligand_anchor, core_anchor_charge
+        ...     ligand, desired_charge, ligand_idx
         ... )
 
-        >>> charge_series.sum() == core_anchor_charge
+        >>> charge_series.sum() == desired_charge
         True
 
 
@@ -66,12 +68,15 @@ def get_lig_charge(ligand: Molecule,
     ligand : :class:`~scm.plams.core.mol.molecule.Molecule`
         The input ligand.
 
-    ligand_anchor : :class:`int`
-        The (1-based) atomic index of the ligand anchor atom.
-        The charge of this atom will be rescaled.
+    desired_charge : :class:`float`
+        The desired molecular charge of the ligand.
 
-    core_anchor_charge : :class:`float`
-        The atomic charge of the core anchor atoms.
+    ligand_idx : :class:`int` or :class:`~collections.abc.Iterable` [:class:`int`], optional
+        An integer or iterable of integers representing atomic indices.
+        The charges of these atoms will be rescaled;
+        all others will be frozen with respect to the MATCH output.
+        Setting this value to ``None`` means that *all* atomic charges are considered variable.
+        Indices should be 0-based.
 
     settings : :class:`~scm.plams.core.settings.Settings`, optional
         The input settings for :class:`~nanoCAT.ff.match_job.MatchJob`.
@@ -104,16 +109,31 @@ def get_lig_charge(ligand: Molecule,
 
     # Run the MATCH Job
     init(path, folder)
+    ligand = ligand.copy()
     run_match_job(ligand, settings, action='raise')
     finish()
 
     # Extract the charges and new atom types
-    charge = [at.properties.charge_float for at in ligand]
-    symbol = [at.properties.symbol for at in ligand]
+    count = len(ligand)
+    charge = np.fromiter((at.properties.charge_float for at in ligand), count=count, dtype=float)
+    symbol = np.fromiter((at.properties.symbol for at in ligand), count=count, dtype='<U4')
 
-    # Correct the charge of ligand[i]
-    i = ligand_anchor
-    charge[i - 1] -= sum(charge) - core_anchor_charge
-    ligand[i].properties.charge_float = charge[i - 1]
+    # Identify the atom subset
+    idx = _parse_ligand_idx(ligand_idx)
+    try:
+        idx_len = len(idx)  # type: ignore
+    except TypeError:  # idx is a slice object
+        idx_len = len(charge[idx])
 
+    # Correct the charges and return
+    charge[idx] -= (charge.sum() - desired_charge) / idx_len
     return pd.Series(charge, index=symbol, name='charge')
+
+
+def _parse_ligand_idx(idx: Union[None, slice, int, Iterable[int]]) -> Union[slice, np.ndarray]:
+    """Parse the **ligand_idx** parameter in :func:`get_lig_charge`."""
+    if idx is None:
+        return slice(None)
+    elif isinstance(idx, slice):
+        return idx
+    return as_1d_array(idx, dtype=int)

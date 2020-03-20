@@ -32,6 +32,7 @@ __all__ = ['get_lig_charge']
 def get_lig_charge(ligand: Molecule,
                    desired_charge: float,
                    ligand_idx: Union[None, int, Iterable[int], slice] = None,
+                   invert_idx: bool = False,
                    settings: Optional[Settings] = None,
                    path: Union[None, str, PathLike] = None,
                    folder: Union[None, str, PathLike] = None) -> pd.Series:
@@ -78,6 +79,11 @@ def get_lig_charge(ligand: Molecule,
         Setting this value to ``None`` means that *all* atomic charges are considered variable.
         Indices should be 0-based.
 
+    invert_idx : :class:`bool`
+        If ``True`` invert **ligand_idx**, *i.e.* all atoms specified therein are
+        now threated as constants and the rest as variables,
+        rather than the other way around.
+
     settings : :class:`~scm.plams.core.settings.Settings`, optional
         The input settings for :class:`~nanoCAT.ff.match_job.MatchJob`.
         Will default to the ``"top_all36_cgenff_new"`` forcefield if not specified.
@@ -120,6 +126,8 @@ def get_lig_charge(ligand: Molecule,
 
     # Identify the atom subset
     idx = _parse_ligand_idx(ligand_idx)
+    if invert_idx:
+        idx = _invert_idx(idx, count)
     try:
         idx_len = len(idx)  # type: ignore
     except TypeError:  # idx is a slice object
@@ -137,3 +145,10 @@ def _parse_ligand_idx(idx: Union[None, slice, int, Iterable[int]]) -> Union[slic
     elif isinstance(idx, slice):
         return idx
     return as_1d_array(idx, dtype=int)
+
+
+def _invert_idx(idx: np.ndarray, count: int) -> np.ndarray:
+    """Parse the **invert_idx** parameter in :func:`get_lig_charge`."""
+    ret = np.ones(count, dtype=bool)
+    ret[idx] = False
+    return ret

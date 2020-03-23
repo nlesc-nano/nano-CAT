@@ -1,5 +1,6 @@
 import numpy as np
 from itertools import combinations
+from typing import Dict, Tuple
 from scm.plams import Molecule
 from FOX import group_by_values
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
@@ -15,22 +16,27 @@ symbol_enumerator = enumerate(elements)
 idx_dict = group_by_values(symbol_enumerator)
 for k, v in idx_dict.items():
     idx_dict[k] = np.fromiter(v, dtype=int, count=len(v))
-    
-# Construct two arrays the indice-pairs of all possible combinations in idx_dict.
-# The combinations, by definition, do not contain any atom pairs where ``at1.symbol == at2.symbol``
-x, y = [], []
-symbol_combinations = combinations(idx_dict.keys(), r=2)
-for symbol1, symbol2 in symbol_combinations:
-    idx1 = idx_dict[symbol1]
-    idx2 = idx_dict[symbol2]
-    _x, _y = np.meshgrid(idx1, idx2)
-    x += _x.ravel().tolist()
-    y += _y.ravel().tolist()
-    
-# Convert the indice lists to arrays and calculate the upper distance matrix
-x = np.fromiter(x, dtype=int, count=len(x))
-y = np.fromiter(y, dtype=int, count=len(y))
 
+def idx_pairs(idx_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:    
+"""Construct two arrays of indice-pairs of all possible combinations in idx_dict.
+The combinations, by definition, do not contain any atom pairs where ``at1.symbol == at2.symbol``
+"""
+    x, y = [], []
+    symbol_combinations = combinations(idx_dict.keys(), r=2)
+    for symbol1, symbol2 in symbol_combinations:
+        idx1 = idx_dict[symbol1]
+        idx2 = idx_dict[symbol2]
+        _x, _y = np.meshgrid(idx1, idx2)
+        x += _x.ravel().tolist()
+        y += _y.ravel().tolist()
+    
+    x = np.fromiter(x, dtype=int, count=len(x))
+    y = np.fromiter(y, dtype=int, count=len(y))
+    return x, y
+
+x, y =  idx_pairs(idx_dict)
+
+# Construct the upper distance matrix
 shape = len(xyz), len(xyz)
 dist = np.full(shape, fill_value=np.nan)
 dist[x, y]  = np.linalg.norm(xyz[x] - xyz[y], axis=1)

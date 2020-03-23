@@ -43,7 +43,7 @@ coord_outer = np.bincount(a, minlength=len(xyz)) + np.bincount(b, minlength=len(
 cn_dict = {}
 for k, v in idx_dict.items():
      cn = coord_outer[v]
-     mapping = {i: v[(cn == i).nonzero()[0]] for i in np.unique(cn)}
+     mapping = {i: v[cn == i] for i in np.unique(cn)}
      cn_dict[k] = mapping
      
 # Search the threshold radii of the inner coordination shell for each atom type as the distance with the closest neighbors

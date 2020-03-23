@@ -51,7 +51,7 @@ d_inner = {}
 symbol_combinations = combinations(idx_dict.keys(), r=2)
 for symbol1, symbol2 in symbol_combinations:
     d_pair = guess_core_core_dist(mol, (symbol1, symbol2))
-    if (symbol1 not in d_inner or d_pair < d_inner[symbol1]):
+    if d_pair < d_inner.get(symbol1, np.inf):
          d_inner[symbol1] = d_pair
-    if (symbol2 not in d_inner or d_pair < d_inner[symbol2]):
+    if d_pair < d_inner.get(symbol2, np.inf):
          d_inner[symbol2] = d_pair

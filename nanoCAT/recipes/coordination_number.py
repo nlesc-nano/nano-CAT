@@ -45,11 +45,11 @@ dist[x, y]  = np.linalg.norm(xyz[x] - xyz[y], axis=1)
 a, b = np.where(dist <= d_outer)
 coord_outer = np.bincount(a, minlength=len(xyz)) + np.bincount(b, minlength=len(xyz))
 
-# Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_outer: arrays of indices} as values
+# Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_outer: list of indices} as values
 cn_dict = {}
 for k, v in idx_dict.items():
      cn = coord_outer[v]
-     mapping = {i: (v[cn == i] + 1) for i in np.unique(cn)}
+     mapping = {i: (v[cn == i] + 1).tolist() for i in np.unique(cn)}
      cn_dict[k] = mapping
      
 # Search the threshold radii of the inner coordination shell for each atom type as the distance with the first neighbors
@@ -62,11 +62,11 @@ for symbol1, symbol2 in symbol_combinations:
     if d_pair < d_inner.get(symbol2, np.inf):
          d_inner[symbol2] = d_pair
 
-# Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_inner: arrays of indices} as values
+# Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_inner: list of indices} as values
 fn_dict = {}
 for k, v in idx_dict.items():
     a, b = np.where(dist <= d_inner[k])
     coord_inner = np.bincount(a, minlength=len(xyz)) + np.bincount(b, minlength=len(xyz))
     fn = coord_inner[v]
-    mapping = {i: (v[fn == i] + 1) for i in np.unique(fn)}
+    mapping = {i: (v[fn == i] + 1).tolist() for i in np.unique(fn)}
     fn_dict[k] = mapping

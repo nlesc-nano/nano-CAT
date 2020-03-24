@@ -52,7 +52,7 @@ for k, v in idx_dict.items():
      mapping = {i: v[cn == i] for i in np.unique(cn)}
      cn_dict[k] = mapping
      
-# Search the threshold radii of the inner coordination shell for each atom type as the distance with the closest neighbors
+# Search the threshold radii of the inner coordination shell for each atom type as the distance with the first neighbors
 d_inner = {}
 symbol_combinations = combinations(idx_dict.keys(), r=2)
 for symbol1, symbol2 in symbol_combinations:
@@ -61,3 +61,12 @@ for symbol1, symbol2 in symbol_combinations:
          d_inner[symbol1] = d_pair
     if d_pair < d_inner.get(symbol2, np.inf):
          d_inner[symbol2] = d_pair
+
+# Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_inner: arrays of indices} as values
+fn_dict = {}
+for k, v in idx_dict.items():
+    a, b = np.where(dist <= d_inner[k])
+    coord_inner = np.bincount(a, minlength=len(xyz)) + np.bincount(b, minlength=len(xyz))
+    fn = coord_inner[v]
+    mapping = {i: v[fn == i] for i in np.unique(fn)}
+    fn_dict[k] = mapping

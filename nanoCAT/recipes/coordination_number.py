@@ -18,9 +18,9 @@ for k, v in idx_dict.items():
     idx_dict[k] = np.fromiter(v, dtype=int, count=len(v))
 
 def idx_pairs(idx_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:    
-"""Construct two arrays of indice-pairs of all possible combinations in idx_dict.
-The combinations, by definition, do not contain any atom pairs where ``at1.symbol == at2.symbol``
-"""
+    """Construct two arrays of indice-pairs of all possible combinations in idx_dict.
+    The combinations, by definition, do not contain any atom pairs where ``at1.symbol == at2.symbol``
+    """
     x, y = [], []
     symbol_combinations = combinations(idx_dict.keys(), r=2)
     for symbol1, symbol2 in symbol_combinations:

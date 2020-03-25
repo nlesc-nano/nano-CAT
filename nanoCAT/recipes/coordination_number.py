@@ -5,6 +5,9 @@ from scm.plams import Molecule
 from FOX import group_by_values
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 
+#: A nested dictonary
+NestedDict = Dict[str, Dict[int, list]]
+
 
 def get_indices(mol: Molecule) -> Dict[str, np.ndarray]:
     """Construct a dictionary with atomic symbols as keys and arrays of indices as values."""
@@ -35,7 +38,7 @@ def idx_pairs(idx_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
     return x, y
 
 
-def coordination_outer(dist: np.ndarray, d_outer: float) -> Dict[str, Dict[int, list]]:
+def coordination_outer(dist: np.ndarray, d_outer: float) -> NestedDict:
     """Map atoms according to their atomic symbols and coordination number in the outer shell.
 
     Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_outer: list of indices} as values.
@@ -70,7 +73,7 @@ def radius_inner(idx_dict: Dict[str, np.ndarray]) -> Dict[str, float]:
     return d_inner
 
 
-def coordination_inner(dist: np.ndarray, d_inner: Dict[str, float]) -> Dict[str, Dict[int, list]]:
+def coordination_inner(dist: np.ndarray, d_inner: Dict[str, float]) -> NestedDict:
     """Map atoms according to their atomic symbols and coordination number in the inner shell.
 
     Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_inner: list of indices} as values.
@@ -88,15 +91,33 @@ def coordination_inner(dist: np.ndarray, d_inner: Dict[str, float]) -> Dict[str,
     return fn_dict
 
 
-mol = Molecule('perovskite.xyz')
-d_outer = 5.1
-xyz = np.asarray(mol)
-idx_dict = get_indices(mol)
-# Construct the upper distance matrix
-x, y = idx_pairs(idx_dict)
-shape = len(xyz), len(xyz)
-dist = np.full(shape, fill_value=np.nan)
-dist[x, y] = np.linalg.norm(xyz[x] - xyz[y], axis=1)
-cn_dict = coordination_outer(dist, d_outer)
-d_inner = radius_inner(idx_dict)
-fn_dict = coordination_inner(dist, d_inner)
+def coordination_number(mol: Molecule, d_outer: float, shell: str = 'outer') -> NestedDict:
+    """Full description
+    mol = Molecule('perovskite.xyz')
+    d_outer = 5.1
+    """
+    # Return the Cartesian coordinates of **mol**
+    xyz = np.asarray(mol)
+
+    # Group atom indices according to atom symbols
+    idx_dict = get_indices(mol)
+
+    # Construct the upper distance matrix
+    x, y = idx_pairs(idx_dict)
+    shape = len(xyz), len(xyz)
+    dist = np.full(shape, fill_value=np.nan)
+    dist[x, y] = np.linalg.norm(xyz[x] - xyz[y], axis=1)
+
+    if shell == 'outer':
+        # Calculate the coordination number relative to the outer shell
+        cn_dict = coordination_outer(dist, d_outer)
+        return cn_dict
+
+    if shell == 'inner':
+        # Calculate the coordination number relative to the inner shell (first neighbors)
+        d_inner = radius_inner(idx_dict)
+        fn_dict = coordination_inner(dist, d_inner)
+        return fn_dict
+
+    else:
+        raise ValueError(f"'shell' expected to be 'inner' or 'outer'; observed value: '{shell}'")

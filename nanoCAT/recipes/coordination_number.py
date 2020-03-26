@@ -1,12 +1,12 @@
 import numpy as np
 from itertools import combinations
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 from scm.plams import Molecule
 from FOX import group_by_values
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 
 #: A nested dictonary
-NestedDict = Dict[str, Dict[int, list]]
+NestedDict = Dict[str, Dict[int, List[int]]]
 
 
 def get_indices(mol: Molecule) -> Dict[str, np.ndarray]:
@@ -38,29 +38,19 @@ def idx_pairs(idx_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
     return x, y
 
 
-def coordination_outer(dist: np.ndarray, d_outer: float) -> NestedDict:
-    """Map atoms according to their atomic symbols and coordination number in the outer shell.
-
-    Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_outer: list of indices} as values.
-    """
-    # Compute the number of neighbors in the outer coordination shell of each atom
-    a, b = np.where(dist <= d_outer)
-    coord_outer = np.bincount(a, minlength=len(xyz)) + np.bincount(b, minlength=len(xyz))
-
-    # Build a dictionary to class atoms according to their atomic symbols and coordination number in the outer shell
-    cn_dict = {}
-    for k, v in idx_dict.items():
-        cn = coord_outer[v]
-        mapping = {i: (v[cn == i] + 1).tolist() for i in np.unique(cn)}
-        cn_dict[k] = mapping
-    return cn_dict
+def upper_dist(xyz: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Construct the upper distance matrix."""
+    shape = len(xyz), len(xyz)
+    dist = np.full(shape, fill_value=np.nan)
+    dist[x, y] = np.linalg.norm(xyz[x] - xyz[y], axis=1)
+    return dist
 
 
-def radius_inner(idx_dict: Dict[str, np.ndarray]) -> Dict[str, float]:
+def radius_inner(mol: Molecule, idx_dict: Dict[str, np.ndarray]) -> Dict[str, float]:
     """Search the threshold radius of the inner coordination shell for each atom type.
 
     This radius is calculated as the distance with the first neighbors:
-    in case of heterogeneous coordinations, only the closest neighbors are thus considered.
+    in case of heterogeneous coordinations, only the closest neighbors are considered.
     """
     d_inner = {}
     symbol_combinations = combinations(idx_dict.keys(), r=2)
@@ -73,51 +63,67 @@ def radius_inner(idx_dict: Dict[str, np.ndarray]) -> Dict[str, float]:
     return d_inner
 
 
-def coordination_inner(dist: np.ndarray, d_inner: Dict[str, float]) -> NestedDict:
-    """Map atoms according to their atomic symbols and coordination number in the inner shell.
-
-    Construct a nested dictionary with atomic symbols as keys and dictionaries {coord_inner: list of indices} as values.
-    """
-    fn_dict = {}
+def coordination_inner(dist: np.ndarray, d_inner: Dict[str, float],
+                       idx_dict: Dict[str, np.ndarray], length: int) -> NestedDict:
+    """Calculate the coordination number relative to the inner shell (first neighbors)."""
+    coord_inner = np.empty(length, int)
     for k, v in idx_dict.items():
-        # Compute the number of first neighbors (i.e. in the inner coordination shell) for each atom
         a, b = np.where(dist <= d_inner[k])
-        coord_inner = np.bincount(a, minlength=len(xyz)) + np.bincount(b, minlength=len(xyz))
-
-        # Build a dictionary to class atoms according to their atomic symbols and coordination number in the inner shell
-        fn = coord_inner[v]
-        mapping = {i: (v[fn == i] + 1).tolist() for i in np.unique(fn)}
-        fn_dict[k] = mapping
-    return fn_dict
+        count = np.bincount(a, minlength=length) + np.bincount(b, minlength=length)
+        coord_inner[v] = count[v]
+    return coord_inner
 
 
-def coordination_number(mol: Molecule, d_outer: float, shell: str = 'outer') -> NestedDict:
+def coordination_outer(dist: np.ndarray, d_outer: float, length: int) -> np.ndarray:
+    """Calculate the coordination number relative to the outer shell."""
+    a, b = np.where(dist <= d_outer)
+    coord_outer = np.bincount(a, minlength=length) + np.bincount(b, minlength=length)
+    return coord_outer
+
+
+def map_coordination(coord: np.ndarray, idx_dict: Dict[str, np.ndarray]) -> NestedDict:
+    """Map atoms according to their atomic symbols and coordination number.
+
+    Construct a nested dictionary {'atom_type1': {coord1: [indices], ...}, ...}
+    """
+    cn_dict = {}
+    for k, v in idx_dict.items():
+        cn = coord[v]
+        mapping = {i: (v[cn == i] + 1).tolist() for i in np.unique(cn)}
+        cn_dict[k] = mapping
+    return cn_dict
+
+
+def coordination_number(mol: Molecule, shell: str = 'inner', d_outer: float = None) -> NestedDict:
     """Full description
     mol = Molecule('perovskite.xyz')
     d_outer = 5.1
     """
     # Return the Cartesian coordinates of **mol**
     xyz = np.asarray(mol)
+    length = len(xyz)
 
     # Group atom indices according to atom symbols
     idx_dict = get_indices(mol)
 
     # Construct the upper distance matrix
     x, y = idx_pairs(idx_dict)
-    shape = len(xyz), len(xyz)
-    dist = np.full(shape, fill_value=np.nan)
-    dist[x, y] = np.linalg.norm(xyz[x] - xyz[y], axis=1)
+    dist = upper_dist(xyz, x, y)
 
-    if shell == 'outer':
-        # Calculate the coordination number relative to the outer shell
-        cn_dict = coordination_outer(dist, d_outer)
-        return cn_dict
-
+    # Compute the coordination number
     if shell == 'inner':
-        # Calculate the coordination number relative to the inner shell (first neighbors)
-        d_inner = radius_inner(idx_dict)
-        fn_dict = coordination_inner(dist, d_inner)
-        return fn_dict
+        d_inner = radius_inner(mol, idx_dict)
+        coord = coordination_inner(dist, d_inner, idx_dict, length)
+
+    elif shell == 'outer':
+        if d_outer is None:
+            raise ValueError(f"user defined threshold radius required for the outer coordination shell")
+        coord = coordination_outer(dist, d_outer, length)
 
     else:
         raise ValueError(f"'shell' expected to be 'inner' or 'outer'; observed value: '{shell}'")
+
+    # Construct the final dictionary
+    cn_dict = map_coordination(coord, idx_dict)
+
+    return cn_dict

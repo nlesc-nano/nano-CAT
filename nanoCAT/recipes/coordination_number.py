@@ -1,9 +1,14 @@
-import numpy as np
-from itertools import combinations
 from typing import Dict, Tuple, List, Optional
+from itertools import combinations
+
+import numpy as np
+
 from scm.plams import Molecule
+
 from FOX import group_by_values
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
+
+__all__: List[str] = ['coordination_number', 'coordination_outer']
 
 #: A nested dictonary
 NestedDict = Dict[str, Dict[int, List[int]]]
@@ -23,7 +28,7 @@ def idx_pairs(idx_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
     """Construct two arrays of indice-pairs of all possible combinations in idx_dict.
 
     The combinations, by definition, do not contain any atom pairs where ``at1.symbol == at2.symbol``
-    """ # noqa 
+    """  # noqa
     x, y = [], []
     symbol_combinations = combinations(idx_dict.keys(), r=2)
     for symbol1, symbol2 in symbol_combinations:

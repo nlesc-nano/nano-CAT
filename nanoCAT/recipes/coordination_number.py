@@ -77,8 +77,7 @@ def coordination_inner(dist: np.ndarray, d_inner: Dict[str, float],
 def coordination_outer(dist: np.ndarray, d_outer: float, length: int) -> np.ndarray:
     """Calculate the coordination number relative to the outer shell."""
     a, b = np.where(dist <= d_outer)
-    coord_outer = np.bincount(a, minlength=length) + np.bincount(b, minlength=length)
-    return coord_outer
+    return np.bincount(a, minlength=length) + np.bincount(b, minlength=length)
 
 
 def map_coordination(coord: np.ndarray, idx_dict: Dict[str, np.ndarray]) -> NestedDict:
@@ -123,7 +122,5 @@ def coordination_number(mol: Molecule, shell: str = 'inner', d_outer: float = No
     else:
         raise ValueError(f"'shell' expected to be 'inner' or 'outer'; observed value: '{shell}'")
 
-    # Construct the final dictionary
-    cn_dict = map_coordination(coord, idx_dict)
-
-    return cn_dict
+    # Return the final dictionary
+    return map_coordination(coord, idx_dict)

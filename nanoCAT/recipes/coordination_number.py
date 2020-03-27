@@ -1,6 +1,6 @@
 import numpy as np
 from itertools import combinations
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 from scm.plams import Molecule
 from FOX import group_by_values
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
@@ -23,7 +23,7 @@ def idx_pairs(idx_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
     """Construct two arrays of indice-pairs of all possible combinations in idx_dict.
 
     The combinations, by definition, do not contain any atom pairs where ``at1.symbol == at2.symbol``
-    """
+    """ # noqa 
     x, y = [], []
     symbol_combinations = combinations(idx_dict.keys(), r=2)
     for symbol1, symbol2 in symbol_combinations:
@@ -83,7 +83,7 @@ def coordination_outer(dist: np.ndarray, d_outer: float, length: int) -> np.ndar
 def map_coordination(coord: np.ndarray, idx_dict: Dict[str, np.ndarray]) -> NestedDict:
     """Map atoms according to their atomic symbols and coordination number.
 
-    Construct a nested dictionary {'atom_type1': {coord1: [indices], ...}, ...}
+    Construct a nested dictionary ``{'atom_type1': {coord1: [indices], ...}, ...}``.
     """
     cn_dict = {}
     for k, v in idx_dict.items():
@@ -93,11 +93,53 @@ def map_coordination(coord: np.ndarray, idx_dict: Dict[str, np.ndarray]) -> Nest
     return cn_dict
 
 
-def coordination_number(mol: Molecule, shell: str = 'inner', d_outer: float = None) -> NestedDict:
-    """Full description
-    mol = Molecule('perovskite.xyz')
-    d_outer = 5.1
-    """
+def coordination_number(mol: Molecule, shell: str = 'inner',
+                        d_outer: Optional[float] = None) -> NestedDict:
+    """Take a molecule and identify the coordination number of each atom.
+    The function first compute the pair distance between all reference atoms in **mol**.
+    The number of first neighbors, defined as all atoms within a threshold radius
+    **d_inner** is then count for each atom.
+    The threshold radius can be changed to a desired value **d_outer** (in angstrom)
+    to obtain higher coordination numbers associated to outer coordination shells.
+    The function finally groups the (1-based) indices of all atoms in **mol**
+    according to their atomic symbols and coordination numbers.
+
+    Parameters
+    ----------
+    mol : array-like [:class:`float`], shape :math:`(n, 3)`
+        An array-like object with the Cartesian coordinates of the molecule.
+
+    shell : :class:`str`
+        The coordination shell to be considered.
+        Only ``'inner'`` or ``'outer'`` values are accepted.
+        The default, ``'inner'`` refers to the first coordination shell.
+
+    d_outer : :class:`float`, optional
+        The threshold radius for defining which atoms are considered as neighbors.
+        The default,``None``, is accepted only if ``shell`` is ``'inner'``
+
+    Returns
+    -------
+    :class:'dict'
+    A nested dictionary ``{'atom_type1': {coord1: [indices], ...}, ...}``
+    containing lists of (1-based) indices refered to the atoms in **mol**
+    having a given atomic symbol and coordination number.
+
+    Raises
+    ------
+    :exc:`ValueError`
+        Raised if no threshold radius is defined for the outer coordination shell.
+
+    :exc:`ValueError`
+        Raised if a wrong value is attributed to ``shell``.
+
+    See Also
+    --------
+    :func:`guess_core_core_dist()<nanoCAT.bde.guess_core_dist.guess_core_core_dist>`
+        Estimate a value for **d_inner** based on the radial distribution function of **mol**.
+        Can also be used to estimate **d_outer** as the distance between the atom pairs ('A', 'B').
+
+    """  # noqa
     # Return the Cartesian coordinates of **mol**
     xyz = np.asarray(mol)
     length = len(xyz)
@@ -116,7 +158,8 @@ def coordination_number(mol: Molecule, shell: str = 'inner', d_outer: float = No
 
     elif shell == 'outer':
         if d_outer is None:
-            raise ValueError(f"user defined threshold radius required for the outer coordination shell")
+            raise ValueError(f"user defined threshold radius required "
+                             "for the outer coordination shell")
         coord = coordination_outer(dist, d_outer, length)
 
     else:

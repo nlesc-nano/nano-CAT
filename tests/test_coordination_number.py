@@ -49,6 +49,6 @@ def test_coordination_number() -> None:
 
     np.testing.assert_equal(out_inner, ref_inner)
     np.testing.assert_equal(out_outer, ref_outer)
- 
+
     assertion.assert_(coordination_number, MOL, shell='bob', exception=ValueError)
-    assertion.assert_(coordination_number, MOL, shell='outer', d_outer=None, exception=ValueError)
+    assertion.assert_(coordination_number, MOL, shell='outer', d_outer=None, exception=TypeError)

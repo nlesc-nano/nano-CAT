@@ -136,22 +136,23 @@ def coordination_number(mol: Molecule, shell: str = 'inner',
     shell : :class:`str`
         The coordination shell to be considered.
         Only ``'inner'`` or ``'outer'`` values are accepted.
-        The default, ``'inner'`` refers to the first coordination shell.
+        The default, ``'inner'``, refers to the first coordination shell.
 
     d_outer : :class:`float`, optional
         The threshold radius for defining which atoms are considered as neighbors.
-        The default,``None``, is accepted only if ``shell`` is ``'inner'``
+        The default, ``None``, is accepted only if ``shell`` is ``'inner'``
 
     Returns
     -------
-    :class:'dict'
-    A nested dictionary ``{'atom_type1': {coord1: [indices], ...}, ...}``
-    containing lists of (1-based) indices refered to the atoms in **mol**
-    having a given atomic symbol and coordination number.
+    :class:`dict`
+        A nested dictionary ``{'Cd': {8: [0, 1, 2, 3, 4, ...], ...}, ...}``
+        containing lists of (1-based) indices refered to the atoms in **mol**
+        having a given atomic symbol (*e.g.* ``'Cd'``) and
+        coordination number (*e.g.* ``8``).
 
     Raises
     ------
-    :exc:`ValueError`
+    :exc:`TypeError`
         Raised if no threshold radius is defined for the outer coordination shell.
 
     :exc:`ValueError`
@@ -182,7 +183,7 @@ def coordination_number(mol: Molecule, shell: str = 'inner',
 
     elif shell == 'outer':
         if d_outer is None:
-            raise ValueError(f"user defined threshold radius required "
+            raise TypeError(f"user defined threshold radius required "
                              "for the outer coordination shell")
         coord = coordination_outer(dist, d_outer, length)
 

@@ -1,3 +1,21 @@
+"""
+nanoCAT.recipes.coordination_number
+===================================
+
+A recipe for calculating atomic coordination numbers.
+
+Index
+-----
+.. currentmodule:: nanoCAT.recipes.coordination_number
+.. autosummary::
+    coordination_number
+
+API
+---
+.. autofunction:: coordination_number
+
+"""
+
 from typing import Dict, Tuple, List, Optional
 from itertools import combinations
 
@@ -101,6 +119,7 @@ def map_coordination(coord: np.ndarray, idx_dict: Dict[str, np.ndarray]) -> Nest
 def coordination_number(mol: Molecule, shell: str = 'inner',
                         d_outer: Optional[float] = None) -> NestedDict:
     """Take a molecule and identify the coordination number of each atom.
+
     The function first compute the pair distance between all reference atoms in **mol**.
     The number of first neighbors, defined as all atoms within a threshold radius
     **d_inner** is then count for each atom.

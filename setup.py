@@ -30,7 +30,7 @@ setup(
         'nanoCAT.recipes'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
-    package_data={'nanoCAT': ['data/*csv']},
+    package_data={'nanoCAT': ['data/*csv', 'py.typed', '*.pyi']},
     include_package_data=True,
     license='GNU Lesser General Public License v3 or later',
     zip_safe=False,
@@ -52,7 +52,6 @@ setup(
         'Topic :: Scientific/Engineering :: Chemistry',
         'License :: OSI Approved :: GNU Lesser General Public License',
         'Natural Language :: English',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8'
     ],

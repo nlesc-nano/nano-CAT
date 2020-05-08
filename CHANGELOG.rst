@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.5.1
+*****
+* Added a recipe for multi-ligand optimizations.
+* Officially dropped Nano-CAT support for Python 3.6.
+* Marked Nano-CAT as a typed package.
+
+
 0.5.0
 *****
 * Moved the ``CAT.recipes`` module to Nano-CAT.

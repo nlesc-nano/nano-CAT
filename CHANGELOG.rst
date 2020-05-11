@@ -11,6 +11,12 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 * Added a recipe for multi-ligand optimizations.
 * Officially dropped Nano-CAT support for Python 3.6.
 * Marked Nano-CAT as a typed package.
+* Added recipe for extracting coordination numbers from Molecules;
+  courtesy of https://github.com/juliette1996
+  (https://github.com/nlesc-nano/nano-CAT/pull/45).
+* Added a short recipe for calculating and rescaling ligand charges
+  (https://github.com/nlesc-nano/nano-CAT/pull/44).
+
 
 
 0.5.0

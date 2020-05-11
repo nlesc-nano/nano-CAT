@@ -30,6 +30,7 @@ from scm.plams import Settings, Molecule, config
 from qmflows import cp2k_mm, Settings as QmSettings
 from qmflows.utils import InitRestart
 from qmflows.packages import registry
+from qmflows.packages.cp2k_mm import CP2KMM_Result
 from noodles.run.threading.sqlite3 import run_parallel
 
 from CAT.utils import SetAttr
@@ -37,9 +38,9 @@ from nanoCAT.ff import MatchJob
 from FOX import PSFContainer, PRMContainer
 from FOX.io.read_psf import overlay_rtf_file
 
-PathType = Union[str, os.PathLike]
-
 __all__ = ['multi_ligand_job']
+
+PathType = Union[str, os.PathLike]
 
 set_stdout = SetAttr(config.log, 'stdout', 0)
 
@@ -49,7 +50,7 @@ def multi_ligand_job(mol: Molecule,
                      settings: MutableMapping,
                      path: Optional[PathType] = None,
                      folder: Optional[PathType] = None,
-                     **kwargs: Any):
+                     **kwargs: Any) -> CP2KMM_Result:
     r"""Estimate forcefield parameters using MATCH and then run a CP2K calculation.
 
     Examples
@@ -101,7 +102,7 @@ def multi_ligand_job(mol: Molecule,
 
     \**kwargs : :data:`~typing.Any`
         Further keyword arguments for
-        :meth:`cp2k_mm()<qmflows.packages.cp2k_mm.CP2KMM.__call__>`.
+        :meth:`qmflows.cp2k_mm()<qmflows.packages.packages.Package.__call__>`.
 
     Returns
     -------

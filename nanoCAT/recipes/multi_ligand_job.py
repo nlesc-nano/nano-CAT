@@ -117,6 +117,10 @@ def multi_ligand_job(mol: Molecule,
         Generate a :class:`~FOX.io.read_psf.PSFContainer` instance for **qd**
         with multiple different **ligands**.
 
+    :data:`qmflows.cp2k_mm()<qmflows.packages.cp2k_mm.cp2k_mm>`
+        An instance of :class:`~qmflows.packages.cp2k_mm.CP2KMM`;
+        used for running classical forcefield calculations with `CP2K <https://www.cp2k.org/>`_.
+
     `10.1002/jcc.21963<https://doi.org/10.1002/jcc.21963>`_
         MATCH: An atom-typing toolset for molecular mechanics force fields,
         J.D. Yesselman, D.J. Price, J.L. Knight and C.L. Brooks III,

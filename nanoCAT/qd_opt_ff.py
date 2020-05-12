@@ -147,7 +147,7 @@ def get_psf(mol: Molecule, charges: Union[None, Settings, Iterable[Settings]]) -
     return psf
 
 
-def constrain_charge(psf: PSFContainer, initial_charge: float,
+def constrain_charge(psf: PSFContainer, initial_charge: float = 0.0,
                      atom_set: Optional[Collection[str]] = None) -> None:
     """Set the total molecular charge of **psf** to **initial_charge**.
 
@@ -217,7 +217,7 @@ def finalize_lj(mol: Molecule, s: List[Settings]) -> None:
         s = []
     elif isinstance(s, dict):
         s = [s]
-    atom_pairs = [set(s.atoms.split()) for s in s]
+    atom_pairs = {frozenset(s.atoms.split()) for s in s}
 
     # Check if LJ parameters are present for all atom pairs.
     # If not, supplement them with UFF parameters.

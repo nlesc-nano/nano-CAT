@@ -13,10 +13,12 @@ API
 """  # noqa: E501
 
 import os
+from types import MappingProxyType
 from os.path import join
 from typing import (
     Union,
     MutableMapping,
+    Mapping,
     Optional,
     Any,
     List,
@@ -26,9 +28,12 @@ from typing import (
     FrozenSet
 )
 
-from scm.plams import Settings, Molecule, config
+import pandas as pd
+
+from scm.plams import Settings, Molecule, config, Units
 from qmflows import cp2k_mm, Settings as QmSettings
 from qmflows.utils import InitRestart
+from qmflows.cp2k_utils import prm_to_df
 from qmflows.packages import registry
 from qmflows.packages.cp2k_mm import CP2KMM_Result
 from noodles.run.threading.sqlite3 import run_parallel
@@ -37,6 +42,7 @@ from CAT.utils import SetAttr
 from nanoCAT.ff import MatchJob
 from nanoCAT.qd_opt_ff import constrain_charge
 from FOX import PSFContainer, PRMContainer
+from FOX.ff.lj_uff import combine_sigma, combine_epsilon
 from FOX.io.read_psf import overlay_rtf_file
 
 __all__ = ['multi_ligand_job']
@@ -44,6 +50,29 @@ __all__ = ['multi_ligand_job']
 PathType = Union[str, os.PathLike]
 
 SET_CONFIG_STDOUT = SetAttr(config.log, 'stdout', 0)
+
+#: Map CP2K units to PLAMS units.
+UNIT_MAP: Mapping[str, str] = MappingProxyType({
+    'hartree': 'hartree',
+    'ev': 'eV',
+    'kcalmol': 'kcal/mol',
+    'kjmol': 'kj/mol',
+    'k_e': 'kelvin',
+
+    'bohr': 'bohr',
+    'pm': 'pm',
+    'nm': 'nm',
+    'angstrom': 'angstrom'
+})
+
+
+from scm.plams import add_to_class, Cp2kJob
+
+
+@add_to_class(Cp2kJob)
+def get_runscript(self):
+    inp, out = self._filename('inp'), self._filename('out')
+    return f'cp2k.ssmp -i {inp} -o {out}'
 
 
 def multi_ligand_job(mol: Molecule,
@@ -79,8 +108,9 @@ def multi_ligand_job(mol: Molecule,
         >>> settings.lennard_jones = {
         ...     'param': ('epsilon', 'sigma'),
         ...     'unit': ('kcalmol', 'angstrom'),
-        ...     'Cd': (1, 1),
-        ...     'Se': (2, 2)
+        ...     'Cd Cd': (1, 1),
+        ...     'Se Se': (2, 2),
+        ...     'Se Se': (3, 3)
         ... }
 
         >>> results: Result = multi_ligand_job(mol, psf, settings)
@@ -133,11 +163,11 @@ def multi_ligand_job(mol: Molecule,
     workdir = join(path_, folder_)
     db_file = join(workdir, 'cache.db')
 
-    s = settings.copy() if isinstance(settings, QmSettings) else QmSettings(settings)
+    s: QmSettings = settings.copy() if isinstance(settings, QmSettings) else QmSettings(settings)
     psf_: PSFContainer = psf if isinstance(psf, PSFContainer) else PSFContainer.read(psf)
 
     with InitRestart(path=path_, folder=folder_):
-        return _multi_ligand_job(mol, psf, s, workdir, db_file, **kwargs)
+        return _multi_ligand_job(mol, psf_, s, workdir, db_file, **kwargs)
 
 
 def _multi_ligand_job(mol: Molecule, psf: PSFContainer, settings: QmSettings,
@@ -155,6 +185,14 @@ def _multi_ligand_job(mol: Molecule, psf: PSFContainer, settings: QmSettings,
 
     # Update the charge
     _constrain_charge(psf, settings, initial_charge)
+
+    # Fill in all missing core/ligand lennard-jones parameters with those from UFF
+    # TODO: Connect this with the newly improved Auto-FOX 0.8 parameter guessing schemes
+    prm_to_df(settings)
+    if settings.get('lennard_jones') is not None:
+        _fill_uff(psf, settings['lennard_jones'])
+    elif settings.get('lennard-jones') is not None:
+        _fill_uff(psf, settings['lennard-jones'])
 
     # Write the new .prm and .psf files and update the CP2K settings
     prm_name = join(workdir, 'mol.prm')
@@ -189,6 +227,46 @@ def _constrain_charge(psf: PSFContainer, settings: MutableMapping,
     constrain_charge(psf, initial_charge, atom_set=atom_set)
 
 
+def _fill_uff(psf: PSFContainer, lj: pd.DataFrame) -> None:
+    """Fill in all missing core/ligand lennard-jones parameters with those from UFF."""
+    epsilon = 'epsilon' in lj.index
+    sigma = 'sigma' in lj.index
+
+    # Skip these keys in the settings
+    skip = {'unit', 'param'}
+
+    # Convertion ratio between units
+    if 'unit' not in lj:
+        lj['unit'] = None
+    if sigma:
+        _sigma_unit = lj.at['sigma', 'unit'] or 'angstrom'
+        sigma_unit = Units.conversion_ratio('angstrom', UNIT_MAP[_sigma_unit])
+    if epsilon:
+        _epsilon_unit = lj.at['epsilon', 'unit'] or 'kcalmol'
+        epsilon_unit = Units.conversion_ratio('kcal/mol', UNIT_MAP[_epsilon_unit])
+
+    # Identify the core and ligand atoms
+    is_core = psf.residue_name == 'COR'
+    core_at = dict(psf.atoms.loc[is_core, ['atom type', 'atom name']].values.tolist())
+    lig_at = dict(psf.atoms.loc[~is_core, ['atom type', 'atom name']].values.tolist())
+    atom_pairs = {frozenset(at.split()) for at in lj.columns if at not in skip}
+
+    for at1, symbol1 in core_at.items():
+        for at2, symbol2 in lig_at.items():
+            at_set = {at1, at2}
+            if at_set in atom_pairs:
+                continue
+
+            atom_pairs.add(frozenset(at_set))
+            key = '{} {}'.format(*at_set)
+
+            lj[key] = 0.0
+            if sigma:
+                lj.at['sigma', key] = combine_sigma(symbol1, symbol2) * sigma_unit
+            if epsilon:
+                lj.at['epsilon', key] = combine_epsilon(symbol1, symbol2) * epsilon_unit
+
+
 def _run_match(mol_list: Iterable[Molecule],
                forcefield: str = 'top_all36_cgenff_new') -> Tuple[List[str], PRMContainer]:
     """Run a :class:`MatchJob`, using **forcefield**, on all molecules in **mol_list**."""
@@ -198,7 +276,7 @@ def _run_match(mol_list: Iterable[Molecule],
     rtf_list = []
     prm_list = []
     for i, mol in enumerate(mol_list):
-        job = MatchJob(molecule=mol, settings=s, name=f'match_job{i}')
+        job = MatchJob(molecule=mol, settings=s, name=f'match_job.{i}')
         results = job.run()
 
         rtf = results['$JN.rtf']

@@ -1,4 +1,4 @@
-"""Recipes for running CP2K jobs on uantum dots with multiple non-unique ligands.
+"""Recipes for running CP2K jobs on quantum dots with multiple non-unique ligands.
 
 Index
 -----
@@ -42,7 +42,7 @@ __all__ = ['multi_ligand_job']
 
 PathType = Union[str, os.PathLike]
 
-set_stdout = SetAttr(config.log, 'stdout', 0)
+SET_CONFIG_STDOUT = SetAttr(config.log, 'stdout', 0)
 
 
 def multi_ligand_job(mol: Molecule,
@@ -151,7 +151,7 @@ def multi_ligand_job(mol: Molecule,
         s.psf = psf_name
 
         # Run the actual CP2K job
-        with set_stdout:
+        with SET_CONFIG_STDOUT:
             job = cp2k_mm(mol=mol, settings=s, **kwargs)
             return run_parallel(job, db_file=db_file, n_threads=1, always_cache=True,
                                 registry=registry, echo_log=False)
@@ -204,18 +204,17 @@ def _concatenate_prm(file_list: Iterable[PathType]) -> PRMContainer:
 
 
 def _lig_from_psf(mol: Molecule, psf: PSFContainer) -> Dict[FrozenSet[int], Molecule]:
-    mol = mol.copy()
     residue_set = set(psf.segment_name[psf.residue_name == 'LIG'])
 
     ret: Dict[FrozenSet[int], Molecule] = {}
     for res in residue_set:
-        key = frozenset(psf.residue_id[psf.segment_name == res])
+        _key = psf.residue_id[psf.segment_name == res]
+        key = frozenset(_key)
 
-        res_id = next(iter(key))
+        res_id = _key.iat[0]
         idx = psf.atoms[psf.residue_id == res_id].index
 
         i = idx[0] - 1
         j = idx[-1]
         ret[key] = mol.copy(atoms=mol.atoms[i:j])
-
     return ret

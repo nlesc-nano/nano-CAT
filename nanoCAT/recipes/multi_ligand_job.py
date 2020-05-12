@@ -1,4 +1,4 @@
-"""Recipes for running CP2K jobs on quantum dots with multiple non-unique ligands.
+"""Recipes for running classical forcefield calculations with CP2K on quantum dots with multiple non-unique ligands.
 
 Index
 -----
@@ -10,7 +10,7 @@ API
 ---
 .. autofunction:: multi_ligand_job
 
-"""
+"""  # noqa: E501
 
 import os
 from os.path import join
@@ -51,13 +51,14 @@ def multi_ligand_job(mol: Molecule,
                      path: Optional[PathType] = None,
                      folder: Optional[PathType] = None,
                      **kwargs: Any) -> CP2KMM_Result:
-    r"""Estimate forcefield parameters using MATCH and then run a CP2K calculation.
+    r"""Estimate forcefield parameters using MATCH and then run a MM calculation with CP2K.
 
     Examples
     --------
     .. code:: python
 
-        >>> from qmflows import Settings, templates
+        >>> from qmflows import Settings
+        >>> from qmflows.templates import geometry
         >>> from qmflows.packages import Result
         >>> from scm.plams import Molecule
 
@@ -66,8 +67,9 @@ def multi_ligand_job(mol: Molecule,
         >>> mol = Molecule(...)
         >>> psf = str(...)
 
+        # Example input settings for a geometry optimization
         >>> settings = Settings()
-        >>> settings.specific.cp2k += templates.geometry.specific.cp2k_mm
+        >>> settings.specific.cp2k += geometry.specific.cp2k_mm
         >>> settings.charge = {
         ...     'param': 'charge',
         ...     'Cd': 2,
@@ -111,7 +113,7 @@ def multi_ligand_job(mol: Molecule,
 
     See Also
     --------
-    :func:`FOX.recipes.psf.generate_psf2<FOX.recipes.generate_psf2>`
+    :func:`FOX.recipes.generate_psf2()<FOX.recipes.psf.generate_psf2>`
         Generate a :class:`~FOX.io.read_psf.PSFContainer` instance for **qd**
         with multiple different **ligands**.
 

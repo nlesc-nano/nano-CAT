@@ -35,20 +35,15 @@ from typing import Generator, Any, List, Tuple, Hashable, Optional
 from os.path import join, isfile
 from itertools import chain
 
-from scm.plams.core.basejob import SingleJob
 from scm.plams.core.private import sha256
-from scm.plams import JobError, Results, Settings, Molecule, FileError
+from scm.plams import SingleJob, JobError, Results, Settings, Molecule, FileError
 
 try:
     from scm.plams import writepdb, readpdb
 except ImportError as ex:
     RDKIT_EX: Optional[ImportError] = ex
 else:
-    RDKIT_EX: Optional[ImportError] = None
-
-# The pickling of Job instances can lead to RecursionError when handling Molecules
-# Increaing the recursion limit a bit fixes this issue
-sys.setrecursionlimit(3 * sys.getrecursionlimit())
+    RDKIT_EX = None
 
 __all__ = ['MatchJob', 'MatchResults']
 
@@ -161,14 +156,13 @@ class MatchJob(SingleJob):
     _result_type = MatchResults
 
     MATCH: str = os.path.join('$MATCH', 'scripts', 'MATCH.pl')
+    pdb: str
 
     def __init__(self, settings: Settings, **kwargs: Any) -> None:
         """Initialize a :class:`MatchJob` instance."""
         if RDKIT_EX is not None:
             raise ImportError(f"{RDKIT_EX}; usage of {self.__class__.__name__!r} requires "
                               "the 'rdkit' package") from RDKIT_EX
-
-        self.pdb = None  # To-be set by MatchJob._prepare_pdb()
         super().__init__(**kwargs)
         self._prepare_settings()
         self._prepare_pdb(io.StringIO())

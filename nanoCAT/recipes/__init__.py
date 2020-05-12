@@ -22,8 +22,10 @@ from .charges import get_lig_charge
 from .mark_surface import replace_surface
 from .surface_dissociation import dissociate_surface, row_accumulator
 from .coordination_number import coordination_number
+from .multi_ligand_job import multi_ligand_job
 
 __all__ = [
     'bulk_workflow', 'replace_surface', 'dissociate_surface',
-    'row_accumulator', 'get_lig_charge', 'coordination_number'
+    'row_accumulator', 'get_lig_charge', 'coordination_number',
+    'multi_ligand_job'
 ]

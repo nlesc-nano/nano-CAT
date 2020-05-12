@@ -6,10 +6,14 @@ A collection of tools for the analysis of nanocrystals.
 
 """
 
+from CAT.utils import VersionInfo
 from .__version__ import __version__
 
 __version__ = __version__
 __author__ = 'Bas van Beek'
 __email__ = 'b.f.van.beek@vu.nl'
+
+version_info = VersionInfo.from_str(__version__)
+del VersionInfo
 
 __all__ = []

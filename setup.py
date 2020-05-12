@@ -30,7 +30,7 @@ setup(
         'nanoCAT.recipes'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
-    package_data={'nanoCAT': ['data/*csv']},
+    package_data={'nanoCAT': ['data/*csv', 'py.typed', '*.pyi']},
     include_package_data=True,
     license='GNU Lesser General Public License v3 or later',
     zip_safe=False,
@@ -52,7 +52,6 @@ setup(
         'Topic :: Scientific/Engineering :: Chemistry',
         'License :: OSI Approved :: GNU Lesser General Public License',
         'Natural Language :: English',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8'
     ],
@@ -63,7 +62,8 @@ setup(
         'scipy',
         'pandas>=0.24.0',
         'AssertionLib>=2.1',
-        'plams@git+https://github.com/SCM-NV/PLAMS@master',
+        'noodles',
+        'plams@git+https://github.com/SCM-NV/PLAMS@a5696ce62c09153a9fa67b2b03a750913e1d0924',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
         'CAT@git+https://github.com/nlesc-nano/CAT@master',
         'Auto-FOX@git+https://github.com/nlesc-nano/auto-FOX@master'

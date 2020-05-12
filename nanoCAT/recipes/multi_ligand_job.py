@@ -35,6 +35,7 @@ from noodles.run.threading.sqlite3 import run_parallel
 
 from CAT.utils import SetAttr
 from nanoCAT.ff import MatchJob
+from nanoCAT.qd_opt_ff import constrain_charge
 from FOX import PSFContainer, PRMContainer
 from FOX.io.read_psf import overlay_rtf_file
 
@@ -132,39 +133,65 @@ def multi_ligand_job(mol: Molecule,
     workdir = join(path_, folder_)
     db_file = join(workdir, 'cache.db')
 
+    s = settings.copy() if isinstance(settings, QmSettings) else QmSettings(settings)
     psf_: PSFContainer = psf if isinstance(psf, PSFContainer) else PSFContainer.read(psf)
 
     with InitRestart(path=path_, folder=folder_):
-        # Run MATCH on all unique ligands
-        lig_dict = _lig_from_psf(mol, psf_)
-        ff: str = kwargs.pop('forcefield', 'top_all36_cgenff_new')
-        rtf_list, prm = _run_match(lig_dict.values(), forcefield=ff)
+        return _multi_ligand_job(mol, psf, s, workdir, db_file, **kwargs)
 
-        # Update the .psf file with all MATCH results
-        iterator = zip(lig_dict.keys(), rtf_list)
-        for id_range, rtf_file in iterator:
-            overlay_rtf_file(psf_, rtf_file, id_range)
 
-        # Write the new .prm and .psf files
-        prm_name = join(workdir, 'mol.prm')
-        psf_name = join(workdir, 'mol.psf')
-        prm.write(prm_name)
-        psf_.write(psf_name)
+def _multi_ligand_job(mol: Molecule, psf: PSFContainer, settings: QmSettings,
+                      workdir: str, db_file: str, **kwargs: Any) -> CP2KMM_Result:
+    """Helper function for :func:`multi_ligand_job`."""
+    # Run MATCH on all unique ligands
+    lig_dict = _lig_from_psf(mol, psf)
+    ff: str = kwargs.pop('forcefield', 'top_all36_cgenff_new')
+    rtf_list, prm = _run_match(lig_dict.values(), forcefield=ff)
 
-        # Update the CP2K Settings
-        s = QmSettings(settings)
-        s.prm = prm_name
-        s.psf = psf_name
+    # Update the .psf file with all MATCH results
+    initial_charge = psf.charge.sum()
+    for id_range, rtf_file in zip(lig_dict.keys(), rtf_list):
+        overlay_rtf_file(psf, rtf_file, id_range)
 
-        # Run the actual CP2K job
-        with SET_CONFIG_STDOUT:
-            job = cp2k_mm(mol=mol, settings=s, **kwargs)
-            return run_parallel(job, db_file=db_file, n_threads=1, always_cache=True,
-                                registry=registry, echo_log=False)
+    # Update the charge
+    _constrain_charge(psf, settings, initial_charge)
+
+    # Write the new .prm and .psf files and update the CP2K settings
+    prm_name = join(workdir, 'mol.prm')
+    psf_name = join(workdir, 'mol.psf')
+    prm.write(prm_name)
+    psf.write(psf_name)
+    settings.prm = prm_name
+    settings.psf = psf_name
+
+    # Run the actual CP2K job
+    with SET_CONFIG_STDOUT:
+        job = cp2k_mm(mol=mol, settings=settings, **kwargs)
+        return run_parallel(job, db_file=db_file, n_threads=1, always_cache=True,
+                            registry=registry, echo_log=False)
+
+
+def _constrain_charge(psf: PSFContainer, settings: MutableMapping,
+                      initial_charge: float = 0.0) -> None:
+    """Constrain the net moleculair charge such that it is equal to **initial_charge**."""
+    atom_set = set(psf.atom_type[psf.residue_name == 'LIG'].values)
+
+    # Check for user-specified atomic charges in the input settings
+    charge_settings = settings.pop('charge', None)
+    if charge_settings is not None:
+        del charge_settings['param']
+        for k, v in charge_settings.items():
+            psf.charge[psf.atom_type == k] = v
+            if k in atom_set:
+                atom_set.remove(k)
+
+    # Renormalize the charge
+    constrain_charge(psf, initial_charge, atom_set=atom_set)
 
 
 def _run_match(mol_list: Iterable[Molecule],
                forcefield: str = 'top_all36_cgenff_new') -> Tuple[List[str], PRMContainer]:
+    """Run a :class:`MatchJob`, using **forcefield**, on all molecules in **mol_list**."""
     s = Settings()
     s.input.forcefield = forcefield
 
@@ -185,6 +212,7 @@ def _run_match(mol_list: Iterable[Molecule],
 
 # TODO: Create a dedicated PRMContainer.concatenate() method
 def _concatenate_prm(file_list: Iterable[PathType]) -> PRMContainer:
+    """Concatenate a list of .prm files into a single :class:`PRMContainer`."""
     prm_list = [PRMContainer.read(file) for file in file_list]
     iterator = iter(prm_list)
     ret = next(iterator)
@@ -219,8 +247,9 @@ def _lig_from_psf(mol: Molecule, psf: PSFContainer) -> Dict[FrozenSet[int], Mole
 
         res_id = _key.iat[0]
         idx = psf.atoms[psf.residue_id == res_id].index
-
         i = idx[0] - 1
         j = idx[-1]
+
         ret[key] = mol.copy(atoms=mol.atoms[i:j])
+        ret[key].round_coords(decimals=3)
     return ret

@@ -25,8 +25,12 @@ API
 """
 
 import os
-from typing import Container, Iterable, Union, Dict, Tuple, List, Optional, Type, Callable, Sequence
+import warnings
+from functools import wraps
 from collections import abc
+from typing import (
+    Collection, Iterable, Union, Dict, Tuple, List, Optional, Type, Callable, Sequence
+)
 
 import numpy as np
 import pandas as pd
@@ -139,13 +143,13 @@ def get_psf(mol: Molecule, charges: Union[None, Settings, Iterable[Settings]]) -
         psf.update_atom_charge(at, float(charge))
 
     # Update atomic charges in order to reset the molecular charge to its initial value
-    _constrain_charge(psf, initial_charge, charge_dict)
+    constrain_charge(psf, initial_charge, charge_dict)
     return psf
 
 
-def _constrain_charge(psf: PSFContainer, initial_charge: float,
-                      atom_set: Optional[Container[str]] = None) -> None:
-    """Set to total molecular charge of **psf** to **initial_charge**.
+def constrain_charge(psf: PSFContainer, initial_charge: float,
+                     atom_set: Optional[Collection[str]] = None) -> None:
+    """Set the total molecular charge of **psf** to **initial_charge**.
 
     Atoms in **psf** whose atomic symbol intersects with **charge_set** will *not*
     be altered.
@@ -173,12 +177,20 @@ def _constrain_charge(psf: PSFContainer, initial_charge: float,
     if atom_set is None:
         atom_subset = np.ones(len(psf.atoms), dtype=bool)
     else:
-        atom_subset = np.array([at not in atom_set for at in psf.atom_type])
+        atom_set_ = set(atom_set)
+        atom_subset = np.array([at not in atom_set_ for at in psf.atom_type])
 
     charge_correction = initial_charge - psf.charge.sum()
     charge_correction /= np.count_nonzero(atom_subset)
     with pd.option_context('mode.chained_assignment', None):
         psf.charge[atom_subset] += charge_correction
+
+
+@wraps(constrain_charge)
+def _constrain_charge(*args, **kwargs):
+    msg = "_constrain_charge() is deprecated; use constrain_charge() from now on"
+    warnings.warn(msg, category=DeprecationWarning)
+    return constrain_charge(*args, **kwargs)
 
 
 def finalize_lj(mol: Molecule, s: List[Settings]) -> None:

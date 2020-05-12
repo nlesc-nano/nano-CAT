@@ -57,7 +57,7 @@ def multi_ligand_job(mol: Molecule,
     --------
     .. code:: python
 
-        >>> from qmflows.templates import geometry
+        >>> from qmflows import Settings, templates
         >>> from qmflows.packages import Result
         >>> from scm.plams import Molecule
 
@@ -67,7 +67,7 @@ def multi_ligand_job(mol: Molecule,
         >>> psf = str(...)
 
         >>> settings = Settings()
-        >>> settings.specific.cp2k += geometry.specific.cp2k_mm
+        >>> settings.specific.cp2k += templates.geometry.specific.cp2k_mm
         >>> settings.charge = {
         ...     'param': 'charge',
         ...     'Cd': 2,

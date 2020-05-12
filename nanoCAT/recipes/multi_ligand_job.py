@@ -66,15 +66,6 @@ UNIT_MAP: Mapping[str, str] = MappingProxyType({
 })
 
 
-from scm.plams import add_to_class, Cp2kJob
-
-
-@add_to_class(Cp2kJob)
-def get_runscript(self):
-    inp, out = self._filename('inp'), self._filename('out')
-    return f'cp2k.ssmp -i {inp} -o {out}'
-
-
 def multi_ligand_job(mol: Molecule,
                      psf: Union[PathType, PSFContainer],
                      settings: MutableMapping,

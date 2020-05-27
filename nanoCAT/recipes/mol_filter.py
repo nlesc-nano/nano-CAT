@@ -106,7 +106,7 @@ def filter_mol(mol_list: Iterable[Molecule], data: Iterable[T],
 
     Parameters
     ----------
-    mol_list :class:`~collections.abc.Iterable` [:class:`~scm.plams.mol.molecule.Molecule`]
+    mol_list : :class:`~collections.abc.Iterable` [:class:`~scm.plams.mol.molecule.Molecule`]
         An iterable of the, to-be filtered, PLAMS molecules.
 
     data : :class:`Iterable[T]<collections.abc.Iterable>`
@@ -142,7 +142,7 @@ def filter_data(mol_list: Iterable[Molecule], data: Iterable[T],
 
     Parameters
     ----------
-    mol_list :class:`~collections.abc.Iterable` [:class:`~scm.plams.mol.molecule.Molecule`]
+    mol_list : :class:`~collections.abc.Iterable` [:class:`~scm.plams.mol.molecule.Molecule`]
         An iterable of the, to-be filtered, PLAMS molecules.
 
     data : :class:`Iterable[T]<collections.abc.Iterable>`

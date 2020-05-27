@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.5.2
+*****
+* Added on option for setting ``diameter`` to ``None``.
+* Added recipes for filtering molecules based on properties.
+* Add an option to filter molecules based on the number of functional groups in the ``bulk_workflow()`` recipe.
+
+
 0.5.1
 *****
 * Added a recipe for multi-ligand optimizations.
@@ -16,7 +23,6 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
   (https://github.com/nlesc-nano/nano-CAT/pull/45).
 * Added a short recipe for calculating and rescaling ligand charges
   (https://github.com/nlesc-nano/nano-CAT/pull/44).
-
 
 
 0.5.0

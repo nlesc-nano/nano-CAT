@@ -72,7 +72,7 @@ specific:
 def conceptual_dft(mol: Molecule, settings: Mapping, job_type: ADF = ..., template: Optional[Settings] = ..., **kwargs: Any) -> ADF_Result: ...  # noqa: E501
 @overload
 def conceptual_dft(mol: Molecule, settings: Mapping, job_type: Type[ADFJob] = ..., template: Optional[Settings] = ..., **kwargs: Any) -> ADFResults: ...  # noqa: E501
-def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kwargs):  # noqa: E501
+def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kwargs):  # noqa: E501, E302
     r"""Run a conceptual DFT workflow.
 
     Examples
@@ -104,8 +104,8 @@ def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kw
         Accepted values are :code:`scm.plams.ADFJob` or :code:`qmflows.adf`.
 
     template : :class:`~scm.plams.core.settings.Settings`, optional
-        A template used for (soft) updating the user-provided **settings**.
-        (*e.g.* :data:`qmflows.templates.singlepoint.specific.adf`).
+        A template used for (soft) updating the user-provided **settings**
+        (*e.g.* :data:`qmflows.templates.singlepoint.specific.adf<qmflows.templates.singlepoint>`).
 
     **kwargs : :data:`~typing.Any`
         Further keyword arguments for **job_type**.

@@ -175,7 +175,7 @@ def _get_anchor_idx(mol: Molecule) -> int:
 
 
 def get_V(radius_array: np.ndarray, height_array: np.ndarray,
-          d: float, angle: float, h_lim: float = 10.0) -> float:
+          d: Optional[float], angle: float, h_lim: float = 10.0) -> float:
     r"""Calculate the :math:`V_{bulk}`, a ligand- and core-sepcific descriptor of a ligands' bulkiness.
 
     .. math::
@@ -209,9 +209,11 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
     angle : :class:`float`
         The angle (in radian) between two ligand vectors.
 
-    d : class`float`
+    d : class`float`, optional
         The average distance between two neighbouring core anchor atoms.
         Equivalent to the lattice spacing of the core.
+        Setting this value to :data:`None` will discard the
+        :math:`(\frac{2 r_{i}}{d} - 1)^{+}` component.
 
     h_lim : :class:`float`
         The maximum to-be considered height.
@@ -222,12 +224,16 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
         The bulkiness factor :math:`V_{bulk}`.
 
     """  # noqa
-    r = np.array(radius_array, dtype=float, ndmin=1, copy=True)
+    r = np.array(radius_array, dtype=float, ndmin=1, copy=False)
     h = np.array(height_array, dtype=float, ndmin=1, copy=False)
 
-    step1 = (2 * r) / d - 1
+    if d is not None:
+        step1 = (2 * r) / d - 1
+        step1[step1 < 0] = 0
+    else:
+        step1 = 1
+
     step2 = 1 - (h / h_lim)
-    step1[step1 < 0] = 0
     step2[step2 < 0] = 0
 
     ret = step1 * step2 * np.exp(r)

@@ -12,7 +12,7 @@
 
 
 ##############
-Nano-CAT 0.5.1
+Nano-CAT 0.5.2
 ##############
 
 **Nano-CAT** is a collection of tools for the analysis of nanocrystals,

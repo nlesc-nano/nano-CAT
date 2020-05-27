@@ -45,8 +45,8 @@ else:
 
 __all__ = ['conceptual_dft', 'cdft']
 
-QMFLOWS = False
-PLAMS = True
+_QMFLOWS = False
+_PLAMS = True
 
 #: A QMFlows-style template for conceptual DFT calculations.
 cdft = QmSettings()
@@ -68,11 +68,7 @@ specific:
 """, Loader=Loader))
 
 
-@overload
-def conceptual_dft(mol: Molecule, settings: Mapping, job_type: ADF = ..., template: Optional[Settings] = ..., **kwargs: Any) -> ADF_Result: ...  # noqa: E501
-@overload
-def conceptual_dft(mol: Molecule, settings: Mapping, job_type: Type[ADFJob] = ..., template: Optional[Settings] = ..., **kwargs: Any) -> ADFResults: ...  # noqa: E501
-def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kwargs):  # noqa: E501, E302
+def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kwargs):
     r"""Run a conceptual DFT workflow.
 
     Examples
@@ -118,9 +114,9 @@ def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kw
 
     """  # noqa: E501
     if isinstance(job_type, Package):
-        flavor = QMFLOWS
+        flavor = _QMFLOWS
     elif isinstance(job_type, type) and issubclass(job_type, SingleJob):
-        flavor = PLAMS
+        flavor = _PLAMS
     else:
         raise TypeError("'job_type' expected a SingleJob subclass or a Package instance; "
                         f"observed type: {job_type.__class__.__name__!r}")
@@ -129,7 +125,7 @@ def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kw
     name = kwargs.pop('name', 'cdft_job')
     n_processes = kwargs.pop('n_processes', 1)
 
-    if flavor is QMFLOWS:
+    if flavor is _QMFLOWS:
         s = QmSettings(settings)
         s.input.soft_update(t)
         job = job_type(settings=s, mol=mol, name=name, **kwargs)

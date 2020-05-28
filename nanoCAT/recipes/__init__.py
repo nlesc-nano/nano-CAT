@@ -26,12 +26,12 @@ from .surface_dissociation import dissociate_surface, row_accumulator
 from .coordination_number import coordination_number
 from .multi_ligand_job import multi_ligand_job
 from .mol_filter import get_mol_length, filter_mol, filter_data
-from .cdft_utils import conceptual_dft, cdft
+from .cdft_utils import run_jobs, cdft
 
 __all__ = [
     'bulk_workflow', 'replace_surface', 'dissociate_surface',
     'row_accumulator', 'get_lig_charge', 'coordination_number',
     'multi_ligand_job',
     'get_mol_length', 'filter_mol', 'filter_data',
-    'conceptual_dft', 'cdft'
+    'run_jobs', 'cdft'
 ]

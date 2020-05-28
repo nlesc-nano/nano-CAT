@@ -16,7 +16,9 @@ API
 
 """
 
-from typing import Any, Union, Optional
+from typing import Any, Union, Iterable
+from itertools import chain
+from collections import abc
 
 import numpy as np
 
@@ -32,6 +34,7 @@ __all__ = ['replace_surface']
 def replace_surface(mol: Molecule,
                     symbol: Union[str, int],
                     symbol_new: Union[str, int] = 'Cl',
+                    nth_shell: Union[int, Iterable[int]] = 0,
                     f: float = 0.5,
                     mode: str = 'uniform',
                     displacement_factor: float = 0.5,
@@ -61,7 +64,7 @@ def replace_surface(mol: Molecule,
 
     Parameters
     ----------
-    mol : :class:`Molecule<scm.plams.mol.molecule.Molecule>`
+    mol : :class:`~scm.plams.mol.molecule.Molecule`
         The input molecule.
 
     symbol : :class:`str` or :class:`int`
@@ -89,29 +92,29 @@ def replace_surface(mol: Molecule,
         :math:`n = 1` is a complete projection while :math:`n = 0` means no displacement at all.
 
         A non-zero value is generally recomended here,
-        as the herein utilized :class:`ConvexHull<scipy.spatial.ConvexHull>` class
+        as the herein utilized :class:`~scipy.spatial.ConvexHull` class
         requires an adequate degree of surface-convexness,
         lest it fails to properly identify all valid surface points.
 
-    \**kwargs : :data:`Any<typing.Any>`
+    \**kwargs : :data:`~typing.Any`
         Further keyword arguments for
-        :func:`distribute_idx()<CAT.attachment.distribution.distribute_idx>`.
+        :func:`~CAT.attachment.distribution.distribute_idx`.
 
     Returns
     -------
-    :class:`Molecule<scm.plams.mol.molecule.Molecule>`
+    :class:`~scm.plams.mol.molecule.Molecule`
         A new Molecule with a subset of its surface atoms replaced with **symbol_new**.
 
     See Also
     --------
-    :func:`distribute_idx()<CAT.attachment.distribution.distribute_idx>`
+    :func:`~CAT.attachment.distribution.distribute_idx`
         Create a new distribution of atomic indices from **idx** of length :code:`f * len(idx)`.
 
-    :func:`identify_surface()<nanoCAT.bde.identify_surface.identify_surface>`
+    :func:`~nanoCAT.bde.identify_surface.identify_surface`
         Take a molecule and identify which atoms are located on the surface,
         rather than in the bulk.
 
-    :func:`identify_surface_ch()<nanoCAT.bde.identify_surface.identify_surface_ch>`
+    :func:`~nanoCAT.bde.identify_surface.identify_surface_ch`
         Identify the surface of a molecule using a convex hull-based approach.
 
     """
@@ -123,16 +126,16 @@ def replace_surface(mol: Molecule,
     # Define the surface-atom subset
     idx = np.fromiter((i for i, at in enumerate(mol) if at.atnum == atnum), dtype=int)
     try:
-        idx_surface = idx[identify_surface_ch(xyz[idx], n=displacement_factor)]
-    except ValueError:
+        idx_surface = idx[_collect_surface(xyz[idx], displacement_factor)]
+    except ValueError as ex:
         raise MoleculeError(f"No atoms with atomic symbol {to_symbol(symbol)!r} available in "
-                            f"{mol.get_formula()!r}")
+                            f"{mol.get_formula()!r}") from ex
 
     try:
         idx_surface_subset = distribute_idx(xyz, idx_surface, f=f, mode=mode, **kwargs)
-    except ValueError:
+    except ValueError as ex:
         raise MoleculeError("Failed to identify any surface atoms with atomic symbol "
-                            f"{to_symbol(symbol)!r} in {mol.get_formula()!r}")
+                            f"{to_symbol(symbol)!r} in {mol.get_formula()!r}") from ex
     else:
         idx_surface_subset += 1
 
@@ -141,3 +144,26 @@ def replace_surface(mol: Molecule,
     for i in idx_surface_subset:
         ret[i].atnum = atnum_new
     return ret
+
+
+def _collect_surface(xyz: np.ndarray, displacement_factor: float,
+                     nth_shell: Union[int, Iterable[int]] = 0) -> np.ndarray:
+    n_set = {nth_shell} if not isinstance(nth_shell, abc.Iterable) else set(nth_shell)
+    n = -1
+    ret = []
+
+    while True:
+        n += 1
+        idx_subset = identify_surface_ch(xyz, n=displacement_factor)
+
+        bool_ar = np.ones(len(xyz), dtype=bool)
+        bool_ar[idx_subset] = False
+        xyz = xyz[bool_ar]
+
+        if n not in n_set:
+            continue
+
+        n_set.remove(n)
+        ret.append(idx_subset)
+        if not n_set:
+            return np.fromiter(chain.from_iterable(ret), dtype=int)

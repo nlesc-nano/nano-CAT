@@ -8,50 +8,37 @@ Index
 -----
 .. currentmodule:: nanoCAT.recipes.cdft
 .. autosummary::
-    conceptual_dft
+    run_jobs
     cdft
 
 API
 ---
-.. autofunction:: conceptual_dft
+.. autofunction:: run_jobs
 .. autodata:: cdft
     :annotation: : qmflows.Settings
 
 """
+import inspect
+from os import PathLike
 from os.path import join
-from typing import Optional, Mapping, Type, Any, overload, TYPE_CHECKING
-from functools import partial
+from typing import Mapping, Any, Union, Optional, TypeVar, Dict, MutableMapping, Iterable, FrozenSet
 
 import yaml
-from scm.plams import Settings, SingleJob, config
-from qmflows import adf, Settings as QmSettings, templates as qm_templates
-from qmflows.packages import registry, Package
+from scm.plams import Molecule, config
+from qmflows import adf, Settings, templates as _templates
+from qmflows.utils import InitRestart
+from qmflows.packages import registry, Package, Result
 from noodles.run.threading.sqlite3 import run_parallel
 
-try:
-    from yaml import CLoader as Loader
-except ImportError:
-    from yaml import Loader  # type: ignore
+__all__ = ['run_jobs', 'cdft']
 
-if TYPE_CHECKING:
-    from scm.plams import Molecule, ADFJob, ADFResults
-    from qmflows.packages.SCM import ADF, ADF_Result
-else:
-    Molecule = 'scm.plams.Molecule'
-    ADFJob = 'scm.plams.ADFJob'
-    ADFResults = 'scm.plams.ADFResults'
-    ADF = 'qmflows.packages.SCM.ADF'
-    ADF_Result = 'qmflows.packages.SCM.ADF_Result'
-
-__all__ = ['conceptual_dft', 'cdft']
-
-_QMFLOWS = False
-_PLAMS = True
+_KT = TypeVar("_KT")
+_VT = TypeVar("_VT")
 
 #: A QMFlows-style template for conceptual DFT calculations.
-cdft = QmSettings()
-cdft.specific.adf = qm_templates.singlepoint.specific.adf.copy()
-cdft += QmSettings(yaml.load("""
+cdft = Settings()
+cdft.specific.adf = _templates.singlepoint.specific.adf.copy()
+cdft += Settings(yaml.safe_load("""
 specific:
     adf:
         symmetry: nosym
@@ -65,78 +52,110 @@ specific:
             enabled: yes
             analysislevel: extended
             energy: yes
-""", Loader=Loader))
+"""))
 
 
-def conceptual_dft(mol, settings, job_type=adf, template=cdft.specific.adf, **kwargs):
-    r"""Run a conceptual DFT workflow.
+#: A :class:`frozenset` with all parameters of the
+#: :func:`~noodles.run.threading.sqlite3.run_parallel` function. `
+_RUN_PARALLEL_KEYS: FrozenSet[str] = frozenset(
+    inspect.signature(run_parallel).parameters.keys()
+)
+
+
+def _split_dict(dct: MutableMapping[_KT, _VT], key_set: Iterable[_KT]) -> Dict[_KT, _VT]:
+    """Create a new dictionary from popping all keys in **dct** which are specified in **keys**."""
+    # Get the intersection of **keys** and the keys in **dct**
+    try:
+        keys = dct.keys() & key_set  # type: ignore
+    except TypeError:
+        keys = dct.keys() & set(key_set)
+    return {k: dct.pop(k) for k in keys}
+
+
+def run_jobs(mol: Molecule, *settings: Mapping,
+             job_type: Package = adf,
+             job_name: Optional[str] = None,
+             path: Union[None, str, PathLike] = None,
+             folder: Union[None, str, PathLike] = None,
+             **kwargs: Any) -> Result:
+    r"""Run multiple jobs in succession.
 
     Examples
     --------
     .. code:: python
 
         >>> from scm.plams import Molecule
+        >>> from qmflows import Settings
+        >>> from qmflows.templates import geometry
         >>> from qmflows.utils import InitRestart
         >>> from qmflows.packages.SCM import ADF_Result
 
-        >>> mol = Molecule(...)
-        >>> settings = dict(...)
+        >>> from CAT.recipes import run_jobs, cdft
 
-        >>> with InitRestart(path=..., folder=...):
-        ...     result: ADF_Result = conceptual_dft(mol, settings)
+        >>> mol = Molecule(...)
+
+        >>> settings_opt = Settings(...)
+        >>> settings_opt += geometry
+        >>> settings_cdft = Settings(...)
+        >>> settings_cdft += cdft
+
+        >>> result: ADF_Result = run_jobs(mol, settings_opt, settings_cdft)
+
 
     Parameters
     ----------
     mol : :class:`~scm.plams.mol.molecule.Molecule`
         The input molecule.
 
-    settings : :class:`~collections.abc.Mapping`
-        The input settings.
-        The settings provided herein will, if specified,
-        be updated with those from **template**.
+    \*settings : :class:`~collections.abc.Mapping`
+        One or more input settings.
+        A single job will be run for each provided settings object.
+        The output molecule of each job will be passed on to the next one.
 
-    job_type : :class:`type` [:class:`plams.ADFJob<scm.plams.interfaces.adfsuite.adf.ADFJob>`] or :class:`qmflows.adf<qmflows.packages.SCM.ADF>`
-        A PLAMS Job type or a QMFlows package instance.
-        Accepted values are :code:`scm.plams.ADFJob` or :code:`qmflows.adf`.
+    job_type : :class:`~qmflows.packages.packages.Package`
+        A QMFlows package instance.
 
-    template : :class:`~scm.plams.core.settings.Settings`, optional
-        A template used for (soft) updating the user-provided **settings**
-        (*e.g.* :data:`qmflows.templates.singlepoint.specific.adf<qmflows.templates.singlepoint>`).
+    job_name : :class:`str`, optional
+        The name basename of the job.
+        The name will be append with :code:`".{i}"`, where ``{i}`` is the number of the job.
+
+    path : :class:`str` or :class:`~os.PathLike`, optional
+        The path to the working directory.
+
+    folder : :class:`str` or :class:`~os.PathLike`, optional
+        The name of the working directory.
 
     **kwargs : :data:`~typing.Any`
-        Further keyword arguments for **job_type**.
+        Further keyword arguments for **job_type** and the noodles job runner.
 
     Returns
     -------
-    :class:`plams.ADFResults<scm.plams.interfaces.adfsuite.adf.ADFResults>` or :class:`qmflows.ADF_Result<qmflows.packages.SCM.ADF_Result>`
-        A PLAMS :code:`Results` or QMFlows :code:`Result` object,
-        depending on the value of **job_type**.
+    :class:`~qmflows.packages.packages.Result`
+        A QMFlows Result object as constructed by the last calculation.
+        The exact type depends on the passed **job_type**.
 
-    """  # noqa: E501
-    if isinstance(job_type, Package):
-        flavor = _QMFLOWS
-    elif isinstance(job_type, type) and issubclass(job_type, SingleJob):
-        flavor = _PLAMS
-    else:
-        raise TypeError("'job_type' expected a SingleJob subclass or a Package instance; "
-                        f"observed type: {job_type.__class__.__name__!r}")
+    See Also
+    --------
+    :func:`noodles.run.threading.sqlite3.run_parallel`
+        Run a workflow in parallel threads, storing results in a Sqlite3 database.
 
-    t = QmSettings() if template is None else template
-    name = kwargs.pop('name', 'cdft_job')
-    n_processes = kwargs.pop('n_processes', 1)
+    """
+    # The job name
+    name = f'{job_type.__class__.__name__.lower()}' if job_name is None else job_name
 
-    if flavor is _QMFLOWS:
-        s = QmSettings(settings)
-        s.input.soft_update(t)
-        job = job_type(settings=s, mol=mol, name=name, **kwargs)
-        cache = join(config.default_jobmanager.workdir, 'cache.db')
-        runner = partial(run_parallel, n_threads=n_processes, registry=registry,
-                         db_file=cache, always_cache=True, echo_log=False)
+    # Collect keyword arguments for run_parallel()
+    run_kwargs = {'n_threads': 1, 'echo_log': False, 'always_cache': True}
+    run_kwargs.update(_split_dict(kwargs, _RUN_PARALLEL_KEYS))
+    if 'n_processes' in run_kwargs:
+        run_kwargs['n_threads'] = run_kwargs.pop('n_processes')
 
-    else:
-        s = Settings(settings)
-        s.input.soft_update(t)
-        job = job_type(settings=s, molecule=mol, name=name, **kwargs)
-        runner = job_type.run
+    # Construct the jobs
+    job = Settings({'geometry': mol})
+    for i, _s in enumerate(settings):
+        s = Settings(_s) if not isinstance(_s, Settings) else _s
+        job = job_type(settings=s, mol=job.geometry, job_name=f'{name}.{i}', **kwargs)
 
-    return runner(job)
+    # Run the jobs and return
+    with InitRestart(path=path, folder=folder):
+        db_file = join(config.default_jobmanager.workdir, 'cache.db')
+        return run_parallel(job, registry=registry, db_file=db_file, **run_kwargs)

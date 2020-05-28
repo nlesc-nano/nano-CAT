@@ -14,7 +14,7 @@ Examples
     >>> from nanoCAT.recipes import coordination_number
     >>> from nanoCAT.recipes import dissociate_surface, row_accumulator
     >>> from nanoCAT.recipes import get_mol_length, filter_mol, filter_data
-    >>> from nanoCAT.recipes import conceptual_dft, cdft
+    >>> from nanoCAT.recipes import run_jobs, get_global_descriptors, cdft
     ...
 
 """
@@ -26,12 +26,12 @@ from .surface_dissociation import dissociate_surface, row_accumulator
 from .coordination_number import coordination_number
 from .multi_ligand_job import multi_ligand_job
 from .mol_filter import get_mol_length, filter_mol, filter_data
-from .cdft_utils import run_jobs, cdft
+from .cdft_utils import run_jobs, get_global_descriptors, cdft
 
 __all__ = [
     'bulk_workflow', 'replace_surface', 'dissociate_surface',
     'row_accumulator', 'get_lig_charge', 'coordination_number',
     'multi_ligand_job',
     'get_mol_length', 'filter_mol', 'filter_data',
-    'run_jobs', 'cdft'
+    'run_jobs', 'get_global_descriptors', 'cdft'
 ]

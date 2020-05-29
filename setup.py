@@ -61,7 +61,7 @@ setup(
         'numpy',
         'scipy',
         'pandas>=0.24.0',
-        'AssertionLib>=2.1',
+        'AssertionLib>=2.3',
         'noodles',
         'plams@git+https://github.com/SCM-NV/PLAMS@a5696ce62c09153a9fa67b2b03a750913e1d0924',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',

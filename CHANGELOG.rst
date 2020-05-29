@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.5.4
+*****
+* Add the ``nth_shell`` argument to the ``replace_surface()`` recipe.
+  Used for applying the workflow to surfaces of one or more sub-surface shells.
+
+
 0.5.3
 *****
 * Added a new recipe for running conceptual DFT calculations with ADF.

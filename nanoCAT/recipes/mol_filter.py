@@ -1,8 +1,4 @@
-"""
-nanoCAT.recipes.mol_filter
-==========================
-
-Recipes for filtering molecules.
+"""Recipes for filtering molecules.
 
 Index
 -----

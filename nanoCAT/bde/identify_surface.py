@@ -74,6 +74,11 @@ def identify_surface_ch(mol: Union[Molecule, np.ndarray],
 
     """
     xyz = np.asarray(mol)
+
+    # Need at least 4 points to construct a convex hull
+    if len(xyz) < 4:
+        return np.arange(len(xyz))
+
     xyz_convex = xyz if n == 0 else to_convex(xyz, n=n)
     idx = ConvexHull(xyz_convex).vertices
 

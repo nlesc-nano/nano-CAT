@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.5.3
+*****
+* Added a new recipe for running conceptual DFT calculations with ADF.
+
+
 0.5.2
 *****
 * Added on option for setting ``diameter`` to ``None``.

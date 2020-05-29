@@ -27,12 +27,16 @@ from typing import Mapping, Any, Union, Optional, TypeVar, Dict, MutableMapping,
 
 import yaml
 import numpy as np
-from scm.plams import Molecule, ADFResults, config
+import pandas as pd
+
+from scm.plams import Molecule, ADFResults, Results, config
 from qmflows import adf, Settings, templates as _templates
 from qmflows.utils import InitRestart
 from qmflows.packages import registry, Package, Result
 from qmflows.packages.SCM import ADF_Result
 from noodles.run.threading.sqlite3 import run_parallel
+
+from CAT.utils import SetAttr
 
 __all__ = ['get_global_descriptors', 'run_jobs', 'cdft']
 
@@ -145,7 +149,7 @@ def run_jobs(mol: Molecule, *settings: Mapping,
 
     """
     # The job name
-    name = f'{job_type.__class__.__name__.lower()}' if job_name is None else job_name
+    name = job_name if job_name is not None else f'{job_type.__class__.__name__.lower()}'
 
     # Collect keyword arguments for run_parallel()
     run_kwargs = {'n_threads': 1, 'echo_log': False, 'always_cache': True}
@@ -162,22 +166,41 @@ def run_jobs(mol: Molecule, *settings: Mapping,
     # Run the jobs and return
     with InitRestart(path=path, folder=folder):
         db_file = join(config.default_jobmanager.workdir, 'cache.db')
-        return run_parallel(job, registry=registry, db_file=db_file, **run_kwargs)
+        with SetAttr(config.log, 'stdout', 0):
+            return run_parallel(job, registry=registry, db_file=db_file, **run_kwargs)
 
 
-def get_global_descriptors(results: Union[ADFResults, ADF_Result]) -> Dict[str, float]:
+def get_global_descriptors(results: Union[ADFResults, ADF_Result]) -> pd.Series:
     """Extract a dictionary with all ADF conceptual DFT global descriptors from **results**.
 
     Examples
     --------
     .. code:: python
 
+        >>> import pandas as pd
         >>> from scm.plams import ADFResults
         >>> from CAT.recipes import get_global_descriptors
 
         >>> results = ADFResults(...)
-        >>> dct = get_global_descriptors(results)
+
+        >>> series: pd.Series = get_global_descriptors(results)
         >>> print(dct)
+        Electronic chemical potential (mu)     -0.113
+        Electronegativity (chi=-mu)             0.113
+        Hardness (eta)                          0.090
+        Softness (S)                           11.154
+        Hyperhardness (gamma)                  -0.161
+        Electrophilicity index (w=omega)        0.071
+        Dissocation energy (nucleofuge)         0.084
+        Dissociation energy (electrofuge)       6.243
+        Electrodonating power (w-)              0.205
+        Electroaccepting power(w+)              0.092
+        Net Electrophilicity                    0.297
+        Global Dual Descriptor Deltaf+          0.297
+        Global Dual Descriptor Deltaf-         -0.297
+        Electronic chemical potential (mu+)    -0.068
+        Electronic chemical potential (mu-)    -0.158
+        Name: global descriptors, dtype: float64
 
 
     Parameters
@@ -187,15 +210,14 @@ def get_global_descriptors(results: Union[ADFResults, ADF_Result]) -> Dict[str, 
 
     Returns
     -------
-    :class:`dict` [:class:`str`, :class:`float`]
-        A dictionary with all ADF global decsriptors as extracted from **results**.
+    :class:`pandas.Series`
+        A Series with all ADF global decsriptors as extracted from **results**.
 
     """
-    files = results.files
-    if files is None:
-        raise TypeError("results.files is None")
+    if not isinstance(results, Results):
+        results = results.results
+    file = results['$JN.out']
 
-    file = files["$JN.out"]
     with open(file) as f:
         # Identify the GLOBAL DESCRIPTORS block
         for item in f:
@@ -209,18 +231,19 @@ def get_global_descriptors(results: Union[ADFResults, ADF_Result]) -> Dict[str, 
         # Extract the descriptors
         ret = {}
         for item in f:
+            item = item.rstrip('\n')
             if not item:
                 break
 
-            k, v = item.split('=')
-            key = k.strip()
+            _key, _value = item.rsplit('=', maxsplit=1)
+            key = _key.strip()
             try:
-                value = float(v)
+                value = float(_value)
             except ValueError:
-                value = float(v.rstrip('(eV)'))
+                value = float(_value.rstrip('(eV)'))
             ret[key] = value
 
     # Fix the names of "mu+" and "mu-"
     ret['Electronic chemical potential (mu+)'] = ret.pop('mu+', np.nan)
     ret['Electronic chemical potential (mu-)'] = ret.pop('mu-', np.nan)
-    return ret
+    return pd.Series(ret, name='global descriptors')

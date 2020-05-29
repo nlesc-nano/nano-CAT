@@ -1,12 +1,8 @@
-"""
-nanoCAT.recipes.cdft_utils
-==========================
-
-Recipes for running conceptual dft calculations.
+"""Recipes for running conceptual dft calculations.
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.cdft
+.. currentmodule:: nanoCAT.recipes.cdft_utils
 .. autosummary::
     run_jobs
     get_global_descriptors
@@ -16,11 +12,19 @@ API
 ---
 .. autofunction:: run_jobs
 .. autofunction:: get_global_descriptors
-.. autodata:: cdft
-    :annotation: : qmflows.Settings
+
+.. data:: cdft
+    :annotation: = qmflows.Settings(...)
+
+    A QMFlows-style template for conceptual DFT calculations.
+
+    .. code-block:: yaml
+
+{cdft}
 
 """
 import inspect
+import textwrap
 from os import PathLike
 from os.path import join
 from typing import Mapping, Any, Union, Optional, TypeVar, Dict, MutableMapping, Iterable, FrozenSet
@@ -43,11 +47,7 @@ __all__ = ['get_global_descriptors', 'run_jobs', 'cdft']
 _KT = TypeVar("_KT")
 _VT = TypeVar("_VT")
 
-#: A QMFlows-style template for conceptual DFT calculations.
-cdft = Settings()
-cdft.specific.adf = _templates.singlepoint.specific.adf.copy()
-cdft += Settings(yaml.safe_load("""
-specific:
+_CDFT: str = """specific:
     adf:
         symmetry: nosym
         conceptualdft:
@@ -60,8 +60,13 @@ specific:
             enabled: yes
             analysislevel: extended
             energy: yes
-"""))
+"""
+__doc__ = __doc__.format(cdft=textwrap.indent(_CDFT, 8 * ' '))
 
+#: A QMFlows-style template for conceptual DFT calculations.
+cdft = Settings()
+cdft.specific.adf = _templates.singlepoint.specific.adf.copy()
+cdft += Settings(yaml.safe_load(_CDFT))
 
 #: A :class:`frozenset` with all parameters of the
 #: :func:`~noodles.run.threading.sqlite3.run_parallel` function. `

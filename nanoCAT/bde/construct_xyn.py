@@ -33,7 +33,7 @@ from scm.plams import MoleculeError, Molecule, Atom, AMSJob, axis_rotation_matri
 
 from CAT.jobs import job_geometry_opt
 from CAT.utils import get_template
-from CAT.mol_utils import to_atnum, round_coords
+from CAT.mol_utils import to_atnum
 
 __all__ = ['get_xyn']
 

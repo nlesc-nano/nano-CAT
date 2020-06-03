@@ -1,4 +1,4 @@
-from typing import Iterable, Any, Type, Iterator, Union
+from typing import Iterable, Any, Type, List, Union
 
 import yaml
 import pandas as pd
@@ -56,7 +56,7 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
 
 def start_crs_jobs(mol_list: Iterable[Molecule],
                    jobs: Iterable[Type[Job]], settings: Iterable[Settings],
-                   **kwargs: Any) -> Iterator[pd.Series]:
+                   **kwargs: Any) -> List[pd.Series]:
     # Parse the job type
     job, *_ = jobs
     if job is not ADFJob:
@@ -67,8 +67,10 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
     s = Settings(_s)
     s.input += cdft.specific.adf
 
+    ret = []
     for mol in mol_list:
-        yield run_cdft_job(mol, job, settings)
+        ret.append(run_cdft_job(mol, job, s))
+    return ret
 
 
 _BACKUP = pd.Series({

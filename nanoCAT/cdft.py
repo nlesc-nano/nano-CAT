@@ -3,6 +3,7 @@ from typing import Iterable, Any, Type, List, Union
 
 import yaml
 import pandas as pd
+from numpy import nan
 
 from qmflows import templates as _templates
 from qmflows.packages.SCM import ADF_Result

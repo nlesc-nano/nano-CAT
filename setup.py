@@ -40,7 +40,6 @@ setup(
         'science',
         'chemistry',
         'python-3',
-        'python-3-6',
         'python-3-7',
         'python-3-8',
         'automation',
@@ -56,8 +55,9 @@ setup(
         'Programming Language :: Python :: 3.8'
     ],
     test_suite='tests',
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     install_requires=[
+        'Nano-Utils>=0.3.0',
         'numpy',
         'scipy',
         'pandas>=0.24.0',

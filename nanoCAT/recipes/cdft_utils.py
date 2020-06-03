@@ -39,8 +39,7 @@ from qmflows.utils import InitRestart
 from qmflows.packages import registry, Package, Result
 from qmflows.packages.SCM import ADF_Result
 from noodles.run.threading.sqlite3 import run_parallel
-
-from CAT.utils import SetAttr
+from nanoutils import SetAttr
 
 __all__ = ['get_global_descriptors', 'run_jobs', 'cdft']
 

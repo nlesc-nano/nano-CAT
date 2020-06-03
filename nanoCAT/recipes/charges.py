@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from scm.plams import Molecule, Settings, init, finish
-from CAT.utils import as_1d_array
+from nanoutils import as_nd_array
 from nanoCAT.ff import run_match_job
 
 __all__ = ['get_lig_charge']
@@ -144,7 +144,7 @@ def _parse_ligand_idx(idx: Union[None, slice, int, Iterable[int]]) -> Union[slic
         return slice(None)
     elif isinstance(idx, slice):
         return idx
-    return as_1d_array(idx, dtype=int)
+    return as_nd_array(idx, dtype=int)
 
 
 def _invert_idx(idx: np.ndarray, count: int) -> np.ndarray:

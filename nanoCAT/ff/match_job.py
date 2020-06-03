@@ -40,10 +40,9 @@ from scm.plams import SingleJob, JobError, Results, Settings, Molecule, FileErro
 
 try:
     from scm.plams import writepdb, readpdb
+    RDKIT_EX: Optional[ImportError] = None
 except ImportError as ex:
-    RDKIT_EX: Optional[ImportError] = ex
-else:
-    RDKIT_EX = None
+    RDKIT_EX = ex
 
 __all__ = ['MatchJob', 'MatchResults']
 

@@ -46,7 +46,7 @@ from assertionlib.dataclass import AbstractDataClass
 from CAT.utils import iter_repeat
 from CAT.mol_utils import to_atnum
 from CAT.attachment.ligand_anchoring import _smiles_to_rdmol
-from FOX import group_by_values
+from nanoutils import group_by_values
 
 from .guess_core_dist import guess_core_core_dist
 from .identify_surface import identify_surface

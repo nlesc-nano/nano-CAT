@@ -29,7 +29,6 @@ import scm.plams.interfaces.molecule.rdkit as molkit
 from rdkit.Chem import AllChem
 
 from CAT.jobs import job_single_point, job_geometry_opt
-from CAT.mol_utils import round_coords
 from CAT.workflows import WorkFlow, MOL, JOB_SETTINGS_ASA
 from CAT.settings_dataframe import SettingsDataFrame
 

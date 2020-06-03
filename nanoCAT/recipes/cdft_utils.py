@@ -34,7 +34,7 @@ from qmflows import adf, Settings
 from qmflows.utils import InitRestart
 from qmflows.packages import registry, Package, Result
 from noodles.run.threading.sqlite3 import run_parallel
-from nanoutils import SetAttr
+from nanoutils import SetAttr, split_dict
 
 from nanoCAT.cdft import _CDFT, cdft, get_global_descriptors
 
@@ -50,16 +50,6 @@ _VT = TypeVar("_VT")
 _RUN_PARALLEL_KEYS: FrozenSet[str] = frozenset(
     inspect.signature(run_parallel).parameters.keys()
 )
-
-
-def _split_dict(dct: MutableMapping[_KT, _VT], key_set: Iterable[_KT]) -> Dict[_KT, _VT]:
-    """Create a new dictionary from popping all keys in **dct** which are specified in **keys**."""
-    # Get the intersection of **keys** and the keys in **dct**
-    try:
-        keys = dct.keys() & key_set  # type: ignore
-    except TypeError:
-        keys = dct.keys() & set(key_set)
-    return {k: dct.pop(k) for k in keys}
 
 
 def run_jobs(mol: Molecule, *settings: Mapping,
@@ -135,7 +125,7 @@ def run_jobs(mol: Molecule, *settings: Mapping,
 
     # Collect keyword arguments for run_parallel()
     run_kwargs = {'n_threads': 1, 'echo_log': False, 'always_cache': True}
-    run_kwargs.update(_split_dict(kwargs, _RUN_PARALLEL_KEYS))
+    run_kwargs.update(split_dict(kwargs, disgard_keys=_RUN_PARALLEL_KEYS))
     if 'n_processes' in run_kwargs:
         run_kwargs['n_threads'] = run_kwargs.pop('n_processes')
 

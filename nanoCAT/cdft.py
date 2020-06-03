@@ -1,14 +1,14 @@
+from math import nan
 from typing import Iterable, Any, Type, List, Union
 
 import yaml
 import pandas as pd
-from numpy import nan
 
 from qmflows import templates as _templates
 from qmflows.packages.SCM import ADF_Result
 from scm.plams import Molecule, Settings, ADFJob, ADFResults, Units, Results
 from scm.plams.core.basejob import Job
-from CAT.workflows import WorkFlow
+from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL
 from CAT.jobs import job_single_point
 from CAT.settings_dataframe import SettingsDataFrame
 
@@ -49,6 +49,10 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
     # Import from the database and start the calculation
     idx = workflow.from_db(ligand_df)
     workflow(start_crs_jobs, ligand_df, index=idx)
+
+    # Sets a nested list with the filenames of .in files
+    # This cannot be done with loc is it will try to expand the list into a 2D array
+    ligand_df[JOB_SETTINGS_CDFT] = workflow.pop_job_settings(ligand_df[MOL])
 
     # Export to the database
     job_recipe = workflow.get_recipe()

@@ -290,7 +290,6 @@ def get_surface_charge_adf(mol: Molecule, job: Type[Job], s: Settings) -> Settin
 
     """
     s.input.allpoints = ''
-    s.input.charge = sum([at.properties.charge for at in mol])
     results = mol.job_single_point(job, s, ret_results=True)
     coskf = get_coskf(results)
 

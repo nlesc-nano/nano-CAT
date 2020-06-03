@@ -29,59 +29,27 @@ from os import PathLike
 from os.path import join
 from typing import Mapping, Any, Union, Optional, TypeVar, Dict, MutableMapping, Iterable, FrozenSet
 
-import yaml
-import numpy as np
-import pandas as pd
-
-from scm.plams import Molecule, ADFResults, Results, config
-from qmflows import adf, Settings, templates as _templates
+from scm.plams import Molecule, config
+from qmflows import adf, Settings
 from qmflows.utils import InitRestart
 from qmflows.packages import registry, Package, Result
-from qmflows.packages.SCM import ADF_Result
 from noodles.run.threading.sqlite3 import run_parallel
-from nanoutils import SetAttr
+from nanoutils import SetAttr, split_dict
+
+from nanoCAT.cdft import _CDFT, cdft, get_global_descriptors
 
 __all__ = ['get_global_descriptors', 'run_jobs', 'cdft']
 
-_KT = TypeVar("_KT")
-_VT = TypeVar("_VT")
-
-_CDFT: str = """specific:
-    adf:
-        symmetry: nosym
-        conceptualdft:
-            enabled: yes
-            analysislevel: extended
-            electronegativity: yes
-            domains:
-                enabled: yes
-        qtaim:
-            enabled: yes
-            analysislevel: extended
-            energy: yes
-"""
 __doc__ = __doc__.format(cdft=textwrap.indent(_CDFT, 8 * ' '))
 
-#: A QMFlows-style template for conceptual DFT calculations.
-cdft = Settings()
-cdft.specific.adf = _templates.singlepoint.specific.adf.copy()
-cdft += Settings(yaml.safe_load(_CDFT))
+_KT = TypeVar("_KT")
+_VT = TypeVar("_VT")
 
 #: A :class:`frozenset` with all parameters of the
 #: :func:`~noodles.run.threading.sqlite3.run_parallel` function. `
 _RUN_PARALLEL_KEYS: FrozenSet[str] = frozenset(
     inspect.signature(run_parallel).parameters.keys()
 )
-
-
-def _split_dict(dct: MutableMapping[_KT, _VT], key_set: Iterable[_KT]) -> Dict[_KT, _VT]:
-    """Create a new dictionary from popping all keys in **dct** which are specified in **keys**."""
-    # Get the intersection of **keys** and the keys in **dct**
-    try:
-        keys = dct.keys() & key_set  # type: ignore
-    except TypeError:
-        keys = dct.keys() & set(key_set)
-    return {k: dct.pop(k) for k in keys}
 
 
 def run_jobs(mol: Molecule, *settings: Mapping,
@@ -157,7 +125,7 @@ def run_jobs(mol: Molecule, *settings: Mapping,
 
     # Collect keyword arguments for run_parallel()
     run_kwargs = {'n_threads': 1, 'echo_log': False, 'always_cache': True}
-    run_kwargs.update(_split_dict(kwargs, _RUN_PARALLEL_KEYS))
+    run_kwargs.update(split_dict(kwargs, disgard_keys=_RUN_PARALLEL_KEYS))
     if 'n_processes' in run_kwargs:
         run_kwargs['n_threads'] = run_kwargs.pop('n_processes')
 
@@ -172,82 +140,3 @@ def run_jobs(mol: Molecule, *settings: Mapping,
         db_file = join(config.default_jobmanager.workdir, 'cache.db')
         with SetAttr(config.log, 'stdout', 0):
             return run_parallel(job, registry=registry, db_file=db_file, **run_kwargs)
-
-
-def get_global_descriptors(results: Union[ADFResults, ADF_Result]) -> pd.Series:
-    """Extract a dictionary with all ADF conceptual DFT global descriptors from **results**.
-
-    Examples
-    --------
-    .. code:: python
-
-        >>> import pandas as pd
-        >>> from scm.plams import ADFResults
-        >>> from CAT.recipes import get_global_descriptors
-
-        >>> results = ADFResults(...)
-
-        >>> series: pd.Series = get_global_descriptors(results)
-        >>> print(dct)
-        Electronic chemical potential (mu)     -0.113
-        Electronegativity (chi=-mu)             0.113
-        Hardness (eta)                          0.090
-        Softness (S)                           11.154
-        Hyperhardness (gamma)                  -0.161
-        Electrophilicity index (w=omega)        0.071
-        Dissocation energy (nucleofuge)         0.084
-        Dissociation energy (electrofuge)       6.243
-        Electrodonating power (w-)              0.205
-        Electroaccepting power(w+)              0.092
-        Net Electrophilicity                    0.297
-        Global Dual Descriptor Deltaf+          0.297
-        Global Dual Descriptor Deltaf-         -0.297
-        Electronic chemical potential (mu+)    -0.068
-        Electronic chemical potential (mu-)    -0.158
-        Name: global descriptors, dtype: float64
-
-
-    Parameters
-    ----------
-    results : :class:`plams.ADFResults` or :class:`qmflows.ADF_Result`
-        A PLAMS Results or QMFlows Result instance of an ADF calculation.
-
-    Returns
-    -------
-    :class:`pandas.Series`
-        A Series with all ADF global decsriptors as extracted from **results**.
-
-    """
-    if not isinstance(results, Results):
-        results = results.results
-    file = results['$JN.out']
-
-    with open(file) as f:
-        # Identify the GLOBAL DESCRIPTORS block
-        for item in f:
-            if item == ' GLOBAL DESCRIPTORS\n':
-                next(f)
-                next(f)
-                break
-        else:
-            raise ValueError(f"Failed to identify the 'GLOBAL DESCRIPTORS' block in {file!r}")
-
-        # Extract the descriptors
-        ret = {}
-        for item in f:
-            item = item.rstrip('\n')
-            if not item:
-                break
-
-            _key, _value = item.rsplit('=', maxsplit=1)
-            key = _key.strip()
-            try:
-                value = float(_value)
-            except ValueError:
-                value = float(_value.rstrip('(eV)'))
-            ret[key] = value
-
-    # Fix the names of "mu+" and "mu-"
-    ret['Electronic chemical potential (mu+)'] = ret.pop('mu+', np.nan)
-    ret['Electronic chemical potential (mu-)'] = ret.pop('mu-', np.nan)
-    return pd.Series(ret, name='global descriptors')

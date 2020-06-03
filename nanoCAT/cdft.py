@@ -1,8 +1,8 @@
 from typing import Iterable, Any, Type, Iterator, Union
 
 import yaml
-import numpy as np
 import pandas as pd
+from numpy import nan
 
 from qmflows import templates as _templates
 from qmflows.packages.SCM import ADF_Result
@@ -71,9 +71,41 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
         yield run_cdft_job(mol, job, settings)
 
 
-def run_cdft_job(mol: Molecule, job: ADFJob, s: Settings) -> pd.Series:
-    results = mol.job_single_point(job, s, name='CDFT', ret_results=True, read_template=False)
-    return get_global_descriptors(results)
+_BACKUP = pd.Series({
+    'Electronic chemical potential (mu)': nan,
+    'Electronegativity (chi=-mu)': nan,
+    'Hardness (eta)': nan,
+    'Softness (S)': nan,
+    'Hyperhardness (gamma)': nan,
+    'Electrophilicity index (w=omega)': nan,
+    'Dissocation energy (nucleofuge)': nan,
+    'Dissociation energy (electrofuge)': nan,
+    'Electrodonating power (w-)': nan,
+    'Electroaccepting power(w+)': nan,
+    'Net Electrophilicity': nan,
+    'Global Dual Descriptor Deltaf+': nan,
+    'Global Dual Descriptor Deltaf-': nan,
+    'Electronic chemical potential (mu+)': nan,
+    'Electronic chemical potential (mu-)': nan
+})
+_BACKUP.index = pd.MultiIndex.from_product(
+    [['cdft'], _BACKUP.index], names=['index', 'sub index']
+)
+
+
+def run_cdft_job(mol: Molecule, job: Type[ADFJob], s: Settings) -> pd.Series:
+    """Run a conceptual DFT job and extract & return all global descriptors."""
+    results = mol.job_single_point(job, s.copy(), name='CDFT',
+                                   ret_results=True, read_template=False)
+
+    if results.job.status in {'crashed', 'failed'}:
+        return _BACKUP
+
+    ret = get_global_descriptors(results)
+    ret.index = pd.MultiIndex.from_product(
+        [['cdft'], ret.index], names=['index', 'sub index']
+    )
+    return ret
 
 
 def get_global_descriptors(results: Union[ADFResults, ADF_Result]) -> pd.Series:
@@ -150,6 +182,6 @@ def get_global_descriptors(results: Union[ADFResults, ADF_Result]) -> pd.Series:
             ret[key] = value
 
     # Fix the names of "mu+" and "mu-"
-    ret['Electronic chemical potential (mu+)'] = ret.pop('mu+', np.nan)
-    ret['Electronic chemical potential (mu-)'] = ret.pop('mu-', np.nan)
+    ret['Electronic chemical potential (mu+)'] = ret.pop('mu+', nan)
+    ret['Electronic chemical potential (mu-)'] = ret.pop('mu-', nan)
     return pd.Series(ret, name='global descriptors')

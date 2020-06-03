@@ -51,7 +51,8 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
     workflow(start_crs_jobs, ligand_df, index=idx)
 
     # Export to the database
-    workflow.to_db(ligand_df, index=idx)
+    job_recipe = workflow.get_recipe()
+    workflow.to_db(ligand_df, index=idx, job_recipe=job_recipe)
 
 
 def start_crs_jobs(mol_list: Iterable[Molecule],

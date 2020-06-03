@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.6.0
+*****
+* Moved a number of functions to the `nanoutils <https://github.com/nlesc-nano/Nano-Utils>`_ package.
+
+
 0.5.4
 *****
 * Add the ``nth_shell`` argument to the ``replace_surface()`` recipe.

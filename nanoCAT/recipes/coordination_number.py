@@ -23,7 +23,7 @@ import numpy as np
 
 from scm.plams import Molecule
 
-from FOX import group_by_values
+from nanoutils import group_by_values
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 
 __all__: List[str] = ['coordination_number', 'coordination_outer']

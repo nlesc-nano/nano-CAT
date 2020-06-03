@@ -31,7 +31,6 @@ from FOX import MultiMolecule, PSFContainer, PRMContainer, get_intra_non_bonded,
 
 from CAT.jobs import job_md
 from CAT.logger import logger
-from CAT.mol_utils import round_coords
 
 from .asa_frag import get_asa_fragments
 from .energy_gatherer import EnergyGatherer

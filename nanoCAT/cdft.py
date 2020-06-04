@@ -12,7 +12,7 @@ from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL
 from CAT.jobs import job_single_point
 from CAT.settings_dataframe import SettingsDataFrame
 
-__all__ = ['init_cdft', 'get_global_descriptors', 'cdf']
+__all__ = ['init_cdft', 'get_global_descriptors', 'cdft']
 
 _CDFT: str = """specific:
     adf:

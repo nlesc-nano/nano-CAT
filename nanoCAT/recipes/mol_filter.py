@@ -88,17 +88,17 @@ def filter_mol(mol_list: Iterable[Molecule], data: Iterable[T],
 
         >>> mol_list = [Molecule(...), ...]
         >>> data = [...]
-        >>> mol_dict1 = filter_mol_length(mol_list, data, filter=lambda n: n < 10)
+        >>> mol_dict1 = filter_mol(mol_list, data, filter=lambda n: n < 10)
 
         >>> prop1 = [...]
         >>> prop2 = [...]
         >>> prop3 = [...]
         >>> multi_data = zip([prop1, prop2, prop3])
-        >>> mol_dict2 = filter_mol_length(mol_list, multi_data, filter=lambda n: n < 10)
+        >>> mol_dict2 = filter_mol(mol_list, multi_data, filter=lambda n: n < 10)
 
         >>> keys = mol_dict1.keys()
         >>> values = mol_dict1.values()
-        >>> mol_dict3 = filter_mol_length(keys, values, filter=lambda n: n < 5)
+        >>> mol_dict3 = filter_mol(keys, values, filter=lambda n: n < 5)
 
     Parameters
     ----------

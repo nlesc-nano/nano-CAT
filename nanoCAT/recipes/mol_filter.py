@@ -29,7 +29,7 @@ T = TypeVar('T')
 
 def get_mol_length(mol: Union[np.ndarray, Molecule],
                    atom: Union[np.ndarray, Atom]) -> float:
-    """Return the distance between **atom** and the atom in **mol** it is furthest removed from.
+    """Return the distance between **atom** and the atom in **mol** which it is furthest removed from.
 
     Examples
     --------
@@ -44,14 +44,14 @@ def get_mol_length(mol: Union[np.ndarray, Molecule],
         >>> data = [...]
         >>> filter = lambda mol: get_mol_length(mol, mol.properties.get('anchor')) < 10
 
-        >>> mol_dict = filter_mol_length(mol_list, data, filter=filter)
+        >>> mol_dict = filter_mol(mol_list, data, filter=filter)
 
     Parameters
     ----------
     mol : :class:`~scm.plams.mol.molecule.Molecule` or :class:`numpy.ndarray`
         A PLAMS molecule or a 2D numpy array with a molecules Cartesian coordinates.
 
-    atom : :class:`~scm.plams.mol.molecule.Molecule` or :class:`numpy.ndarray`
+    atom : :class:`~scm.plams.mol.atom.Atom` or :class:`numpy.ndarray`
         A PLAMS atom or a 1D numpy array with an atoms Cartesian coordinates.
 
     Returns
@@ -64,7 +64,7 @@ def get_mol_length(mol: Union[np.ndarray, Molecule],
     :func:`filter_mol`
         Filter **mol_list** and **data** based on elements from **mol_list**.
 
-    """
+    """  # noqa: E501
     if isinstance(atom, Atom):
         atom_xyz = np.fromiter(atom.coords, 3, dtype=float)
         atom_xyz.shape = (1, 3)

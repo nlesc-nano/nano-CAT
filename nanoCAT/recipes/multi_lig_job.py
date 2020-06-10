@@ -2,7 +2,7 @@
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.multi_ligand_job
+.. currentmodule:: nanoCAT.recipes.multi_lig_job
 .. autosummary::
     multi_ligand_job
 
@@ -143,7 +143,7 @@ def multi_ligand_job(mol: Molecule,
         An instance of :class:`~qmflows.packages.cp2k_mm.CP2KMM`;
         used for running classical forcefield calculations with `CP2K <https://www.cp2k.org/>`_.
 
-    `10.1002/jcc.21963<https://doi.org/10.1002/jcc.21963>`_
+    `10.1002/jcc.21963 <https://doi.org/10.1002/jcc.21963>`_
         MATCH: An atom-typing toolset for molecular mechanics force fields,
         J.D. Yesselman, D.J. Price, J.L. Knight and C.L. Brooks III,
         J. Comput. Chem., 2011.

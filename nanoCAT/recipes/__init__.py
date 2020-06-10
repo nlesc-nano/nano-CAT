@@ -24,7 +24,7 @@ from .charges import get_lig_charge
 from .mark_surface import replace_surface
 from .surface_dissociation import dissociate_surface, row_accumulator
 from .coordination_number import coordination_number
-from .multi_ligand_job import multi_ligand_job
+from .multi_lig_job import multi_ligand_job
 from .mol_filter import get_mol_length, filter_mol, filter_data
 from .cdft_utils import run_jobs, get_global_descriptors, cdft
 

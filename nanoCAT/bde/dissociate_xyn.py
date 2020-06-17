@@ -32,8 +32,8 @@ API
 
 from itertools import chain, combinations
 from typing import (
-    Union, Mapping, Iterable, Tuple, Dict, List, Optional, FrozenSet, Generator,
-    Any, TypeVar, SupportsInt, Set, Collection
+    Union, Mapping, Iterable, Tuple, Dict, List, Optional, Set, Generator,
+    Any, TypeVar, SupportsInt, Set, Collection, FrozenSet, cast
 )
 
 import numpy as np
@@ -46,7 +46,7 @@ from assertionlib.dataclass import AbstractDataClass
 from CAT.utils import iter_repeat
 from CAT.mol_utils import to_atnum
 from CAT.attachment.ligand_anchoring import _smiles_to_rdmol
-from nanoutils import group_by_values
+from nanoutils import group_by_values, as_nd_array
 
 from .guess_core_dist import guess_core_core_dist
 from .identify_surface import identify_surface
@@ -192,7 +192,7 @@ def dissociate_ligand(mol: Molecule,
 
 def _lig_mapping(mol: Molecule, idx: Iterable[int]) -> IdxMapping:
     """Map **idx** to all atoms with the same residue number."""
-    idx = as_array(idx, dtype=int)  # 1-based indices
+    idx = as_nd_array(idx, dtype=int)  # 1-based indices
 
     iterator = ((i, at.properties.pdb_info.get('ResidueNumber', i)) for i, at in enumerate(mol, 1))
     lig_mapping = group_by_values(iterator)
@@ -203,7 +203,7 @@ def _lig_mapping(mol: Molecule, idx: Iterable[int]) -> IdxMapping:
 
 def _core_mapping(mol: Molecule, idx: Iterable[int], smiles: str) -> IdxMapping:
     """Map **idx** to all atoms part of the same substructure (see **smiles**)."""
-    idx = as_array(idx, dtype=int)  # 1-based indices
+    idx = as_nd_array(idx, dtype=int)  # 1-based indices
 
     rdmol = molkit.to_rdmol(mol)
     rd_smiles = _smiles_to_rdmol(smiles)
@@ -222,7 +222,7 @@ def _core_mapping(mol: Molecule, idx: Iterable[int], smiles: str) -> IdxMapping:
 class DummyGetter:
     """A mapping placeholder; calling `__getitem__` will return the supplied key embedded within a tuple."""  # noqa
 
-    def __getitem__(self, key: SupportsInt) -> Tuple[int]: return (key,)
+    def __getitem__(self, key: T) -> Tuple[T]: return (key,)
 
 
 _DUMMY_GETTER = DummyGetter()
@@ -297,7 +297,7 @@ class MolDissociater(AbstractDataClass):
 
     @core_idx.setter
     def core_idx(self, value: Union[int, Iterable[int]]) -> None:
-        self._core_idx = core_idx = as_array(value, dtype=int, ndmin=1, copy=True)
+        self._core_idx = core_idx = as_nd_array(value, dtype=int, ndmin=1, copy=True)
         core_idx -= 1
         core_idx.sort()
 
@@ -319,7 +319,7 @@ class MolDissociater(AbstractDataClass):
     def topology(self, value: Optional[Mapping[int, str]]) -> None:
         self._topology = value or {}
 
-    _PRIVATE_ATTR: FrozenSet[str] = frozenset({'_coords'})
+    _PRIVATE_ATTR: Set[str] = frozenset({'_coords'})  # type: ignore
 
     def __init__(self, mol: Molecule,
                  core_idx: Union[int, Iterable[int]],
@@ -462,7 +462,7 @@ class MolDissociater(AbstractDataClass):
         # Extract instance variables
         xyz: np.ndarray = self._coords
         i: np.ndarray = self.core_idx
-        j: np.ndarray = as_array(lig_idx, dtype=int) - 1
+        j: np.ndarray = as_nd_array(lig_idx, dtype=int) - 1
         n: int = self.ligand_count
 
         # Find all core atoms within a radius **max_dist** from a ligand
@@ -516,7 +516,7 @@ class MolDissociater(AbstractDataClass):
         # Extract instance variables
         xyz: np.ndarray = self._coords
         i: np.ndarray = self.core_idx
-        j: np.ndarray = as_array(lig_idx, dtype=int) - 1
+        j: np.ndarray = as_nd_array(lig_idx, dtype=int) - 1
         n: int = self.ligand_count
 
         # Find all core atoms within a radius **max_dist** from a ligand
@@ -655,20 +655,3 @@ class MolDissociater(AbstractDataClass):
         for i in ret:
             i -= 1
         return ret
-
-
-def as_array(iterable: Iterable, dtype: Union[None, str, type, np.dtype] = None,
-             copy: bool = False, ndmin: int = 0) -> np.ndarray:
-    """Convert a generic iterable (including iterators) into a NumPy array.
-
-    See :func:`numpy.array` for an extensive description of all parameters.
-
-    """
-    try:
-        ret = np.array(iterable, dtype=dtype, copy=copy)
-    except TypeError:  # **iterable** is an iterator
-        ret = np.fromiter(iterable, dtype=dtype)
-
-    if ret.ndim < ndmin:
-        ret.shape += (1,) * (ndmin - ret.ndim)
-    return ret

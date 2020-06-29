@@ -140,9 +140,8 @@ def get_solvent_columns(solvent_list: Iterable[str]) -> List[Tuple[str, str]]:
 def get_solvent_list(solvent_list: Optional[Sequence[str]] = None) -> Sequence[str]:
     """Construct a sorted list of solvents; pull them from ``CAT.data.coskf`` if ``None``."""
     if solvent_list is None:
-        exclude = ('__init__.py', 'README.rst')
         base = join(CAT.__path__[0], 'data', 'coskf')
-        solvent_list = [join(base, solv) for solv in os.listdir(base) if solv not in exclude]
+        solvent_list = [join(base, solv) for solv in os.listdir(base) if solv.endswith('coskf')]
 
     try:
         solvent_list.sort()

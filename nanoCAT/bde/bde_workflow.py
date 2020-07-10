@@ -32,6 +32,7 @@ from typing import Iterable, Type, List, Tuple, Optional
 from itertools import product
 
 import numpy as np
+import pandas as pd
 
 from scm.plams import AMSJob, Molecule, Settings, Cp2kJob
 from scm.plams.core.basejob import Job

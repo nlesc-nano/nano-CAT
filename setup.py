@@ -30,7 +30,7 @@ setup(
         'nanoCAT.recipes'
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
-    package_data={'nanoCAT': ['data/*csv', 'py.typed', '*.pyi']},
+    package_data={'nanoCAT': ['py.typed', '*.pyi']},
     include_package_data=True,
     license='GNU Lesser General Public License v3 or later',
     zip_safe=False,
@@ -80,7 +80,6 @@ setup(
         'test': ['pytest',
                  'pytest-cov',
                  'pytest-mock',
-                 'pycodestyle'],
-        'doc': ['sphinx', 'sphinx_rtd_theme', 'sphinx-autodoc-typehints']
+                 'pycodestyle']
     }
 )

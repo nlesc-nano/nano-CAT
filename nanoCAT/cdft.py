@@ -8,7 +8,7 @@ from qmflows import templates as _templates
 from qmflows.packages.SCM import ADF_Result
 from scm.plams import Molecule, Settings, ADFJob, ADFResults, Units, Results
 from scm.plams.core.basejob import Job
-from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL
+from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL, CDFT_CHI
 from CAT.jobs import job_single_point
 from CAT.settings_dataframe import SettingsDataFrame
 
@@ -47,7 +47,10 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
     workflow = WorkFlow.from_template(ligand_df, name='cdft')
 
     # Import from the database and start the calculation
-    idx = workflow.from_db(ligand_df)
+    CDFT = CDFT_CHI[0]
+    df_bool = workflow.from_db(ligand_df, CDFT)
+
+    idx = df_bool[CDFT].any(axis=1)
     workflow(start_crs_jobs, ligand_df, index=idx)
 
     # Sets a nested list with the filenames of .in files
@@ -55,8 +58,7 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
     ligand_df[JOB_SETTINGS_CDFT] = workflow.pop_job_settings(ligand_df[MOL])
 
     # Export to the database
-    job_recipe = workflow.get_recipe()
-    workflow.to_db(ligand_df, index=idx, job_recipe=job_recipe)
+    workflow.to_db(ligand_df, df_bool, columns=workflow.export_columns)
 
 
 def start_crs_jobs(mol_list: Iterable[Molecule],

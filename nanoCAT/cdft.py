@@ -34,6 +34,8 @@ cdft = Settings()
 cdft.specific.adf = _templates.singlepoint.specific.adf.copy()
 cdft += Settings(yaml.safe_load(_CDFT))
 
+CDFT = CDFT_CHI[0]
+
 
 def init_cdft(ligand_df: SettingsDataFrame) -> None:
     r"""Initialize the ligand conceptual dft (CDFT) workflow.
@@ -45,10 +47,14 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
 
     """
     workflow = WorkFlow.from_template(ligand_df, name='cdft')
+    for k, v in workflow.import_columns.items():
+        ligand_df[k] = v
 
     # Import from the database and start the calculation
-    CDFT = CDFT_CHI[0]
     df_bool = workflow.from_db(ligand_df, CDFT)
+    column_subset = workflow.import_columns.keys() - df_bool.columns
+    for k in column_subset:
+        df_bool[k] = True
 
     idx = df_bool[CDFT].any(axis=1)
     workflow(start_crs_jobs, ligand_df, index=idx)

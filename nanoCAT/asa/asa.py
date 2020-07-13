@@ -53,9 +53,15 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
 
     """
     workflow = WorkFlow.from_template(qd_df, name='asa')
+    columns = workflow.import_columns.keys()
+    for i in columns:
+        qd_df[i] = 0.0
 
     # Run the activation strain workflow
-    df_bool = workflow.from_db(qd_df)
+    df_bool = workflow.from_db(qd_df, 'ASA')
+    columns_subset = columns - df_bool.columns
+    for i in columns_subset:
+        df_bool[i] = True
 
     idx = df_bool['ASA'].all(axis=1)
     if workflow.md:
@@ -65,7 +71,7 @@ def init_asa(qd_df: SettingsDataFrame) -> None:
 
     # Prepare for results exporting
     qd_df[JOB_SETTINGS_ASA] = workflow.pop_job_settings(qd_df[MOL])
-    workflow.to_db(qd_df, df_bool, column=workflow.export_columns)
+    workflow.to_db(qd_df, df_bool, columns=workflow.export_columns)
 
 
 def get_asa_energy(mol_list: Iterable[Molecule],

@@ -82,7 +82,11 @@ def init_solv(ligand_df: SettingsDataFrame,
         ligand_df[i] = 0.0
 
     # Create index slices and run the workflow
-    df_bool = workflow.from_db(ligand_df, columns.levels[0].values)
+    df_bool = workflow.from_db(ligand_df, *columns.levels[0].values)
+    column_subset = columns.difference(df_bool.columns)
+    for i in column_subset:
+        df_bool[i] = True
+
     idx = df_bool[columns].any(axis=1)
     workflow(start_crs_jobs, ligand_df, index=idx, columns=columns, solvent_list=solvent_list)
 

@@ -8,7 +8,7 @@ from qmflows import templates as _templates
 from qmflows.packages.SCM import ADF_Result
 from scm.plams import Molecule, Settings, ADFJob, ADFResults, Units, Results
 from scm.plams.core.basejob import Job
-from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL
+from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL, CDFT_CHI
 from CAT.jobs import job_single_point
 from CAT.settings_dataframe import SettingsDataFrame
 
@@ -34,6 +34,8 @@ cdft = Settings()
 cdft.specific.adf = _templates.singlepoint.specific.adf.copy()
 cdft += Settings(yaml.safe_load(_CDFT))
 
+CDFT = CDFT_CHI[0]
+
 
 def init_cdft(ligand_df: SettingsDataFrame) -> None:
     r"""Initialize the ligand conceptual dft (CDFT) workflow.
@@ -45,9 +47,16 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
 
     """
     workflow = WorkFlow.from_template(ligand_df, name='cdft')
+    for k, v in workflow.import_columns.items():
+        ligand_df[k] = v
 
     # Import from the database and start the calculation
-    idx = workflow.from_db(ligand_df)
+    df_bool = workflow.from_db(ligand_df, CDFT)
+    column_subset = workflow.import_columns.keys() - df_bool.columns
+    for k in column_subset:
+        df_bool[k] = True
+
+    idx = df_bool[CDFT].any(axis=1)
     workflow(start_crs_jobs, ligand_df, index=idx)
 
     # Sets a nested list with the filenames of .in files
@@ -55,8 +64,7 @@ def init_cdft(ligand_df: SettingsDataFrame) -> None:
     ligand_df[JOB_SETTINGS_CDFT] = workflow.pop_job_settings(ligand_df[MOL])
 
     # Export to the database
-    job_recipe = workflow.get_recipe()
-    workflow.to_db(ligand_df, index=idx, job_recipe=job_recipe)
+    workflow.to_db(ligand_df, df_bool, columns=workflow.export_columns)
 
 
 def start_crs_jobs(mol_list: Iterable[Molecule],

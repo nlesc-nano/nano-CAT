@@ -32,6 +32,7 @@ from typing import Iterable, Type, List, Tuple, Optional
 from itertools import product
 
 import numpy as np
+import pandas as pd
 
 from scm.plams import AMSJob, Molecule, Settings, Cp2kJob
 from scm.plams.core.basejob import Job
@@ -45,6 +46,12 @@ from .construct_xyn import get_xyn
 from .dissociate_xyn import dissociate_ligand
 from ..qd_opt_ff import qd_opt_ff
 
+try:
+    import h5py
+    _LABEL_DTYPE = h5py.string_dtype(encoding='ascii')
+except ImportError:
+    _LABEL_DTYPE = np.dtype(object)
+
 __all__ = ['init_bde']
 
 
@@ -55,10 +62,17 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
 
     # Create columns
     columns = _construct_columns(workflow, qd_df[MOL])
-    import_columns = {(i, j): (np.nan if i != 'label' else None) for i, j in columns}
+    columns.names = qd_df.columns.names
+    for i, j in columns:
+        if i == 'label':
+            qd_df[i, j] = np.array('', dtype=_LABEL_DTYPE).take(0)
+        else:
+            qd_df[i, j] = 0.0
 
     # Pull from the database; push unoptimized structures
-    idx = workflow.from_db(qd_df, columns=import_columns)
+    df_bool = workflow.from_db(qd_df, columns=columns.levels[0])
+
+    idx = df_bool[columns].all()
     workflow(start_bde, qd_df, columns=columns, index=idx, workflow=workflow)
 
     # Convert the datatype from object back to float
@@ -72,11 +86,10 @@ def init_bde(qd_df: SettingsDataFrame) -> None:
     qd_df[JOB_SETTINGS_BDE] = workflow.pop_job_settings(qd_df[MOL])
 
     # Push the optimized structures to the database
-    job_recipe = workflow.get_recipe()
-    workflow.to_db(qd_df, index=idx, columns=columns, job_recipe=job_recipe)
+    workflow.to_db(qd_df, df_bool, columns=columns)
 
 
-def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List[Tuple[str, str]]:
+def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> pd.MultiIndex:
     """Construct BDE columns for :func:`init_bde`."""
     if workflow.core_index:
         stop = len(workflow.core_index)
@@ -94,8 +107,8 @@ def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List
     if workflow.jobs[1]:  # i.e. thermochemical corrections are enabled
         super_keys += ('BDE ddG', 'BDE dG')
 
-    sub_keys = np.arange(stop).astype(dtype=str)
-    return list(product(super_keys, sub_keys))
+    sub_keys = np.arange(stop)
+    return pd.MultiIndex.from_product((super_keys, sub_keys))
 
 
 def start_bde(mol_list: Iterable[Molecule],

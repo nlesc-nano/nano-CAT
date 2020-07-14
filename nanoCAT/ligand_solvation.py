@@ -40,6 +40,7 @@ from os.path import join
 from typing import Optional, Sequence, Collection, Tuple, List, Iterable, Any, Type, Iterator
 
 import numpy as np
+import pandas as pd
 
 from scm.plams import Settings, Molecule, Results, CRSJob, CRSResults, JobRunner, ADFJob
 from scm.plams.core.basejob import Job
@@ -77,20 +78,22 @@ def init_solv(ligand_df: SettingsDataFrame,
     # Create column slices
     solvent_list = get_solvent_list(solvent_list)
     columns = get_solvent_columns(solvent_list)
-
-    # Create new import and export columns
-    import_columns = {k: np.nan for k in columns}
-    import_columns.update(workflow.import_columns)
-    export_columns = columns + list(workflow.import_columns)
+    for i in columns:
+        ligand_df[i] = 0.0
 
     # Create index slices and run the workflow
-    idx = workflow.from_db(ligand_df, columns=import_columns)
+    df_bool = workflow.from_db(ligand_df, *columns.levels[0].values)
+    column_subset = columns.difference(df_bool.columns)
+    for i in column_subset:
+        df_bool[i] = True
+
+    idx = df_bool[columns].any(axis=1)
     workflow(start_crs_jobs, ligand_df, index=idx, columns=columns, solvent_list=solvent_list)
 
     # Export results back to the database
-    job_recipe = workflow.get_recipe()
     ligand_df[JOB_SETTINGS_CRS] = workflow.pop_job_settings(ligand_df[MOL])
-    workflow.to_db(ligand_df, index=idx, columns=export_columns, job_recipe=job_recipe)
+    export_columns = columns.append(pd.Index([JOB_SETTINGS_CRS]))
+    workflow.to_db(ligand_df, df_bool, columns=export_columns)
 
 
 def start_crs_jobs(mol_list: Iterable[Molecule],
@@ -116,7 +119,7 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
     return ret
 
 
-def get_solvent_columns(solvent_list: Iterable[str]) -> List[Tuple[str, str]]:
+def get_solvent_columns(solvent_list: Iterable[str]) -> pd.MultiIndex:
     """Create a list of column names from an iterable containing .coskf names.
 
     Parameters
@@ -134,7 +137,8 @@ def get_solvent_columns(solvent_list: Iterable[str]) -> List[Tuple[str, str]]:
     """
     # Use filenames without extensions are absolute paths
     clm_tups = [os.path.basename(i).rsplit('.', maxsplit=1)[0] for i in solvent_list]
-    return list(product(('E_solv', 'gamma'), clm_tups))
+    super_keys = ('E_solv', 'gamma')
+    return pd.MultiIndex.from_product((super_keys, clm_tups))
 
 
 def get_solvent_list(solvent_list: Optional[Sequence[str]] = None) -> Sequence[str]:

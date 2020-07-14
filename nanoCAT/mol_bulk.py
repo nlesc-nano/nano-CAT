@@ -33,7 +33,7 @@ from scipy.spatial.distance import cdist
 from scm.plams import Molecule
 
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.workflows import WorkFlow, MOL
+from CAT.workflows import WorkFlow, MOL, V_BULK
 
 __all__ = ['init_lig_bulkiness']
 
@@ -70,14 +70,17 @@ def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
     """
     workflow = WorkFlow.from_template(qd_df, name='bulkiness')
     workflow.keep_files = False
+    qd_df[V_BULK] = 0.0
 
     # Import from the database and start the calculation
-    idx = workflow.from_db(qd_df)
-    workflow(start_lig_bulkiness, qd_df, index=idx,
+    df_bool = workflow.from_db(qd_df, V_BULK[0])
+    if V_BULK not in df_bool.columns:
+        df_bool[V_BULK] = True
+    workflow(start_lig_bulkiness, qd_df, index=df_bool[V_BULK],
              lig_series=ligand_df[MOL], core_series=core_df[MOL])
 
     # Export to the database
-    workflow.to_db(qd_df, index=idx)
+    workflow.to_db(qd_df, df_bool, columns=workflow.export_columns)
 
 
 def start_lig_bulkiness(qd_series: pd.Series, lig_series: pd.Series, core_series: pd.Series,

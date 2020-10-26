@@ -1,5 +1,5 @@
-.. image:: https://travis-ci.org/nlesc-nano/nano-CAT.svg?branch=master
-   :target: https://travis-ci.org/nlesc-nano/nano-CAT
+.. image:: https://github.com/nlesc-nano/nano-CAT/workflows/Build%20with%20Conda/badge.svg
+   :target: https://github.com/nlesc-nano/nano-CAT/actions?query=workflow%3A%22Build+with+Conda%22
 .. image:: https://readthedocs.org/projects/cat/badge/?version=latest
    :target: https://cat.readthedocs.io/en/latest/
 

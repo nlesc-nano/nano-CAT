@@ -77,6 +77,7 @@ def init_solv(ligand_df: SettingsDataFrame,
     # Create column slices
     solvent_list = get_solvent_list(solvent_list)
     columns = get_solvent_columns(solvent_list)
+    columns.append(('LogP', 'Solute'))
 
     # Create new import and export columns
     import_columns = {k: np.nan for k in columns}
@@ -95,7 +96,7 @@ def init_solv(ligand_df: SettingsDataFrame,
 
 def start_crs_jobs(mol_list: Iterable[Molecule],
                    jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
-                   solvent_list: Iterable[str] = (), **kwargs: Any) -> List[Iterator[float]]:
+                   solvent_list: Iterable[str] = (), **kwargs: Any) -> List[List[float]]:
     """Loop over all molecules in **mol_list** and perform COSMO-RS calculations."""
     j1, j2 = jobs
     s1, s2 = settings
@@ -110,9 +111,7 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
         coskf = get_surface_charge(mol, job=j1, s=s1)
 
         # Perform the actual COSMO-RS calculation
-        e, gamma = get_solv(mol, solvent_list, coskf, job=j2, s=s2)
-        ret.append(e + gamma)
-
+        ret.append(get_solv(mol, solvent_list, coskf, job=j2, s=s2))
     return ret
 
 
@@ -192,7 +191,8 @@ def _crs_run(job: CRSJob, name: str) -> CRSResults:
 
 
 def get_solv(mol: Molecule, solvent_list: Iterable[str],
-             coskf: Optional[str], job: Type[Job], s: Settings) -> Tuple[List[float], List[float]]:
+             coskf: Optional[str], job: Type[Job], s: Settings
+             ) -> List[float]:
     """Calculate the solvation energy of *mol* in various *solvents*.
 
     Parameters
@@ -219,20 +219,20 @@ def get_solv(mol: Molecule, solvent_list: Iterable[str],
         A list of solvation energies and gammas.
 
     """
-    # Return 2x np.nan if no coskf is None (i.e. the COSMO-surface construction failed)
+    # Return 3x np.nan if no coskf is None (i.e. the COSMO-surface construction failed)
     if coskf is None:
-        ret = [np.nan] * len(solvent_list)
-        return ret, ret
+        i = 1 + 2 * len(solvent_list)
+        return i * [np.nan]
 
     # Prepare a list of job settings
     s = Settings(s)
-    s.input.Compound._h = coskf
+    s.input.compound[0]._h = coskf
     s.ignore_molecule = True
     s_list = []
     for solv in solvent_list:
         _s = s.copy()
         _s.name = solv.rsplit('.', 1)[0].rsplit(os.sep, 1)[-1]
-        _s.input.compound._h = solv
+        _s.input.compound[1]._h = solv
         s_list.append(_s)
 
     # Run the job
@@ -250,19 +250,33 @@ def get_solv(mol: Molecule, solvent_list: Iterable[str],
             Gamma.append(results.get_activity_coefficient())
             logger.info(f'{results.job.__class__.__name__}: {mol_name} activity coefficient '
                         f'calculation ({results.job.name}) is successful')
-        except ValueError:
+        except Exception:
             logger.error(f'{results.job.__class__.__name__}: {mol_name} activity coefficient '
                          f'calculation ({results.job.name}) has failed')
             E_solv.append(np.nan)
             Gamma.append(np.nan)
+
+    logp_s = s_list[0].copy()
+    logp_s.update(get_template('qd.yaml')['COSMO-RS logp'])
+    for v in logp_s.input.compound:
+        v._h = v._h.format(os.environ["ADFRESOURCES"])
+    logp_job = CRSJob(settings=logp_s, name='LogP')
+    results = _crs_run(logp_job, mol_name)
+    try:
+        logp = results.readkf('LOGP', 'logp')[0]
+        logger.info(f'{results.job.__class__.__name__}: {mol_name} LogP '
+                    f'calculation ({results.job.name}) is successful')
+    except Exception:
+        logger.error(f'{results.job.__class__.__name__}: {mol_name} LogP '
+                     f'calculation ({results.job.name}) has failed')
+        logp = np.nan
 
     try:
         mol.properties.job_path += [join(job.path, job.name + '.in') for job in job_list]
     except IndexError:  # The 'job_path' key is not available
         mol.properties.job_path = [join(job.path, job.name + '.in') for job in job_list]
 
-    # Return the solvation energies and activity coefficients as dict
-    return E_solv, Gamma
+    return E_solv + Gamma + [logp]
 
 
 def get_surface_charge_adf(mol: Molecule, job: Type[Job], s: Settings) -> Settings:

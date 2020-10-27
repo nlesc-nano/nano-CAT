@@ -27,6 +27,8 @@ _CDFT: str = """specific:
             enabled: yes
             analysislevel: extended
             energy: yes
+        basis:
+            core: none
 """
 
 #: A QMFlows-style template for conceptual DFT calculations.

@@ -35,16 +35,27 @@ API
 """
 
 import os
+import math
+import logging
 from itertools import product
 from os.path import join
-from typing import Optional, Sequence, Collection, Tuple, List, Iterable, Any, Type, Iterator
+from typing import (
+    Optional, Sequence, Collection, Tuple, List, Iterable, Any, Type, Generator
+)
 
 import numpy as np
+from scipy import constants
 
-from scm.plams import Settings, Molecule, Results, CRSJob, CRSResults, JobRunner, ADFJob
+from scm.plams import (
+    Settings, Molecule, Results, CRSJob, CRSResults, JobRunner, ADFJob, Units, add_Hs
+)
 from scm.plams.core.basejob import Job
 
 import CAT
+if CAT.version_info < (0, 9, 10):
+    raise RuntimeError("Nano-CAT requires CAT 0.9.10 or later;"
+                       f"observed version: {CAT.__version__}")
+
 from CAT.jobs import job_single_point, _get_name
 from CAT.utils import get_template
 from CAT.logger import logger
@@ -77,7 +88,14 @@ def init_solv(ligand_df: SettingsDataFrame,
     # Create column slices
     solvent_list = get_solvent_list(solvent_list)
     columns = get_solvent_columns(solvent_list)
-    columns.append(('LogP', 'Solute'))
+    columns += [
+        ('LogP', 'Solute'),
+        ('pKa', 'E_solute_acid'),
+        ('pKa', 'E_solute_base'),
+        ('pKa', 'E_solvent_base'),
+        ('pKa', 'E_solvent_acid'),
+        ('pKa', 'Solute'),
+    ]
 
     # Create new import and export columns
     import_columns = {k: np.nan for k in columns}
@@ -96,10 +114,13 @@ def init_solv(ligand_df: SettingsDataFrame,
 
 def start_crs_jobs(mol_list: Iterable[Molecule],
                    jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
-                   solvent_list: Iterable[str] = (), **kwargs: Any) -> List[List[float]]:
+                   solvent_list: Sequence[str] = (), **kwargs: Any) -> List[List[float]]:
     """Loop over all molecules in **mol_list** and perform COSMO-RS calculations."""
     j1, j2 = jobs
     s1, s2 = settings
+
+    water = join(CAT.__path__[0], 'data', 'coskf', 'water.coskf')
+    hydronium = join(CAT.__path__[0], 'data', 'coskf', 'misc', 'hydronium.coskf')
 
     # Start the main loop
     ret = []
@@ -108,10 +129,14 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
         mol.properties.job_path = []
 
         # Calculate the COSMO surface
+        mol_conj = _protonate_mol(mol)
         coskf = get_surface_charge(mol, job=j1, s=s1)
+        coskf_conj = get_surface_charge(mol_conj, job=j1, s=s1)
 
         # Perform the actual COSMO-RS calculation
-        ret.append(get_solv(mol, solvent_list, coskf, job=j2, s=s2))
+        lst = get_solv(mol, solvent_list, coskf, job=j2, s=s2)
+        lst += get_pka(mol, coskf, coskf_conj, water, hydronium, job=j2, s=s2)
+        ret.append(lst)
     return ret
 
 
@@ -150,6 +175,18 @@ def get_solvent_list(solvent_list: Optional[Sequence[str]] = None) -> Sequence[s
         return solvent_list
 
 
+def _protonate_mol(mol: Molecule) -> Molecule:
+    mol_cp = mol.copy()
+
+    i = mol.index(mol.properties.dummies)
+    anchor = mol_cp[i]
+    if anchor.properties.charge != -1:
+        raise NotImplementedError("Non-anionic anchors are not supported")
+
+    anchor.properties.charge = 0
+    return add_Hs(mol_cp, forcefield="uff")
+
+
 def get_surface_charge(mol: Molecule, job: Type[Job], s: Settings) -> Optional[str]:
     """Construct the COSMO surface of the **mol**.
 
@@ -182,12 +219,95 @@ def get_surface_charge(mol: Molecule, job: Type[Job], s: Settings) -> Optional[s
     return get_coskf(results)
 
 
-def _crs_run(job: CRSJob, name: str) -> CRSResults:
+def _crs_run(job: CRSJob, name: str, calc_type: str = 'activity coefficient') -> CRSResults:
     """Call the :meth:`CRSJob.run` on **job**, returning a :class:`CRSResults` instance."""
     _name = _get_name(job.name)
-    logger.info(f'{job.__class__.__name__}: {name} activity coefficient calculation '
+    logger.info(f'{job.__class__.__name__}: {name} {calc_type} calculation '
                 f'({_name}) has started')
     return job.run(jobrunner=JobRunner(parallel=True))
+
+
+def _iter_coskf(
+    acid: str,
+    base: str,
+    solvent: str,
+    solvent_conj: str
+) -> Generator[Tuple[str, str], None, None]:
+    yield "acid", acid
+    yield "base", base
+    yield "solvent", solvent
+    yield "solvent_conj", solvent_conj
+
+
+def get_pka(mol: Molecule, coskf_mol: Optional[str], coskf_mol_conj: Optional[str],
+            water: str, hydronium: str,
+            job: Type[Job], s: Settings) -> List[float]:
+    if coskf_mol is None:
+        return np.nan
+    elif coskf_mol_conj is None:
+        return np.nan
+
+    s = Settings(s)
+    s.input.compound[1]._h = water
+    s.ignore_molecule = True
+
+    s_dict = {}
+    for name, coskf in _iter_coskf(coskf_mol_conj, coskf_mol, water, hydronium):
+        _s = s.copy()
+        _s.name = name
+        _s.input.compound[0]._h = coskf
+        s_dict[name] = _s
+
+    # Run the job
+    mol_name = mol.properties.name
+    job_list = [CRSJob(settings=s, name=name) for name, s in s_dict.items()]
+    results_list = [_crs_run(job, mol_name) for job in job_list]
+
+    # Extract solvation energies and activity coefficients
+    E_solv = {}
+    for name, results in zip(("acid", "base", "solvent", "solvent_conj"), results_list):
+        results.wait()
+        try:
+            E_solv[name] = results.get_energy()
+            logger.info(f'{results.job.__class__.__name__}: {mol_name} pKa '
+                        f'calculation ({results.job.name}) is successful')
+        except Exception:
+            logger.error(f'{results.job.__class__.__name__}: {mol_name} pKa '
+                         f'calculation ({results.job.name}) has failed')
+            E_solv[name] = np.nan
+
+    try:
+        mol.properties.job_path += [join(job.path, job.name + '.in') for job in job_list]
+    except IndexError:  # The 'job_path' key is not available
+        mol.properties.job_path = [join(job.path, job.name + '.in') for job in job_list]
+
+    ret = [E_solv[k] for k in ("acid", "base", "solvent", "solvent_conj")]
+    ret.append(_get_pka(**E_solv))
+    return ret
+
+
+#: The gas constant in kcal/mol
+R: float = Units.convert(constants.R, 'kj/mol', 'kcal/mol') / 1000
+
+
+def _get_pka(acid: float, base: float, solvent: float, solvent_conj: float,
+             T: float = 298.15) -> float:
+    """Calculate the pKa at the temperature **T**.
+
+    See Also
+    --------
+    `Molecular Physics 108, 229 (2010) <https://doi.org/10.1080/00268970903313667>`_
+        F. Eckert, M. Diedenhofen, and A. Klamt, Towards a first principles prediction of
+        pKa : COSMO-RS and the cluster-continuum approach.
+
+    """
+    # See Eq 5.1.5 in
+    # https://www.scm.com/doc/Tutorials/COSMO-RS/pKa_values.html#empirical-pka-calculation-method
+    fit_a = 1
+    fit_b = -1.74  # Correction for the standard state of liquid water, which is 55 mol/L
+
+    delta_G = (base - acid) - (solvent_conj - solvent)
+    return fit_a * delta_G / (R * T * math.log(10)) + fit_b
 
 
 def get_solv(mol: Molecule, solvent_list: Iterable[str],
@@ -238,7 +358,7 @@ def get_solv(mol: Molecule, solvent_list: Iterable[str],
     # Run the job
     mol_name = mol.properties.name
     job_list = [CRSJob(settings=s, name=s.name) for s in s_list]
-    results_list = [_crs_run(job, mol_name) for job in job_list]
+    results_list = [_crs_run(job, mol_name, calc_type="pKa") for job in job_list]
 
     # Extract solvation energies and activity coefficients
     E_solv = []
@@ -256,27 +376,32 @@ def get_solv(mol: Molecule, solvent_list: Iterable[str],
             E_solv.append(np.nan)
             Gamma.append(np.nan)
 
-    logp_s = s_list[0].copy()
-    logp_s.update(get_template('qd.yaml')['COSMO-RS logp'])
-    for v in logp_s.input.compound:
-        v._h = v._h.format(os.environ["ADFRESOURCES"])
-    logp_job = CRSJob(settings=logp_s, name='LogP')
-    results = _crs_run(logp_job, mol_name)
-    try:
-        logp = results.readkf('LOGP', 'logp')[0]
-        logger.info(f'{results.job.__class__.__name__}: {mol_name} LogP '
-                    f'calculation ({results.job.name}) is successful')
-    except Exception:
-        logger.error(f'{results.job.__class__.__name__}: {mol_name} LogP '
-                     f'calculation ({results.job.name}) has failed')
-        logp = np.nan
-
     try:
         mol.properties.job_path += [join(job.path, job.name + '.in') for job in job_list]
     except IndexError:  # The 'job_path' key is not available
         mol.properties.job_path = [join(job.path, job.name + '.in') for job in job_list]
 
+    logp = _get_logp(s_list[0], name=mol_name, logger=logger)
     return E_solv + Gamma + [logp]
+
+
+def _get_logp(s: Settings, name: str, logger: logging.Logger) -> float:
+    logp_s = s.copy()
+    logp_s.update(get_template('qd.yaml')['COSMO-RS logp'])
+    for v in logp_s.input.compound:
+        v._h = v._h.format(os.environ["ADFRESOURCES"])
+
+    logp_job = CRSJob(settings=logp_s, name='LogP')
+    results = _crs_run(logp_job, name)
+    try:
+        logp = results.readkf('LOGP', 'logp')[0]
+        logger.info(f'{results.job.__class__.__name__}: {name} LogP '
+                    f'calculation ({results.job.name}) is successful')
+    except Exception:
+        logger.error(f'{results.job.__class__.__name__}: {name} LogP '
+                     f'calculation ({results.job.name}) has failed')
+        logp = np.nan
+    return logp
 
 
 def get_surface_charge_adf(mol: Molecule, job: Type[Job], s: Settings) -> Settings:

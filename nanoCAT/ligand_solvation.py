@@ -119,8 +119,8 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
     j1, j2 = jobs
     s1, s2 = settings
 
-    water = join(CAT.__path__[0], 'data', 'coskf', 'water.coskf')
-    hydronium = join(CAT.__path__[0], 'data', 'coskf', 'misc', 'hydronium.coskf')
+    water = join(CAT.__path__[0], 'data', 'coskf', 'Water.coskf')
+    hydronium = join(CAT.__path__[0], 'data', 'coskf', 'misc', 'Hydronium.coskf')
 
     # Start the main loop
     ret = []
@@ -268,7 +268,8 @@ def get_pka(mol: Molecule, coskf_mol: Optional[str], coskf_mol_conj: Optional[st
     for name, results in zip(("acid", "base", "solvent", "solvent_conj"), results_list):
         results.wait()
         try:
-            E_solv[name] = results.get_energy()
+            E_solv[name] = _E = results.get_energy()
+            assert _E is not None
             logger.info(f'{results.job.__class__.__name__}: {mol_name} pKa '
                         f'calculation ({results.job.name}) is successful')
         except Exception:

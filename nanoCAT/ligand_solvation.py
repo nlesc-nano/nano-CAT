@@ -243,9 +243,9 @@ def get_pka(mol: Molecule, coskf_mol: Optional[str], coskf_mol_conj: Optional[st
             water: str, hydronium: str,
             job: Type[Job], s: Settings) -> List[float]:
     if coskf_mol is None:
-        return np.nan
+        return 5 * [np.nan]
     elif coskf_mol_conj is None:
-        return np.nan
+        return 5 * [np.nan]
 
     s = Settings(s)
     s.input.compound[1]._h = water

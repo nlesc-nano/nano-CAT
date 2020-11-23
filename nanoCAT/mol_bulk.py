@@ -24,12 +24,13 @@ API
 
 """
 
-from typing import Tuple, Optional, Any
+from typing import Tuple, Optional, Any, List, Union
 
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import cdist
 
+from nanoutils import Literal
 from scm.plams import Molecule
 
 from CAT.settings_dataframe import SettingsDataFrame
@@ -80,10 +81,16 @@ def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
     workflow.to_db(qd_df, index=idx)
 
 
-def start_lig_bulkiness(qd_series: pd.Series, lig_series: pd.Series, core_series: pd.Series,
-                        **kwargs: Any) -> None:
+def start_lig_bulkiness(
+    qd_series: pd.Series,
+    lig_series: pd.Series,
+    core_series: pd.Series,
+    h_lim: Optional[float] = 10,
+    d: Union[None, Literal['auto'], float] = "auto",
+    **kwargs: Any,
+) -> List[float]:
     """Start the main loop for the ligand bulkiness calculation."""
-    V_list = []
+    V_list: List[float] = []
     V_list_append = V_list.append
     for (i, j, k, l) in qd_series.index:
         # Extract the core and ligand
@@ -92,9 +99,11 @@ def start_lig_bulkiness(qd_series: pd.Series, lig_series: pd.Series, core_series
         ligand = lig_series[kl]
 
         # Calculate V_bulk
-        angle, r_ref = get_core_angle(core)
+        angle, r_ref = get_core_angle(core)  # type: float, Optional[float]
+        if d != "auto":
+            r_ref = d
         r, h = get_lig_radius(ligand)
-        V_bulk = get_V(r, h, r_ref, angle)
+        V_bulk = get_V(r, h, r_ref, angle, h_lim=h_lim)
         V_list_append(V_bulk)
     return V_list
 
@@ -175,7 +184,7 @@ def _get_anchor_idx(mol: Molecule) -> int:
 
 
 def get_V(radius_array: np.ndarray, height_array: np.ndarray,
-          d: Optional[float], angle: float, h_lim: float = 10.0) -> float:
+          d: Optional[float], angle: float, h_lim: Optional[float] = 10.0) -> float:
     r"""Calculate the :math:`V_{bulk}`, a ligand- and core-sepcific descriptor of a ligands' bulkiness.
 
     .. math::
@@ -233,8 +242,11 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
     else:
         step1 = 1
 
-    step2 = 1 - (h / h_lim)
-    step2[step2 < 0] = 0
+    if h_lim is not None:
+        step2 = 1 - (h / h_lim)
+        step2[step2 < 0] = 0
+    else:
+        step2 = 1
 
     ret = step1 * step2 * np.exp(r)
     return ret.sum()

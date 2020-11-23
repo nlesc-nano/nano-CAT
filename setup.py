@@ -63,10 +63,10 @@ setup(
         'pandas>=0.24.0',
         'AssertionLib>=2.3',
         'noodles',
-        'plams@git+https://github.com/SCM-NV/PLAMS@a5696ce62c09153a9fa67b2b03a750913e1d0924',
+        'plams@git+https://github.com/SCM-NV/PLAMS@master',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
         'CAT@git+https://github.com/nlesc-nano/CAT@master',
-        'Auto-FOX@git+https://github.com/nlesc-nano/auto-FOX@master'
+        'Auto-FOX@git+https://github.com/nlesc-nano/auto-FOX@master',
     ],
     setup_requires=[
         'pytest-runner'

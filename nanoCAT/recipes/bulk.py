@@ -36,6 +36,7 @@ def bulk_workflow(smiles_list: Iterable[str],
                   anchor: str = 'O(C=O)[H]',
                   anchor_condition: Optional[Callable[[int], bool]] = None,
                   diameter: Optional[float] = 4.5,
+                  height_lim: Optional[float] = 10.0,
                   optimize: bool = True) -> Tuple[List[Molecule], np.ndarray]:
     """Start the CAT ligand bulkiness workflow with an iterable of smiles strings.
 
@@ -71,7 +72,12 @@ def bulk_workflow(smiles_list: Iterable[str],
         of all ligads.
         Set to :data:`None` to ignore the lattice spacing.
         Units should be in Angstrom.
-
+        
+    height_lim : :class:`float`, optional
+        A cutoff above which all atoms are ignored.
+        Set to :data:`None` to ignore the height cutoff.
+        Units should be in Angstrom.
+        
     optimize : :class:`bool`
         Enable or disable the ligand geometry optimization.
 
@@ -86,7 +92,7 @@ def bulk_workflow(smiles_list: Iterable[str],
     mol_list = list(_filter_mol(_mol_list, anchor=anchor, condition=anchor_condition))
 
     opt_and_allign(mol_list, opt=optimize)  # optimize and allign
-    V_bulk = bulkiness(mol_list, diameter=diameter)  # calculate bulkiness
+    V_bulk = bulkiness(mol_list, diameter=diameter, height_lim=height_lim)  # calculate bulkiness
     return mol_list, V_bulk
 
 
@@ -118,7 +124,7 @@ def opt_and_allign(mol_list: Iterable[Molecule], opt: bool = True) -> None:
 
 
 def bulkiness(mol_list: Iterable[Molecule], diameter: Optional[float] = 4.5,
-              height_lim: float = 10.0) -> np.ndarray:
+              height_lim: Optional[float] = 10.0) -> np.ndarray:
     r"""Calculate the ligand bulkiness descriptor :math:`V_{bulk}`.
 
     .. math::

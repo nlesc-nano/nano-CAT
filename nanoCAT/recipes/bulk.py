@@ -72,12 +72,12 @@ def bulk_workflow(smiles_list: Iterable[str],
         of all ligads.
         Set to :data:`None` to ignore the lattice spacing.
         Units should be in Angstrom.
-        
+
     height_lim : :class:`float`, optional
         A cutoff above which all atoms are ignored.
         Set to :data:`None` to ignore the height cutoff.
         Units should be in Angstrom.
-        
+
     optimize : :class:`bool`
         Enable or disable the ligand geometry optimization.
 

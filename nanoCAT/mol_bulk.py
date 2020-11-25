@@ -98,10 +98,18 @@ def start_lig_bulkiness(
         core = core_series[ij]
         ligand = lig_series[kl]
 
-        # Calculate V_bulk
-        angle, r_ref = get_core_angle(core)  # type: float, Optional[float]
-        if d != "auto":
+        if len(core.properties.dummies) <= 1 and d == "auto":
+            raise NotImplementedError(
+                "`optional.qd.bulkiness.d = 'auto'` is not allowed for cores with <= 1 anchor atoms"
+            )
+
+        if d == "auto":
+            angle, r_ref = get_core_angle(core)  # type: Any, Optional[float]
+        else:
+            angle = None
             r_ref = d
+
+        # Calculate V_bulk
         r, h = get_lig_radius(ligand)
         V_bulk = get_V(r, h, r_ref, angle, h_lim=h_lim)
         V_list_append(V_bulk)
@@ -184,7 +192,7 @@ def _get_anchor_idx(mol: Molecule) -> int:
 
 
 def get_V(radius_array: np.ndarray, height_array: np.ndarray,
-          d: Optional[float], angle: float, h_lim: Optional[float] = 10.0) -> float:
+          d: Optional[float], angle: Any, h_lim: Optional[float] = 10.0) -> float:
     r"""Calculate the :math:`V_{bulk}`, a ligand- and core-sepcific descriptor of a ligands' bulkiness.
 
     .. math::

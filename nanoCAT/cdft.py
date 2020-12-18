@@ -29,12 +29,16 @@ _CDFT: str = """specific:
             energy: yes
         basis:
             core: none
+            type: DZP
+        xc:
+            libxc:
+                CAM-B3LYP
+        numericalquality: good
 """
 
 #: A QMFlows-style template for conceptual DFT calculations.
-cdft = Settings()
-cdft.specific.adf = _templates.singlepoint.specific.adf.copy()
-cdft += Settings(yaml.safe_load(_CDFT))
+cdft = Settings(yaml.safe_load(_CDFT))
+cdft.specific.adf += _templates.singlepoint.specific.adf.copy()
 
 
 def init_cdft(ligand_df: SettingsDataFrame) -> None:

@@ -82,7 +82,7 @@ setup(
             'pytest-cov',
             'pytest-mock',
             'pycodestyle',
-            'CAT@git+https://github.com/nlesc-nano/CAT@devel',
+            'CAT@git+https://github.com/nlesc-nano/CAT@master',
         ],
         'doc': ['sphinx', 'sphinx_rtd_theme', 'sphinx-autodoc-typehints']
     }

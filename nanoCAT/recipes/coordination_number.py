@@ -6,7 +6,7 @@ A recipe for calculating atomic coordination numbers.
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.coordination_number
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     coordination_number
 

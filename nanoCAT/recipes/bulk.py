@@ -6,7 +6,7 @@ A short recipe for accessing the ligand-bulkiness workflow.
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.bulk
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     bulk_workflow
 

@@ -6,7 +6,7 @@ A recipe for calculating the rotational and translational entropy.
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.entropy
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     get_entropy
 

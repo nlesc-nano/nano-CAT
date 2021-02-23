@@ -2,7 +2,7 @@
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.multi_lig_job
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     multi_ligand_job
 

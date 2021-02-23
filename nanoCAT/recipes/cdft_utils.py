@@ -2,7 +2,7 @@
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.cdft_utils
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     run_jobs
     get_global_descriptors

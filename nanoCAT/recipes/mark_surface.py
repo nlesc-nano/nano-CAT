@@ -6,7 +6,7 @@ A recipe for identifying surface-atom subsets.
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.mark_surface
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     replace_surface
 

@@ -2,7 +2,7 @@
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.mol_filter
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     get_mol_length
     filter_mol

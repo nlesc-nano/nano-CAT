@@ -6,7 +6,7 @@ A short recipe for calculating and rescaling ligand charges.
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.charges
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     get_lig_charge
 

@@ -6,36 +6,61 @@ A recipe for dissociation specific sets of surface atoms.
 
 Index
 -----
-.. currentmodule:: nanoCAT.recipes.surface_dissociation
+.. currentmodule:: nanoCAT.recipes
 .. autosummary::
     dissociate_surface
+    dissociate_bulk
     row_accumulator
 
 API
 ---
 .. autofunction:: dissociate_surface
+.. autofunction:: dissociate_bulk
 .. autofunction:: row_accumulator
 
 """
 
-from typing import Iterable, Optional, Generator, Any
+from __future__ import annotations
+
+import sys
+from typing import Iterable, Optional, Generator, Any, Sequence, TypeVar, TYPE_CHECKING
 
 import numpy as np
-
 from scm.plams import Molecule, MoleculeError
-
 from CAT.utils import get_nearest_neighbors
-from CAT.mol_utils import to_atnum
+from CAT.mol_utils import to_atnum, to_symbol
+from CAT.distribution import distribute_idx
 from CAT.attachment.distribution_brute import brute_uniform_idx
-
 from nanoCAT.bde.dissociate_xyn import dissociate_ligand
 from nanoCAT.bde.identify_surface import identify_surface_ch
 
-__all__ = ['dissociate_surface', 'row_accumulator']
+if TYPE_CHECKING:
+    import numpy.typing as npt
+    if sys.version_info >= (3, 8):
+        from typing import Literal
+    else:
+        from typing_extensions import Literal
+
+    _IT = TypeVar("_IT", bound=np.integer)
+    _SCT = TypeVar("_SCT", bound=np.generic)
+    _NDArray = np.ndarray[Any, np.dtype[_SCT]]
+    _ModeKind = Literal['uniform', 'random', 'cluster']
+
+__all__ = ['dissociate_surface', 'row_accumulator', 'dissociate_bulk']
+
+
+def _parse_idx(idx: npt.ArrayLike, ndim: int, **kwargs: Any) -> _NDArray[np.int64]:
+    _idx_ar = np.array(idx, ndmin=ndim, **kwargs)
+    if _idx_ar.ndim != ndim:
+        raise ValueError
+    elif _idx_ar.dtype.kind in 'USO':
+        return _idx_ar.astype(np.int64)
+    else:
+        return _idx_ar.astype(np.int64, casting='same_kind')
 
 
 def dissociate_surface(mol: Molecule,
-                       idx: np.ndarray,
+                       idx: npt.ArrayLike,
                        symbol: str = 'Cl',
                        lig_count: int = 1,
                        k: int = 4,
@@ -152,12 +177,12 @@ def dissociate_surface(mol: Molecule,
         :class:`MolDissociater<nanoCAT.bde.dissociate_xyn.MolDissociater>` class.
 
     """
-    idx = np.array(idx, ndmin=2, copy=True)
-    if idx.ndim > 2:
+    idx_ar = _parse_idx(idx, ndim=2, copy=False)
+    if idx_ar.ndim > 2:
         raise ValueError("'idx' expected a 2D array-like object; "
-                         f"observed number of dimensions: {idx.ndim}")
-    idx.sort(axis=1)
-    idx = idx[:, ::-1]
+                         f"observed number of dimensions: {idx_ar.ndim}")
+    idx_ar.sort(axis=1)
+    idx_ar = idx_ar[:, ::-1]
 
     # Identify all atoms in **idx** located on the surface
     idx_surface_superset = _get_surface(
@@ -165,13 +190,15 @@ def dissociate_surface(mol: Molecule,
     )
 
     # Construct an array with the indices of opposing surface-atoms
-    n = lig_count * idx.shape[1]
-    idx_surface = _get_opposite_neighbor(mol, idx, idx_surface_superset, n=n, k=k, **kwargs)
+    n = lig_count * idx_ar.shape[1]
+    idx_surface = _get_opposite_neighbor(
+        np.asarray(mol), idx_ar, idx_surface_superset, n=n, k=k, **kwargs
+    )
 
     # Dissociate and yield new molecules
-    idx += 1
+    idx_ar += 1
     idx_surface += 1
-    for idx_pair, idx_pair_surface in zip(idx, idx_surface):
+    for idx_pair, idx_pair_surface in zip(idx_ar, idx_surface):
         mol_tmp = mol.copy()
         _mark_atoms(mol_tmp, idx_pair_surface)
 
@@ -182,7 +209,7 @@ def dissociate_surface(mol: Molecule,
             yield mol_tmp
 
 
-def row_accumulator(iterable: Iterable[Iterable[Any]]) -> Generator[str, None, None]:
+def row_accumulator(iterable: Iterable[Iterable[object]]) -> Generator[str, None, None]:
     """Return a generator which accumulates elements along the nested elements of **iterable**.
 
     Examples
@@ -220,36 +247,153 @@ def row_accumulator(iterable: Iterable[Iterable[Any]]) -> Generator[str, None, N
             yield ret
 
 
-def _get_opposite_neighbor(mol: Molecule,
-                           idx_center: np.ndarray,
-                           idx_neighbor: np.ndarray,
-                           k: int = 4, n: int = 2,
-                           **kwargs) -> np.ndarray:
-    """Identify the **k** nearest neighbors of **idx_center** and return those furthest removed from each other."""  # noqa
-    # Sanitize arguments
-    xyz = np.asarray(mol)
-    idx_center = np.array(idx_center, ndmin=2, copy=False)
-    idx_neighbor = np.asarray(idx_neighbor)
+def dissociate_bulk(
+    mol: Molecule,
+    symbol_x: str,
+    symbol_y: str,
+    count_x: int = 1,
+    count_y: int = 1,
+    n_pairs: int = 1,
+    k: int = 4,
+    mode: _ModeKind = 'uniform',
+    **kwargs: Any,
+) -> Molecule:
+    r"""A workflow for removing :math:`XY`-based compounds from the bulk of **mol**.
 
+    Examples
+    --------
+    .. code-block:: python
+
+        >>> from scm.plams import Molecule
+        >>> from CAT.recipes import dissociate_bulk
+
+        >>> mol: Molecule = ...
+
+        # Remove two PbBr2 pairs in a system where
+        # each lead atom is surrounded by 6 bromides
+        >>> mol_out = dissociate_bulk(
+        ...     mol, symbol_x="Pb", symbol_y="Br", count_y=2, n_pairs=2, k=6
+        ... )
+
+    Parameters
+    ----------
+    mol : :class:`~scm.plams.mol.molecule.Molecule`
+        The input molecule.
+    symbol_x : :class:`str` or :class:`int`
+        The atomic symbol or number of the central (to-be dissociated) atom(s) :math:`X`.
+    symbol_y : :class:`str` or :class:`int`
+        The atomic symbol or number of the surrounding (to-be dissociated) atom(s) :math:`Y`.
+    count_x : :class:`int`
+        The number of central atoms :math:`X` per individual to-be dissociated cluster.
+    count_y : :class:`int`
+        The number of surrounding atoms :math:`Y` per individual to-be dissociated cluster.
+    n_pairs : :class:`int`
+        The number of to-be removed :math:`XY` fragments.
+    k : :class:`int`
+        The total number of :math:`Y` candidates surrounding each atom :math:`X`.
+        This value should be smaller than or equal to **count_y**.
+    mode : :class:`str`
+        How the subset of to-be removed atoms :math:`X` should be generated.
+        Accepts one of the following values:
+
+        * ``"random"``: A random distribution.
+        * ``"uniform"``: A uniform distribution; the distance between each successive atom and
+          all previous points is maximized.
+        * ``"cluster"``: A clustered distribution; the distance between each successive atom and
+          all previous points is minmized.
+
+    Keyword Arguments
+    -----------------
+    \**kwargs : :data:`~typing.Any`
+        Further keyword arguments for :func:`CAT.distribution.distribute_idx`.
+
+    Returns
+    -------
+    :class:`~scm.plams.mol.molecule.Molecule`
+        The molecule with :math:`n_{\text{pair}} * XY` fragments removed.
+
+    """
+    # Validate the input args
+    if count_x <= 0:
+        raise ValueError("`count_x` expected a an integer larger than 0; "
+                         f"observed value: {count_x!r}")
+    elif count_y <= 0:
+        raise ValueError("`count_y` expected a an integer larger than 0; "
+                         f"observed value: {count_y!r}")
+
+    # Parse `symbol_x` and `symbol_y`
+    atnum_x = to_atnum(symbol_x)
+    atnum_y = to_atnum(symbol_y)
+    idx_x = np.fromiter([i for i, at in enumerate(mol) if at.atnum == atnum_x], dtype=np.intp)
+    idx_y = np.fromiter([i for i, at in enumerate(mol) if at.atnum == atnum_y], dtype=np.intp)
+    if len(idx_x) == 0:
+        raise MoleculeError(f"No atoms {to_symbol(atnum_x)!r} in {mol.get_formula()}")
+    elif len(idx_y) == 0:
+        raise MoleculeError(f"No atoms {to_symbol(atnum_y)!r} in {mol.get_formula()}")
+
+    # Parse `n_pairs`
+    f = (n_pairs * count_x) / len(idx_x)
+    if f > 1:
+        x = n_pairs * count_x
+        raise ValueError(
+            f"Insufficient atoms {to_symbol(atnum_x)!r} in {mol.get_formula()}; "
+            f"atleast {x} required with `n_pairs={n_pairs!r}` and `count_x={count_x!r}"
+        )
+
+    # Identify a subset of atoms `x`
+    if count_x != 1:
+        if "cluster_size" in kwargs:
+            raise TypeError("Specifying both `cluster_size` and `count_x` is not supported")
+        kwargs["cluster_size"] = count_x
+    idx_x_subset = distribute_idx(mol, idx_x, f=f, **kwargs)
+    idx_x_subset.shape = -1, count_x
+
+    # Identify a subset of matching atoms `y`
+    idx_y_subset = _get_opposite_neighbor(
+        np.asarray(mol), idx_x_subset, idx_y, n=count_y, k=k
+    )
+
+    # Concatenate the subsets
+    idx_xy_subset = np.concatenate([idx_x_subset.ravel(), idx_y_subset.ravel()])
+    idx_xy_subset.sort()
+    idx_xy_subset += 1
+
+    # Create and return the new molecule
+    ret = mol.copy()
+    for i in idx_xy_subset[::-1]:
+        ret.delete_atom(ret[i])
+    return ret
+
+
+def _get_opposite_neighbor(mol: _NDArray[np.number],
+                           idx_center: _NDArray[np.integer],
+                           idx_neighbor: _NDArray[_IT],
+                           k: int = 4, n: int = 2,
+                           **kwargs) -> _NDArray[_IT]:
+    """Identify the **k** nearest neighbors of **idx_center** and return those furthest removed from each other."""  # noqa
     # Indices of the **k** nearest neighbors in **neighbor** with respect to **center**
-    xyz1 = xyz[idx_neighbor]
-    xyz2 = xyz[idx_center.ravel()]
+    xyz1 = mol[idx_neighbor]
+    xyz2 = mol[idx_center.ravel()]
     try:
         idx_nn = idx_neighbor[get_nearest_neighbors(xyz2, xyz1, k=k)]
-    except IndexError as ex:
+    except IndexError:
         raise ValueError("'k' should be smaller than the total number of surface atoms "
-                         f"(len(idx_neighbor)); observed value: {k!r}") from ex
+                         f"(len(idx_neighbor)); observed value: {k!r}") from None
     idx_nn.shape = -1, idx_nn.shape[1] * idx_center.shape[1]
 
     # Find the **n** atoms in **idx_nn** furthest removed from each other
-    return brute_uniform_idx(xyz, idx_nn, n=n, **kwargs)
+    return brute_uniform_idx(mol, idx_nn, n=n, **kwargs)
 
 
-def _get_surface(mol: Molecule, symbol: str, displacement_factor: float = 0.5) -> np.ndarray:
+def _get_surface(
+    mol: Molecule,
+    symbol: str,
+    displacement_factor: float = 0.5,
+) -> _NDArray[np.int64]:
     """Return the indices of all atoms, whose atomic symbol is equal to **atom_symbol**, located on the surface."""  # noqa
     # Identify all atom with atomic symbol **atom_symbol**
     atnum = to_atnum(symbol)
-    idx = np.array([i for i, atom in enumerate(mol) if atom.atnum == atnum])
+    idx = np.array([i for i, atom in enumerate(mol) if atom.atnum == atnum], dtype=np.int64)
     xyz = np.asarray(mol)
 
     # Identify all atoms on the surface

@@ -60,37 +60,42 @@ def test_dissociate_surface() -> None:
 class TestDissociateBulk:
     """Tests for :func:`dissociate_bulk`."""
 
-    @pytest.mark.parametrize(
-        "name,kwargs",
-        [
-            (None, {}),
-            ("count_y", {"count_y": 2}),
-            ("count_x", {"count_x": 2}),
-            ("n_pairs", {"n_pairs": 3}),
-            ("mode", {"mode": "cluster"}),
-        ],
-        ids=["None", "count_y", "count_x", "n_pairs", "mode"],
-    )
-    def test_passes(self, name: None | str, kwargs: Mapping[str, Any]) -> None:
-        mol = dissociate_bulk(MOL_PbBr, "Au", "Cl", k=6, **kwargs)
+    @pytest.mark.parametrize("count_x", [1, 2])
+    @pytest.mark.parametrize("count_y", [1, 2])
+    @pytest.mark.parametrize("n_pairs", [1, 2])
+    @pytest.mark.parametrize("k", [None, 6])
+    @pytest.mark.parametrize("r_max", [None, 10])
+    def test_passes(
+        self,
+        count_x: int,
+        count_y: int,
+        n_pairs: int,
+        k: None | int,
+        r_max: None | float,
+    ) -> None:
+        if k is None and r_max is None:
+            return None
 
-        if name is None:
-            filename = "test_dissociate_bulk.xyz"
-        else:
-            filename = f"test_dissociate_bulk_{name}.xyz"
-        ref = Molecule(PATH / filename)
+        mol = dissociate_bulk(
+            MOL_PbBr, "Au", "Cl", k=k, r_max=r_max,
+            count_x=count_x, count_y=count_y, n_pairs=n_pairs,
+        )
+
+        filename = f"test_dissociate_bulk_{count_x}{count_y}{n_pairs}{k}{r_max}.xyz"
+        ref = Molecule(PATH / 'dissociate' / filename)
 
         np.testing.assert_allclose(mol, ref, atol=0.00001)
 
         au_count = len([i for i in mol if i.symbol == "Au"])
         au_count_ref = len([i for i in MOL_PbBr if i.symbol == "Au"])
-        au_count_ref -= kwargs.get("count_x", 1) * kwargs.get("n_pairs", 1)
+        au_count_ref -= count_x * n_pairs
         assertion.eq(au_count, au_count_ref)
 
         cl_count = len([i for i in mol if i.symbol == "Cl"])
         cl_count_ref = len([i for i in MOL_PbBr if i.symbol == "Cl"])
-        cl_count_ref -= kwargs.get("count_y", 1) * kwargs.get("n_pairs", 1)
+        cl_count_ref -= count_y * n_pairs
         assertion.eq(cl_count, cl_count_ref)
+        return None
 
     @pytest.mark.parametrize(
         "kwargs,exc",
@@ -98,11 +103,15 @@ class TestDissociateBulk:
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_x": 0}, ValueError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_x": 999}, ValueError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_y": 0}, ValueError),
+            ({"symbol_x": "Au", "symbol_y": "Cl", "count_y": 999}, ValueError),
             ({"symbol_x": "H", "symbol_y": "Cl"}, MoleculeError),
             ({"symbol_x": "Au", "symbol_y": "H"}, MoleculeError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_x": 2, "cluster_size": 2}, TypeError),
+            ({"symbol_x": "Au", "symbol_y": "Cl", "k": None, "r_max": None}, TypeError),
+            ({"symbol_x": "Au", "symbol_y": "Cl", "count_y": 5, "r_max": 1.0}, ValueError),
         ],
-        ids=["count_x_0", "count_x_999", "count_y", "symbol_x", "symbol_y", "cluster_size"],
+        ids=["count_x_0", "count_x_999", "count_y", "count_y_999",
+             "symbol_x", "symbol_y", "cluster_size", "k/r_max", "r_max"],
     )
     def test_raises(self, kwargs: Mapping[str, Any], exc: Type[Exception]) -> None:
         with pytest.raises(exc):

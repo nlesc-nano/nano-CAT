@@ -23,7 +23,17 @@ API
 from __future__ import annotations
 
 import sys
-from typing import Iterable, Optional, Generator, Any, Sequence, TypeVar, TYPE_CHECKING
+from typing import (
+    Iterable,
+    Optional,
+    Generator,
+    Any,
+    Sequence,
+    TypeVar,
+    cast,
+    Tuple,
+    TYPE_CHECKING,
+)
 
 import numpy as np
 from scm.plams import Molecule, MoleculeError
@@ -41,7 +51,8 @@ if TYPE_CHECKING:
     else:
         from typing_extensions import Literal
 
-    _IT = TypeVar("_IT", bound=np.integer)
+    _IT1 = TypeVar("_IT1", bound=np.integer[Any])
+    _IT2 = TypeVar("_IT2", bound=np.integer[Any])
     _SCT = TypeVar("_SCT", bound=np.generic)
     _NDArray = np.ndarray[Any, np.dtype[_SCT]]
     _ModeKind = Literal['uniform', 'random', 'cluster']
@@ -254,7 +265,8 @@ def dissociate_bulk(
     count_x: int = 1,
     count_y: int = 1,
     n_pairs: int = 1,
-    k: int = 4,
+    k: None | int = 4,
+    r_max: None | float = None,
     mode: _ModeKind = 'uniform',
     **kwargs: Any,
 ) -> Molecule:
@@ -271,8 +283,14 @@ def dissociate_bulk(
 
         # Remove two PbBr2 pairs in a system where
         # each lead atom is surrounded by 6 bromides
-        >>> mol_out = dissociate_bulk(
+        >>> mol_out1 = dissociate_bulk(
         ...     mol, symbol_x="Pb", symbol_y="Br", count_y=2, n_pairs=2, k=6
+        ... )
+
+        # The same as before, expect all potential bromides are
+        # identified based on a radius, rather than a fixed number
+        >>> mol_out2 = dissociate_bulk(
+        ...     mol, symbol_x="Pb", symbol_y="Br", count_y=2, n_pairs=2, r_max=5.0
         ... )
 
     Parameters
@@ -289,9 +307,13 @@ def dissociate_bulk(
         The number of surrounding atoms :math:`Y` per individual to-be dissociated cluster.
     n_pairs : :class:`int`
         The number of to-be removed :math:`XY` fragments.
-    k : :class:`int`
+    k : :class:`int`, optional
         The total number of :math:`Y` candidates surrounding each atom :math:`X`.
         This value should be smaller than or equal to **count_y**.
+        See the **r_max** parameter for a radius-based approach.
+    r_max : :class:`int`, optional
+        The radius used for searching for :math:`Y` candidates surrounding each atom :math:`X`.
+        See **k** parameter to use a fixed number of nearest neighbors.
     mode : :class:`str`
         How the subset of to-be removed atoms :math:`X` should be generated.
         Accepts one of the following values:
@@ -331,13 +353,26 @@ def dissociate_bulk(
     elif len(idx_y) == 0:
         raise MoleculeError(f"No atoms {to_symbol(atnum_y)!r} in {mol.get_formula()}")
 
+    # Parse `k` and `r_max`
+    if k is None and r_max is None:
+        raise TypeError("`k` and `r_max` cannot be both set to None")
+    if k is None:
+        k = cast(int, len(idx_y))
+    if r_max is None:
+        r_max = cast(float, np.inf)
+
     # Parse `n_pairs`
-    f = (n_pairs * count_x) / len(idx_x)
-    if f > 1:
+    if (n_pairs * count_x) > len(idx_x):
         x = n_pairs * count_x
         raise ValueError(
             f"Insufficient atoms {to_symbol(atnum_x)!r} in {mol.get_formula()}; "
             f"atleast {x} required with `n_pairs={n_pairs!r}` and `count_x={count_x!r}"
+        )
+    elif (n_pairs * count_y) > len(idx_y):
+        y = n_pairs * count_y
+        raise ValueError(
+            f"Insufficient atoms {to_symbol(atnum_y)!r} in {mol.get_formula()}; "
+            f"atleast {y} required with `n_pairs={n_pairs!r}` and `count_y={count_y!r}"
         )
 
     # Identify a subset of atoms `x`
@@ -345,12 +380,12 @@ def dissociate_bulk(
         if "cluster_size" in kwargs:
             raise TypeError("Specifying both `cluster_size` and `count_x` is not supported")
         kwargs["cluster_size"] = count_x
-    idx_x_subset = distribute_idx(mol, idx_x, f=f, **kwargs)
-    idx_x_subset.shape = -1, count_x
+    idx_x_sorted = distribute_idx(mol, idx_x, f=1, **kwargs)
+    idx_x_sorted.shape = -1, count_x
 
     # Identify a subset of matching atoms `y`
-    idx_y_subset = _get_opposite_neighbor(
-        np.asarray(mol), idx_x_subset, idx_y, n=count_y, k=k
+    idx_x_subset, idx_y_subset, = _get_opposite_neighbor2(
+        np.asarray(mol), idx_x_sorted, idx_y, n_pairs, n=count_y, k=k, r_max=r_max
     )
 
     # Concatenate the subsets
@@ -365,11 +400,14 @@ def dissociate_bulk(
     return ret
 
 
-def _get_opposite_neighbor(mol: _NDArray[np.number],
-                           idx_center: _NDArray[np.integer],
-                           idx_neighbor: _NDArray[_IT],
-                           k: int = 4, n: int = 2,
-                           **kwargs) -> _NDArray[_IT]:
+def _get_opposite_neighbor(
+    mol: _NDArray[np.number],
+    idx_center: _NDArray[np.integer[Any]],
+    idx_neighbor: _NDArray[_IT1],
+    k: int = 4,
+    n: int = 2,
+    **kwargs: Any,
+) -> _NDArray[_IT1]:
     """Identify the **k** nearest neighbors of **idx_center** and return those furthest removed from each other."""  # noqa
     # Indices of the **k** nearest neighbors in **neighbor** with respect to **center**
     xyz1 = mol[idx_neighbor]
@@ -383,6 +421,41 @@ def _get_opposite_neighbor(mol: _NDArray[np.number],
 
     # Find the **n** atoms in **idx_nn** furthest removed from each other
     return brute_uniform_idx(mol, idx_nn, n=n, **kwargs)
+
+
+def _get_opposite_neighbor2(
+    mol: _NDArray[np.number],
+    idx_center: _NDArray[_IT1],
+    idx_neighbor: _NDArray[_IT2],
+    n_pairs: int,
+    k: int = 4,
+    n: int = 2,
+    r_max: float = np.inf,
+    **kwargs: Any,
+) -> Tuple[_NDArray[_IT1], _NDArray[_IT2]]:
+    """Identify the **k** nearest neighbors of **idx_center** and return those furthest removed from each other."""  # noqa
+    # Indices of the **k** nearest neighbors in **neighbor** with respect to **center**
+    xyz1 = mol[idx_neighbor]
+    xyz2 = mol[idx_center.ravel()]
+
+    idx = get_nearest_neighbors(xyz2, xyz1, k=k, distance_upper_bound=r_max)
+    if len(idx_neighbor) in idx:
+        is_overflow = (idx != len(idx_neighbor)).sum(dtype=np.int64, axis=1) < n
+        if np.count_nonzero(~is_overflow) < n_pairs:
+            raise ValueError("Insufficient number of `XY` pairs with "
+                             f"`k={k!r}` and `r_max={r_max!r}`")
+        i = np.arange(len(idx), dtype=np.intp)[~is_overflow][:n_pairs]
+        j: np.intp = idx[i].argmax(axis=1).min()
+        idx = idx[i][:, :j]
+        idx_center_subset = idx_center[i]
+    else:
+        idx = idx[:n_pairs]
+        idx_center_subset = idx_center[:n_pairs]
+    idx_nn = idx_neighbor[idx]
+
+    # Find the **n** atoms in **idx_nn** furthest removed from each other
+    idx_neighbor_subset = brute_uniform_idx(mol, idx_nn, n=n, **kwargs)
+    return idx_center_subset, idx_neighbor_subset
 
 
 def _get_surface(

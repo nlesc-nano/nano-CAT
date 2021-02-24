@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from itertools import chain
 from pathlib import Path
-from typing import Mapping, Any, Type
+from typing import Mapping, Any, Type, TYPE_CHECKING
 
 import pytest
 import numpy as np
@@ -62,16 +62,16 @@ class TestDissociateBulk:
 
     @pytest.mark.parametrize("count_x", [1, 2])
     @pytest.mark.parametrize("count_y", [1, 2])
-    @pytest.mark.parametrize("n_pairs", [1, 2])
     @pytest.mark.parametrize("k", [None, 6])
     @pytest.mark.parametrize("r_max", [None, 10])
+    @pytest.mark.parametrize("n_pairs", [0, 1, 2])
     def test_passes(
         self,
         count_x: int,
         count_y: int,
-        n_pairs: int,
         k: None | int,
         r_max: None | float,
+        n_pairs: int,
     ) -> None:
         if k is None and r_max is None:
             return None
@@ -102,16 +102,16 @@ class TestDissociateBulk:
         [
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_x": 0}, ValueError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_x": 999}, ValueError),
-            ({"symbol_x": "Au", "symbol_y": "Cl", "count_y": 0}, ValueError),
+            ({"symbol_x": "Au", "symbol_y": "Cl", "count_y": -1}, ValueError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_y": 999}, ValueError),
+            ({"symbol_x": "Au", "symbol_y": "Cl", "n_pairs": -1}, ValueError),
+            ({"symbol_x": "Au", "symbol_y": "Cl", "n_pairs": 999}, ValueError),
             ({"symbol_x": "H", "symbol_y": "Cl"}, MoleculeError),
             ({"symbol_x": "Au", "symbol_y": "H"}, MoleculeError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_x": 2, "cluster_size": 2}, TypeError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "k": None, "r_max": None}, TypeError),
             ({"symbol_x": "Au", "symbol_y": "Cl", "count_y": 5, "r_max": 1.0}, ValueError),
         ],
-        ids=["count_x_0", "count_x_999", "count_y", "count_y_999",
-             "symbol_x", "symbol_y", "cluster_size", "k/r_max", "r_max"],
     )
     def test_raises(self, kwargs: Mapping[str, Any], exc: Type[Exception]) -> None:
         with pytest.raises(exc):

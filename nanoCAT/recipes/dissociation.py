@@ -261,7 +261,7 @@ def row_accumulator(iterable: Iterable[Iterable[object]]) -> Generator[str, None
 def dissociate_bulk(
     mol: Molecule,
     symbol_x: str,
-    symbol_y: str,
+    symbol_y: None | str = None,
     count_x: int = 1,
     count_y: int = 1,
     n_pairs: int = 1,
@@ -293,14 +293,25 @@ def dissociate_bulk(
         ...     mol, symbol_x="Pb", symbol_y="Br", count_y=2, n_pairs=2, r_max=5.0
         ... )
 
+        # Convert a fraction to a number of pairs
+        >>> f = 0.5
+        >>> count_x = 2
+        >>> symbol_x = "Pb"
+        >>> n_pairs = int(f * sum(at.symbol == symbol_x for at in mol) / count_x)
+
+        >>> mol_out3 = dissociate_bulk(
+        ...     mol, symbol_x="Pb", symbol_y="Br", count_y=2, n_pairs=n_pairs, k=6
+        ... )
+
     Parameters
     ----------
     mol : :class:`~scm.plams.mol.molecule.Molecule`
         The input molecule.
     symbol_x : :class:`str` or :class:`int`
         The atomic symbol or number of the central (to-be dissociated) atom(s) :math:`X`.
-    symbol_y : :class:`str` or :class:`int`
+    symbol_y : :class:`str` or :class:`int`, optional
         The atomic symbol or number of the surrounding (to-be dissociated) atom(s) :math:`Y`.
+        If :data:`None`, do not dissociate any atoms :math:`Y`.
     count_x : :class:`int`
         The number of central atoms :math:`X` per individual to-be dissociated cluster.
     count_y : :class:`int`
@@ -310,10 +321,12 @@ def dissociate_bulk(
     k : :class:`int`, optional
         The total number of :math:`Y` candidates surrounding each atom :math:`X`.
         This value should be smaller than or equal to **count_y**.
-        See the **r_max** parameter for a radius-based approach.
+        See the **r_max** parameter for a radius-based approach;
+        note that both parameters are not mutually exclusive.
     r_max : :class:`int`, optional
         The radius used for searching for :math:`Y` candidates surrounding each atom :math:`X`.
-        See **k** parameter to use a fixed number of nearest neighbors.
+        See **k** parameter to use a fixed number of nearest neighbors;
+        note that both parameters are not mutually exclusive.
     mode : :class:`str`
         How the subset of to-be removed atoms :math:`X` should be generated.
         Accepts one of the following values:
@@ -335,23 +348,34 @@ def dissociate_bulk(
         The molecule with :math:`n_{\text{pair}} * XY` fragments removed.
 
     """
+    if n_pairs < 0:
+        raise ValueError("`n_pairs` must be larger than or equal to 0; "
+                         f"observed value: {n_pairs!r}")
+    elif n_pairs == 0:
+        return mol.copy()
+
     # Validate the input args
     if count_x <= 0:
         raise ValueError("`count_x` expected a an integer larger than 0; "
                          f"observed value: {count_x!r}")
-    elif count_y <= 0:
+    elif count_y < 0:
         raise ValueError("`count_y` expected a an integer larger than 0; "
                          f"observed value: {count_y!r}")
+    elif count_y == 0:
+        symbol_y = None
 
-    # Parse `symbol_x` and `symbol_y`
+    # Parse `symbol_x`
     atnum_x = to_atnum(symbol_x)
-    atnum_y = to_atnum(symbol_y)
     idx_x = np.fromiter([i for i, at in enumerate(mol) if at.atnum == atnum_x], dtype=np.intp)
-    idx_y = np.fromiter([i for i, at in enumerate(mol) if at.atnum == atnum_y], dtype=np.intp)
     if len(idx_x) == 0:
         raise MoleculeError(f"No atoms {to_symbol(atnum_x)!r} in {mol.get_formula()}")
-    elif len(idx_y) == 0:
-        raise MoleculeError(f"No atoms {to_symbol(atnum_y)!r} in {mol.get_formula()}")
+
+    # Parse `symbol_y`
+    if symbol_y is not None:
+        atnum_y = to_atnum(symbol_y)
+        idx_y = np.fromiter([i for i, at in enumerate(mol) if at.atnum == atnum_y], dtype=np.intp)
+        if len(idx_y) == 0:
+            raise MoleculeError(f"No atoms {to_symbol(atnum_y)!r} in {mol.get_formula()}")
 
     # Parse `k` and `r_max`
     if k is None and r_max is None:
@@ -361,14 +385,14 @@ def dissociate_bulk(
     if r_max is None:
         r_max = cast(float, np.inf)
 
-    # Parse `n_pairs`
+    # Validate `n_pairs`
     if (n_pairs * count_x) > len(idx_x):
         x = n_pairs * count_x
         raise ValueError(
             f"Insufficient atoms {to_symbol(atnum_x)!r} in {mol.get_formula()}; "
             f"atleast {x} required with `n_pairs={n_pairs!r}` and `count_x={count_x!r}"
         )
-    elif (n_pairs * count_y) > len(idx_y):
+    elif symbol_y is not None and (n_pairs * count_y) > len(idx_y):
         y = n_pairs * count_y
         raise ValueError(
             f"Insufficient atoms {to_symbol(atnum_y)!r} in {mol.get_formula()}; "
@@ -383,20 +407,24 @@ def dissociate_bulk(
     idx_x_sorted = distribute_idx(mol, idx_x, f=1, **kwargs)
     idx_x_sorted.shape = -1, count_x
 
-    # Identify a subset of matching atoms `y`
-    idx_x_subset, idx_y_subset, = _get_opposite_neighbor2(
-        np.asarray(mol), idx_x_sorted, idx_y, n_pairs, n=count_y, k=k, r_max=r_max
-    )
+    if symbol_y is not None:
+        # Identify a subset of matching atoms `y`
+        idx_x_subset, idx_y_subset, = _get_opposite_neighbor2(
+            np.asarray(mol), idx_x_sorted, idx_y, n_pairs, n=count_y, k=k, r_max=r_max
+        )
 
-    # Concatenate the subsets
-    idx_xy_subset = np.concatenate([idx_x_subset.ravel(), idx_y_subset.ravel()])
+        # Concatenate the subsets
+        idx_xy_subset = np.concatenate([idx_x_subset.ravel(), idx_y_subset.ravel()])
+    else:
+        idx_xy_subset = idx_x[:(n_pairs * count_x)]
     idx_xy_subset.sort()
     idx_xy_subset += 1
 
     # Create and return the new molecule
     ret = mol.copy()
-    for i in idx_xy_subset[::-1]:
-        ret.delete_atom(ret[i])
+    atom_set = {ret[i] for i in idx_xy_subset}
+    for at in atom_set:
+        ret.delete_atom(at)
     return ret
 
 
@@ -444,10 +472,10 @@ def _get_opposite_neighbor2(
         if np.count_nonzero(~is_overflow) < n_pairs:
             raise ValueError("Insufficient number of `XY` pairs with "
                              f"`k={k!r}` and `r_max={r_max!r}`")
-        i = np.arange(len(idx), dtype=np.intp)[~is_overflow][:n_pairs]
-        j: np.intp = idx[i].argmax(axis=1).min()
-        idx = idx[i][:, :j]
-        idx_center_subset = idx_center[i]
+        i_ar = np.arange(len(idx), dtype=np.intp)[~is_overflow][:n_pairs]
+        i: np.intp = idx[i_ar].argmax(axis=1).min()
+        idx = idx[i_ar][:, :i]
+        idx_center_subset = idx_center[i_ar]
     else:
         idx = idx[:n_pairs]
         idx_center_subset = idx_center[:n_pairs]

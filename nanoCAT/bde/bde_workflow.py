@@ -100,7 +100,7 @@ def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List
 
 def start_bde(mol_list: Iterable[Molecule],
               jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
-              forcefield=None, lig_count=None, ion=None, **kwargs) -> List[np.ndarray]:
+              forcefield=None, lig_count=None, core_atom=None, **kwargs) -> List[np.ndarray]:
     """Calculate the BDEs with thermochemical corrections."""
     job1, job2 = jobs
     s1, s2 = settings
@@ -110,7 +110,7 @@ def start_bde(mol_list: Iterable[Molecule],
     for qd_complete in mol_list:
         # Dissociate a XYn molecule from the quantum dot surface
         qd_complete.round_coords()
-        XYn: Molecule = get_xyn(qd_complete, lig_count, ion)
+        XYn: Molecule = get_xyn(qd_complete, lig_count, core_atom)
 
         # Create all possible quantum dots where XYn is dissociated
         qd_list: List[Molecule] = list(dissociate_ligand(qd_complete, lig_count, **kwargs))

@@ -9,37 +9,36 @@ Index
 .. currentmodule:: nanoCAT.bde.construct_xyn
 .. autosummary::
     get_xyn
-    get_perpendicular_vecs
-    _parse_ion
-    _get_anchor
-    _get_ligand
+    get_perpendicular_vec
 
 API
 ---
 .. autofunction:: get_xyn
-.. autofunction:: get_perpendicular_vecs
-.. autofunction:: _parse_ion
-.. autofunction:: _get_anchor
-.. autofunction:: _get_ligand
+.. autofunction:: get_perpendicular_vec
 
 """
 
+from __future__ import annotations
+
 from itertools import chain
-from typing import Tuple, Union
+from typing import Tuple
 
 import numpy as np
-
 from scm.plams import MoleculeError, Molecule, Atom, AMSJob, axis_rotation_matrix
 
 from CAT.jobs import job_geometry_opt
 from CAT.utils import get_template
 from CAT.mol_utils import to_atnum
 
-__all__ = ['get_xyn']
+__all__ = ['get_xyn', 'get_perpendicular_vec']
 
 
-def get_xyn(mol_ref: Molecule, lig_count: int = 2,
-            ion: Union[None, Molecule, str, int] = 'Cd', opt: bool = True) -> Molecule:
+def get_xyn(
+    mol_ref: Molecule,
+    lig_count: int = 2,
+    ion: None | Molecule | str | int = 'Cd',
+    opt: bool = True,
+) -> Molecule:
     """Combine an ion (:math:`X`) and a quantum dot with :math:`n` ligands (:math:`Y`).
 
     The ligands are attached to **ion** such that the resulting :math:`XY_{n}` molecule addopts
@@ -141,8 +140,13 @@ def get_xyn(mol_ref: Molecule, lig_count: int = 2,
     return XYn
 
 
-def _construct_xyn(ion: Union[str, int, Molecule], lig_count: int,
-                   lig: Molecule, lig_at: Atom, lig_idx: int) -> Tuple[Molecule, Atom]:
+def _construct_xyn(
+    ion: str | int | Molecule,
+    lig_count: int,
+    lig: Molecule,
+    lig_at: Atom,
+    lig_idx: int,
+) -> Tuple[Molecule, Atom]:
     """Construct the :math:`XYn` molecule for :func:`get_xyn`.
 
     Parameters
@@ -205,7 +209,7 @@ def _construct_xyn(ion: Union[str, int, Molecule], lig_count: int,
     return XYn, X
 
 
-def _preoptimize(mol: Molecule):
+def _preoptimize(mol: Molecule) -> None:
     """Perform a constrained geometry optimization of **mol** with AMS UFF."""
     s = get_template('qd.yaml')['UFF']
     s.input.ams.constraints.atom = mol.properties.indices
@@ -213,7 +217,7 @@ def _preoptimize(mol: Molecule):
     mol.job_geometry_opt(AMSJob, s, name='E_XYn_preopt')
 
 
-def _parse_ion(ion: Union[Molecule, str, int]):
+def _parse_ion(ion: Molecule | str | int) -> Tuple[Molecule, Atom]:
     """Interpret and parse the **ion** argument in :func:`.get_xyn`.
 
     Construct and return a new :math:`XY_{n=0}` molecule and the atom :math:`X` itself.

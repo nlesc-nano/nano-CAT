@@ -113,7 +113,9 @@ def start_bde(mol_list: Iterable[Molecule],
         XYn: Molecule = get_xyn(qd_complete, lig_count, core_atom)
 
         # Create all possible quantum dots where XYn is dissociated
-        qd_list: List[Molecule] = list(dissociate_ligand(qd_complete, lig_count, **kwargs))
+        qd_list: List[Molecule] = list(dissociate_ligand(
+            qd_complete, lig_count, core_atom=core_atom, **kwargs
+        ))
 
         # Construct labels describing the topology of all XYn-dissociated quantum dots
         labels = [qd.properties.df_index for qd in qd_list]

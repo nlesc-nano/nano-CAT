@@ -29,7 +29,6 @@ API
 
 import os
 import io
-import sys
 import stat
 from typing import Generator, Any, List, Tuple, Hashable, Optional
 from os.path import join, isfile

@@ -183,7 +183,7 @@ def coordination_number(mol: Molecule, shell: str = 'inner',
 
     elif shell == 'outer':
         if d_outer is None:
-            raise TypeError(f"user defined threshold radius required "
+            raise TypeError("user defined threshold radius required "
                             "for the outer coordination shell")
         coord = coordination_outer(dist, d_outer, length)
 

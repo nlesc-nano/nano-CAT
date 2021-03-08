@@ -36,7 +36,7 @@ import numpy as np
 from scm.plams import AMSJob, Molecule, Settings, Cp2kJob
 from scm.plams.core.basejob import Job
 
-from CAT.jobs import job_single_point, job_geometry_opt, job_freq
+from CAT.jobs import job_single_point, job_geometry_opt, job_freq  # noqa: F401
 from CAT.logger import logger
 from CAT.settings_dataframe import SettingsDataFrame
 from CAT.workflows import WorkFlow, MOL, JOB_SETTINGS_BDE

@@ -56,11 +56,10 @@ if CAT.version_info < (0, 9, 10):
     raise RuntimeError("Nano-CAT requires CAT 0.9.10 or later;"
                        f"observed version: {CAT.__version__}")
 
-from CAT.jobs import job_single_point, _get_name
+from CAT.jobs import job_single_point, _get_name  # noqa: F401
 from CAT.utils import get_template
 from CAT.logger import logger
 from CAT.workflows import WorkFlow, MOL, JOB_SETTINGS_CRS
-from CAT.mol_utils import round_coords
 from CAT.settings_dataframe import SettingsDataFrame
 
 __all__ = ['init_solv']

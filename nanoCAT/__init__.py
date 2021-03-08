@@ -6,7 +6,6 @@ A collection of tools for the analysis of nanocrystals.
 
 """
 
-from scm.plams import Settings as _Settings
 from nanoutils import VersionInfo
 
 from .__version__ import __version__

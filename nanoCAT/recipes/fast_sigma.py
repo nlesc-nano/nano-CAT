@@ -368,6 +368,7 @@ def run_fast_sigma(  # noqa: E302
         The number of worker processes to use.
         If :data:`None`, use the number returned by :func:`os.cpu_count()`.
     return_df : :class:`bool`
+        If :data:`True`, return a dataframe with the content of ``cosmo-rs.csv``.
 
     """
     # Parse the `chunk_size`

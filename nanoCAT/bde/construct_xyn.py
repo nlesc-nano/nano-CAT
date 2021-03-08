@@ -26,7 +26,7 @@ from typing import Tuple
 import numpy as np
 from scm.plams import MoleculeError, Molecule, Atom, AMSJob, axis_rotation_matrix
 
-from CAT.jobs import job_geometry_opt
+from CAT.jobs import job_geometry_opt  # noqa: F401
 from CAT.utils import get_template
 from CAT.mol_utils import to_atnum
 

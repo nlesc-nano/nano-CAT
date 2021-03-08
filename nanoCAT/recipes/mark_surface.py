@@ -17,7 +17,6 @@ API
 """
 
 from typing import Any, Union, Iterable
-from itertools import chain
 from collections import abc
 
 import numpy as np

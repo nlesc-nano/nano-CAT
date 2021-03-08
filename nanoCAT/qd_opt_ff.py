@@ -29,7 +29,7 @@ import warnings
 from functools import wraps
 from collections import abc
 from typing import (
-    Collection, Iterable, Union, Dict, Tuple, List, Optional, Type, Callable, Sequence
+    Collection, Iterable, Union, Dict, Tuple, List, Optional, Type, Callable
 )
 
 import numpy as np
@@ -229,8 +229,8 @@ def finalize_lj(mol: Molecule, s: List[Settings]) -> None:
 
             s.append(Settings({
                 'atoms': f'{at1} {at2}',
-                'epsilon':  f'[kcalmol] {round(combine_epsilon(symbol1, symbol2), 4)}',
-                'sigma':  f'[angstrom] {round(combine_sigma(symbol1, symbol2), 4)}'
+                'epsilon': f'[kcalmol] {round(combine_epsilon(symbol1, symbol2), 4)}',
+                'sigma': f'[angstrom] {round(combine_sigma(symbol1, symbol2), 4)}'
             }))
 
 

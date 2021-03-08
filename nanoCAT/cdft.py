@@ -9,7 +9,7 @@ from qmflows.packages.SCM import ADF_Result
 from scm.plams import Molecule, Settings, ADFJob, ADFResults, Units, Results
 from scm.plams.core.basejob import Job
 from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL
-from CAT.jobs import job_single_point
+from CAT.jobs import job_single_point  # noqa: F401
 from CAT.settings_dataframe import SettingsDataFrame
 
 __all__ = ['init_cdft', 'get_global_descriptors', 'cdft']

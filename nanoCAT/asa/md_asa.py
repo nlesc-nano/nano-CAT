@@ -29,7 +29,7 @@ from scm.plams.core.basejob import Job
 
 from FOX import MultiMolecule, PSFContainer, PRMContainer, get_intra_non_bonded, get_bonded
 
-from CAT.jobs import job_md
+from CAT.jobs import job_md  # noqa: F401
 from CAT.logger import logger
 
 from .asa_frag import get_asa_fragments

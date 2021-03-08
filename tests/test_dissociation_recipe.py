@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from itertools import chain
 from pathlib import Path
-from typing import Mapping, Any, Type, TYPE_CHECKING
+from typing import Mapping, Any, Type
 
 import pytest
 import numpy as np

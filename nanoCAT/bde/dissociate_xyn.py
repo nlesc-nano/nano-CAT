@@ -457,7 +457,7 @@ class MolDissociater(AbstractDataClass):
 
         """
         if n_pairs <= 0:
-            raise ValueError(f"The 'n_pairs' parameter should be larger than 0")
+            raise ValueError("The 'n_pairs' parameter should be larger than 0")
 
         # Extract instance variables
         xyz: np.ndarray = self._coords
@@ -511,7 +511,7 @@ class MolDissociater(AbstractDataClass):
 
         """
         if max_dist <= 0.0:
-            raise ValueError(f"The 'max_dist' parameter should be larger than 0.0")
+            raise ValueError("The 'max_dist' parameter should be larger than 0.0")
 
         # Extract instance variables
         xyz: np.ndarray = self._coords

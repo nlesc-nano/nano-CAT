@@ -48,6 +48,11 @@ jobs:
             - name: Info installed packages
               run: conda list
 
+            - name: Check code style
+              run: flake8 nanoCAT tests
+              env:
+                CONDA_PREFIX: /usr/share/miniconda
+
             - name: Run tests
               run: pytest -m "not slow"
               env:

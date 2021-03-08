@@ -16,6 +16,7 @@ Examples
     >>> from nanoCAT.recipes import get_mol_length, filter_mol, filter_data
     >>> from nanoCAT.recipes import run_jobs, get_global_descriptors, cdft
     >>> from nanoCAT.recipes import get_entropy
+    >>> from nanoCAT.recipes import run_fast_sigma, get_compkf
     ...
 
 """
@@ -29,6 +30,7 @@ from .multi_lig_job import multi_ligand_job
 from .mol_filter import get_mol_length, filter_mol, filter_data
 from .cdft_utils import run_jobs, get_global_descriptors, cdft
 from .entropy import get_entropy
+from .fast_sigma import run_fast_sigma, get_compkf
 
 __all__ = [
     'bulk_workflow', 'replace_surface', 'dissociate_surface', 'dissociate_bulk',
@@ -36,5 +38,6 @@ __all__ = [
     'multi_ligand_job',
     'get_mol_length', 'filter_mol', 'filter_data',
     'run_jobs', 'get_global_descriptors', 'cdft',
-    'get_entropy'
+    'get_entropy',
+    'run_fast_sigma', 'get_compkf',
 ]

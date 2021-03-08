@@ -49,7 +49,7 @@ jobs:
               run: conda list
 
             - name: Run tests
-              run: pytest
+              run: pytest -m "not slow"
               env:
                 CONDA_PREFIX: /usr/share/miniconda
 

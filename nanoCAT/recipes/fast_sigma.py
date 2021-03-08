@@ -131,7 +131,7 @@ def _get_properties(
     smiles_hash = hashlib.sha256(smiles.encode()).hexdigest()
     solute = get_compkf(smiles, directory, name=smiles_hash)
     if solute is None:
-        return (1 + 3 * len(solvents)) * [np.nan]
+        return (3 + 2 * len(solvents)) * [np.nan]
 
     ret = _get_boiling_point(solute, smiles_hash)
     ret += _get_logp(solute, smiles_hash)

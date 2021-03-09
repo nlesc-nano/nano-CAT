@@ -130,7 +130,7 @@ def _get_properties(
     smiles_name = santize_smiles(smiles)
     solute = get_compkf(smiles, directory, name=smiles_name)
     if solute is None:
-        return (3 + 2 * len(solvents)) * [np.nan]
+        return (2 + 3 * len(solvents)) * [np.nan]
 
     ret = _get_boiling_point(solute, smiles_name)
     ret += _get_logp(solute, smiles_name)

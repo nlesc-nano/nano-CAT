@@ -135,8 +135,8 @@ def _get_properties(
 
     ret = _get_boiling_point(solute, smiles_hash)
     ret += _get_logp(solute, smiles_hash)
-    for func in [_get_gamma_e, _get_solubility]:
-        for name, solv in solvents.items():
+    for name, solv in solvents.items():
+        for func in [_get_gamma_e, _get_solubility]:
             ret += func(solute, smiles_hash, solv, name)
     return ret
 
@@ -339,12 +339,12 @@ def run_fast_sigma(  # noqa: E302
 
         >>> csv_file = os.path.join(output_dir, "cosmo-rs.csv")
         >>> pd.read_csv(csv_file, header=[0, 1], index_col=0)
-        property Activity Coefficient              ... Solvation Energy
-        solvent               octanol       water  ...          octanol      water
-        smiles                                     ...
-        CO[H]               -2.977354    4.954782  ...              inf  -3.274420
-        CCO[H]              -4.184214   12.735228  ...              inf  -3.883986
-        CCCO[H]             -4.907177   47.502557  ...         3.680445  -3.779867
+        property Activity Coefficient             ... Solvation Energy
+        solvent               octanol      water  ...          octanol     water
+        smiles                                    ...
+        CO[H]                1.045891   4.954782  ...        -2.977354 -3.274420
+        CCO[H]               0.980956  12.735228  ...        -4.184214 -3.883986
+        CCCO[H]              0.905952  47.502557  ...        -4.907177 -3.779867
 
         [3 rows x 8 columns]
 

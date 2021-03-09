@@ -161,7 +161,7 @@ def _get_logp(solute: str, solute_name: str) -> list[float]:
 
     return _run_crs(
         s, solute_name,
-        logp=lambda r: r.readkf('LOGP', 'logp')[0],
+        logp=lambda r: r.readkf('LOGP', 'logp')[2],
     )
 
 

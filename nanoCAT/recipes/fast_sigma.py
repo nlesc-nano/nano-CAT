@@ -233,16 +233,18 @@ def _inner_loop(
     output_dir: Path,
     ams_dir: None | str,
     solvents: Mapping[str, str],
-) -> None:
+) -> pd.DataFrame:
     """Perform the inner loop of :func:`run_fast_sigma`."""
     i, index = args
     if not len(index):
-        return None
+        df = pd.DataFrame(index=index, columns=columns)
+        df.sort_index(axis=1, inplace=True)
+        return df
 
     # Skip if a .csv file already exists
     df_filename = output_dir / f"{i}.temp.csv"
     if os.path.isfile(df_filename):
-        return None
+        return pd.read_csv(df_filename, header=[0, 1], index_col=0)
 
     # Parse the ams directory
     if ams_dir is None:

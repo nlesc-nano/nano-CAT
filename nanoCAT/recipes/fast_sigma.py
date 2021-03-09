@@ -426,7 +426,7 @@ def run_fast_sigma(  # noqa: E302
 
 def _concatenate_csv(output_dir: Path) -> None:
     """Concatenate all ``{i}.tmp.csv`` files into ``cosmo-rs.csv``."""
-    pattern = re.compile("[0-9]+.temp.csv")
+    pattern = re.compile(r"[0-9]+\.temp\.csv")
     csv_files = [output_dir / i for i in os.listdir(output_dir) if pattern.fullmatch(i) is not None]
     csv_files.sort(key=lambda n: int(n.name.split(".", 1)[0]))
     if not len(csv_files):

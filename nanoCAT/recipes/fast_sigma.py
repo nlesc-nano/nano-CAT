@@ -27,7 +27,6 @@ import operator
 import subprocess
 import tempfile
 import warnings
-import hashlib
 import contextlib
 import functools
 import multiprocessing
@@ -42,6 +41,7 @@ from more_itertools import chunked
 from qmflows import InitRestart
 from scm.plams import CRSJob, CRSResults, Settings
 from CAT.utils import get_template
+from CAT.data_handling.validate_mol import santize_smiles
 
 if TYPE_CHECKING:
     if sys.version_info >= (3, 8):
@@ -98,8 +98,7 @@ def get_compkf(
     Returns
     -------
     :class:`str`, optional
-        The absolute path to the created ``.compkf`` file,
-        its filename based on the smiles' :class:`~hashlib.sha256` hash.
+        The absolute path to the created ``.compkf`` file.
         :data:`None` will be returned if an error is raised by AMS.
 
     """  # noqa: E501
@@ -128,16 +127,16 @@ def _get_properties(
     directory: str | os.PathLike[str],
     solvents: Mapping[str, str],
 ) -> list[float]:
-    smiles_hash = hashlib.sha256(smiles.encode()).hexdigest()
-    solute = get_compkf(smiles, directory, name=smiles_hash)
+    smiles_name = santize_smiles(smiles)
+    solute = get_compkf(smiles, directory, name=smiles_name)
     if solute is None:
         return (3 + 2 * len(solvents)) * [np.nan]
 
-    ret = _get_boiling_point(solute, smiles_hash)
-    ret += _get_logp(solute, smiles_hash)
+    ret = _get_boiling_point(solute, smiles_name)
+    ret += _get_logp(solute, smiles_name)
     for name, solv in solvents.items():
         for func in [_get_gamma_e, _get_solubility]:
-            ret += func(solute, smiles_hash, solv, name)
+            ret += func(solute, smiles_name, solv, name)
     return ret
 
 

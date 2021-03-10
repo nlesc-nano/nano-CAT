@@ -18,6 +18,10 @@ SOLVENTS = {
     "water": "$AMSRESOURCES/ADFCRS/Water.coskf",
     "octanol": "$AMSRESOURCES/ADFCRS/1-Octanol.coskf",
 }
+SOLVENTS2 = {
+    "water": PATH / "Water.coskf",
+    "octanol": PATH / "1-Octanol.coskf",
+}
 
 
 class TestFastSigma:
@@ -63,6 +67,7 @@ class TestFastSigma:
             ({}, {}, ValueError),
             (SOLVENTS, {"output_dir": 1.0}, TypeError),
             (SOLVENTS, {"ams_dir": 1.0}, TypeError),
+            (SOLVENTS2, {}, FileNotFoundError),
         ],
     )
     def test_raises(

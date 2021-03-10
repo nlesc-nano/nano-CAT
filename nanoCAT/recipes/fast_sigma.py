@@ -222,9 +222,13 @@ def _run_crs(
     return ret
 
 
-def _abspath(path: str | bytes | os.PathLike[Any]) -> str:
+def _abspath(path: str | bytes | os.PathLike[Any], isfile: bool = False) -> str:
     """Path sanitizing."""
-    return os.path.abspath(os.path.expandvars(os.fsdecode(path)))
+    ret = os.path.abspath(os.path.expandvars(os.fsdecode(path)))
+    if isfile and not os.path.isfile(ret):
+        open(ret, "r")  # This will raise
+        raise
+    return ret
 
 
 def _inner_loop(
@@ -384,11 +388,6 @@ def run_fast_sigma(  # noqa: E302
         if processes < 1:
             raise ValueError(f"`processes` must be larger than zero; observed value {processes}")
 
-    # Parse the `solvents`
-    if len(solvents) == 0:
-        raise ValueError("`solvents` requires at least one solvent")
-    solvents = cast("dict[str, str]", {k: _abspath(v) for k, v in solvents.items()})
-
     # Parse `output_dir`
     output_dir = Path(_abspath(output_dir))
     if not os.path.isdir(output_dir):
@@ -397,6 +396,11 @@ def run_fast_sigma(  # noqa: E302
     # Parse `ams_dir`
     if ams_dir is not None:
         ams_dir = _abspath(ams_dir)
+
+    # Parse the `solvents`
+    if len(solvents) == 0:
+        raise ValueError("`solvents` requires at least one solvent")
+    solvents = cast("dict[str, str]", {k: _abspath(v, True) for k, v in solvents.items()})
 
     # Construct the dataframe columns
     prop_names = ["Activity Coefficient", "Solvation Energy", "Solubility"]

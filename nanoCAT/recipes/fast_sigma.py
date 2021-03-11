@@ -24,6 +24,7 @@ import re
 import os
 import sys
 import copy
+import hashlib
 import operator
 import subprocess
 import tempfile
@@ -42,7 +43,6 @@ from more_itertools import chunked
 from qmflows import InitRestart
 from scm.plams import CRSJob, CRSResults, Settings
 from CAT.utils import get_template
-from CAT.data_handling.validate_mol import santize_smiles
 
 if TYPE_CHECKING:
     if sys.version_info >= (3, 8):
@@ -128,7 +128,7 @@ def _get_properties(
     directory: str | os.PathLike[str],
     solvents: Mapping[str, str],
 ) -> list[float]:
-    smiles_name = santize_smiles(smiles)
+    smiles_name = hashlib.sha256(smiles.encode()).hexdigest()
     solute = get_compkf(smiles, directory, name=smiles_name)
     if solute is None:
         return (2 + 3 * len(solvents)) * [np.nan]

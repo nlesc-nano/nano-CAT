@@ -34,8 +34,8 @@ import functools
 import multiprocessing
 from typing import Any, ContextManager, cast, overload, TYPE_CHECKING
 from pathlib import Path
-from itertools import chain
-from collections.abc import Iterable, Mapping, Callable
+from itertools import chain, repeat
+from collections.abc import Iterable, Mapping, Callable, Iterator
 
 import numpy as np
 import pandas as pd
@@ -430,6 +430,16 @@ def run_fast_sigma(  # noqa: E302
     return ret
 
 
+def _read_empty_dataframe(file: str | bytes | os.PathLike[Any]) -> pd.DataFrame:
+    """Read a .csv file that is full of ``nan``s."""
+    df = pd.read_csv(file, header=[0, 1])
+    df.set_index(("property", "solvent"), inplace=True)
+    df.drop("smiles", inplace=True)
+    df.index.name = "smiles"
+    df.columns.names = ("property", "solvent")
+    return df
+
+
 def _concatenate_csv(output_dir: Path) -> None:
     """Concatenate all ``{i}.tmp.csv`` files into ``cosmo-rs.csv``."""
     pattern = re.compile(r"[0-9]+\.temp\.csv")
@@ -438,19 +448,20 @@ def _concatenate_csv(output_dir: Path) -> None:
     if not len(csv_files):
         raise FileNotFoundError(f"Failed to identify any files with the {pattern.pattern!r} "
                                 f"pattern in {str(output_dir)!r}")
-    iterator = iter(csv_files)
 
     # Construct the final .csv file
     output_csv = output_dir / "cosmo-rs.csv"
     if not os.path.isfile(output_csv):
-        file = next(iterator)
-        df = pd.read_csv(file, header=[0, 1], index_col=0)
-        df.to_csv(output_csv)
-        os.remove(file)
+        header_iter: Iterator[bool] = chain([True], repeat(False))
+    else:
+        header_iter = repeat(False)
 
     # Append its content using that of all other .csv files
     with open(output_csv, "a") as f:
-        for file in iterator:
-            df = pd.read_csv(file, header=[0, 1], index_col=0)
-            df.to_csv(f, header=False)
+        for file, header in zip(csv_files, header_iter):
+            try:
+                df = pd.read_csv(file, header=[0, 1], index_col=0)
+            except pd.errors.EmptyDataError:
+                df = _read_empty_dataframe(file)
+            df.to_csv(f, header=header)
             os.remove(file)

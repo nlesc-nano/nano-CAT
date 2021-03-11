@@ -13,7 +13,7 @@ from nanoCAT.recipes import run_fast_sigma, get_compkf
 
 PATH = Path("tests") / "test_files"
 
-SMILES = ("CO[H]", "CCO[H]", "CCCO[H]")
+SMILES = ("CCCO[H]", "CCO[H]", "CO[H]")
 SOLVENTS = {
     "water": "$AMSRESOURCES/ADFCRS/Water.coskf",
     "octanol": "$AMSRESOURCES/ADFCRS/1-Octanol.coskf",
@@ -39,20 +39,17 @@ class TestFastSigma:
         tmp_path = PATH / "crs"
         try:
             ref = pd.read_csv(PATH / "cosmo-rs.csv", header=[0, 1], index_col=0)
-            ref.sort_index(axis=0, inplace=True)
             ref.to_csv(PATH / "cosmo-rs.csv")
 
             os.mkdir(tmp_path)
             out = run_fast_sigma(SMILES, SOLVENTS, output_dir=tmp_path, **kwargs)
             if out is not None:
-                out.sort_index(axis=0, inplace=True)
                 np.testing.assert_allclose(out, ref)
 
             csv_file = tmp_path / "cosmo-rs.csv"
             assertion.isfile(csv_file)
 
             df = pd.read_csv(csv_file, header=[0, 1], index_col=0)
-            df.sort_index(axis=0, inplace=True)
             np.testing.assert_allclose(df, ref)
         finally:
             shutil.rmtree(tmp_path)

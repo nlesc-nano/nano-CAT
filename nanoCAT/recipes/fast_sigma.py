@@ -237,7 +237,7 @@ def _inner_loop(
     output_dir: Path,
     ams_dir: None | str,
     solvents: Mapping[str, str],
-) -> pd.DataFrame:
+) -> tuple[int, pd.DataFrame]:
     """Perform the inner loop of :func:`run_fast_sigma`."""
     i, index = args
     if not len(index):
@@ -270,7 +270,7 @@ def _inner_loop(
     df = pd.DataFrame(data, index=index, columns=columns)
     df.sort_index(axis=1, inplace=True)
     df.to_csv(df_filename)
-    return df
+    return i, df
 
 
 @overload
@@ -423,7 +423,9 @@ def run_fast_sigma(  # noqa: E302
             for _ in pool.imap_unordered(func, enumerator):
                 pass
         else:
-            ret = pd.concat([df for df in pool.imap_unordered(func, enumerator)])
+            df_idx_list = [i_df for i_df in pool.imap_unordered(func, enumerator)]
+            df_idx_list.sort(key=lambda i_df: i_df[0])
+            ret = pd.concat(df for _, df in df_idx_list)
     _concatenate_csv(output_dir)
     return ret
 

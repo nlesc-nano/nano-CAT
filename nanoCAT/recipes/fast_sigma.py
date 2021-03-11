@@ -428,6 +428,16 @@ def run_fast_sigma(  # noqa: E302
     return ret
 
 
+def _read_empty_dataframe(file: str | bytes | os.PathLike[Any]) -> pd.DataFrame:
+    """Read a .csv file that is full of ``nan``s."""
+    df = pd.read_csv(file, header=[0, 1])
+    df.set_index(("property", "solvent"), inplace=True)
+    df.drop("smiles", inplace=True)
+    df.index.name = "smiles"
+    df.columns.names = ("property", "solvent")
+    return df
+
+
 def _concatenate_csv(output_dir: Path) -> None:
     """Concatenate all ``{i}.tmp.csv`` files into ``cosmo-rs.csv``."""
     pattern = re.compile(r"[0-9]+\.temp\.csv")
@@ -442,13 +452,19 @@ def _concatenate_csv(output_dir: Path) -> None:
     output_csv = output_dir / "cosmo-rs.csv"
     if not os.path.isfile(output_csv):
         file = next(iterator)
-        df = pd.read_csv(file, header=[0, 1], index_col=0)
+        try:
+            df = pd.read_csv(file, header=[0, 1], index_col=0)
+        except pd.errors.EmptyDataError:
+            df = _read_empty_dataframe(file)
         df.to_csv(output_csv)
         os.remove(file)
 
     # Append its content using that of all other .csv files
     with open(output_csv, "a") as f:
         for file in iterator:
-            df = pd.read_csv(file, header=[0, 1], index_col=0)
+            try:
+                df = pd.read_csv(file, header=[0, 1], index_col=0)
+            except pd.errors.EmptyDataError:
+                df = _read_empty_dataframe(file)
             df.to_csv(f, header=False)
             os.remove(file)

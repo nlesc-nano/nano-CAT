@@ -65,6 +65,7 @@ class TestFastSigma:
             (SOLVENTS, {"output_dir": 1.0}, TypeError),
             (SOLVENTS, {"ams_dir": 1.0}, TypeError),
             (SOLVENTS2, {}, FileNotFoundError),
+            (SOLVENTS, {"log_options": {"bob": None}}, KeyError),
         ],
     )
     def test_raises(

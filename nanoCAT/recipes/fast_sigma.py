@@ -24,6 +24,7 @@ import re
 import os
 import sys
 import copy
+import types
 import hashlib
 import operator
 import subprocess
@@ -46,9 +47,24 @@ from CAT.utils import get_template
 
 if TYPE_CHECKING:
     if sys.version_info >= (3, 8):
-        from typing import Literal
+        from typing import Literal, TypedDict
     else:
-        from typing_extensions import Literal
+        from typing_extensions import Literal, TypedDict
+
+    class _LogOptions(TypedDict, total=False):
+        """Verbosity of log messages: 0:none  1:minimal  3:normal  5:verbose  7:extremely talkative."""  # noqa: E501
+
+        #: Verbosity of the log printed to .log file in the main working folder
+        file: Literal[0, 1, 3, 5, 7]
+
+        #: Verbosity of the log printed to the standard output
+        stdout: Literal[0, 1, 3, 5, 7]
+
+        #: Print time for each log event
+        time: bool
+
+        #: Print date for each log event
+        date: bool
 
 __all__ = ["get_compkf", "run_fast_sigma"]
 
@@ -74,6 +90,14 @@ BP_SETTINGS.input.temperature = "298.15"
 BP_SETTINGS.input.pressure = "1.01325 1.01325 1"
 BP_SETTINGS.input.compound[0].frac1 = 1.0
 del BP_SETTINGS.input.compound[1]
+
+# The default PLAMS `config.log` options
+LOG_DEFAULT: _LogOptions = types.MappingProxyType({    # type: ignore[assignment]
+    "file": 5,
+    "stdout": 3,
+    "time": True,
+    "date": False,
+})
 
 
 def get_compkf(
@@ -237,6 +261,7 @@ def _inner_loop(
     output_dir: Path,
     ams_dir: None | str,
     solvents: Mapping[str, str],
+    log: _LogOptions = LOG_DEFAULT,
 ) -> tuple[int, pd.DataFrame]:
     """Perform the inner loop of :func:`run_fast_sigma`."""
     i, index = args
@@ -258,6 +283,9 @@ def _inner_loop(
 
     # Calculate properties for the given chunk
     with ams_dir_cm as workdir, InitRestart(*os.path.split(workdir)):
+        from scm.plams import config
+        config.log.update(LOG_DEFAULT)
+
         iterator = chain.from_iterable(
             _get_properties(smiles, workdir, solvents) for smiles in index
         )
@@ -283,6 +311,7 @@ def run_fast_sigma(
     chunk_size: int = ...,
     processes: None | int = ...,
     return_df: Literal[False] = ...,
+    log_options: _LogOptions = ...,
 ) -> None:
     ...
 @overload  # noqa: E302
@@ -295,6 +324,7 @@ def run_fast_sigma(
     chunk_size: int = ...,
     processes: None | int = ...,
     return_df: Literal[True],
+    log_options: _LogOptions = ...,
 ) -> pd.DataFrame:
     ...
 def run_fast_sigma(  # noqa: E302
@@ -306,6 +336,7 @@ def run_fast_sigma(  # noqa: E302
     chunk_size: int = 1000,
     processes: None | int = None,
     return_df: bool = False,
+    log_options: _LogOptions = LOG_DEFAULT,
 ) -> None | pd.DataFrame:
     """Perform (fast-sigma) COSMO-RS property calculations on the passed SMILES and solvents.
 
@@ -375,8 +406,17 @@ def run_fast_sigma(  # noqa: E302
         If :data:`None`, use the number returned by :func:`os.cpu_count()`.
     return_df : :class:`bool`
         If :data:`True`, return a dataframe with the content of ``cosmo-rs.csv``.
+    log_options : :class:`Mapping[str, Any] <collections.abc.Mapping>`
+        Alternative settings for :data:`plams.config.log`.
+        See the `PLAMS documentation <https://www.scm.com/doc/plams/components/functions.html#logging>`_ for more details.
 
-    """
+    """  # noqa: E501
+    # Validation `log_options`
+    illegal_keys = log_options.keys() - {"file", "stdout", "time", "date"}
+    if illegal_keys:
+        key_str = ", ".join(repr(i) for i in sorted(illegal_keys))
+        raise KeyError(f"Invalid `log_options` keys: {key_str}")
+
     # Parse the `chunk_size`
     chunk_size = operator.index(chunk_size)
     if chunk_size < 1:
@@ -417,6 +457,7 @@ def run_fast_sigma(  # noqa: E302
         func = functools.partial(
             _inner_loop,
             columns=columns, output_dir=output_dir, solvents=solvents, ams_dir=ams_dir,
+            log=LOG_DEFAULT,
         )
         if not return_df:
             ret = None

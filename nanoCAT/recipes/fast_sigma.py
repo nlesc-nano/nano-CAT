@@ -287,6 +287,7 @@ def _inner_loop(
     with ams_dir_cm as workdir, InitRestart(*os.path.split(workdir)):
         from scm.plams import config
         config.log.update(LOG_DEFAULT)
+        config.job.pickle = False
 
         iterator = chain.from_iterable(
             _get_properties(smiles, workdir, solvents) for smiles in index

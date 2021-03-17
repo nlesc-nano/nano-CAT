@@ -69,12 +69,14 @@ if TYPE_CHECKING:
 __all__ = ["get_compkf", "run_fast_sigma"]
 
 LOGP_SETTINGS = get_template('qd.yaml')['COSMO-RS logp']
+LOGP_SETTINGS.runscript.nproc = 1
 LOGP_SETTINGS.update(get_template('crs.yaml')['ADF combi2005'])
 LOGP_SETTINGS.input.compound.append(
     Settings({"_h": None, "_1": "compkffile"})
 )
 
 GAMMA_E_SETTINGS = get_template('qd.yaml')['COSMO-RS activity coefficient']
+GAMMA_E_SETTINGS.runscript.nproc = 1
 GAMMA_E_SETTINGS.update(get_template('crs.yaml')['ADF combi2005'])
 GAMMA_E_SETTINGS.input.compound[0]._1 = "compkffile"
 

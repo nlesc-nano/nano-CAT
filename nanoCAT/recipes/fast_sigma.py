@@ -460,7 +460,7 @@ def run_fast_sigma(  # noqa: E302
         func = functools.partial(
             _inner_loop,
             columns=columns, output_dir=output_dir, solvents=solvents, ams_dir=ams_dir,
-            log=LOG_DEFAULT,
+            log=log_options,
         )
         if not return_df:
             ret = None

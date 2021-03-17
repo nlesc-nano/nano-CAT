@@ -69,12 +69,14 @@ if TYPE_CHECKING:
 __all__ = ["get_compkf", "run_fast_sigma"]
 
 LOGP_SETTINGS = get_template('qd.yaml')['COSMO-RS logp']
+LOGP_SETTINGS.runscript.nproc = 1
 LOGP_SETTINGS.update(get_template('crs.yaml')['ADF combi2005'])
 LOGP_SETTINGS.input.compound.append(
     Settings({"_h": None, "_1": "compkffile"})
 )
 
 GAMMA_E_SETTINGS = get_template('qd.yaml')['COSMO-RS activity coefficient']
+GAMMA_E_SETTINGS.runscript.nproc = 1
 GAMMA_E_SETTINGS.update(get_template('crs.yaml')['ADF combi2005'])
 GAMMA_E_SETTINGS.input.compound[0]._1 = "compkffile"
 
@@ -285,6 +287,7 @@ def _inner_loop(
     with ams_dir_cm as workdir, InitRestart(*os.path.split(workdir)):
         from scm.plams import config
         config.log.update(LOG_DEFAULT)
+        config.job.pickle = False
 
         iterator = chain.from_iterable(
             _get_properties(smiles, workdir, solvents) for smiles in index
@@ -458,7 +461,7 @@ def run_fast_sigma(  # noqa: E302
         func = functools.partial(
             _inner_loop,
             columns=columns, output_dir=output_dir, solvents=solvents, ams_dir=ams_dir,
-            log=LOG_DEFAULT,
+            log=log_options,
         )
         if not return_df:
             ret = None

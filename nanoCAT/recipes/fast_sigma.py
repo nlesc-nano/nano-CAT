@@ -412,6 +412,7 @@ def run_fast_sigma(  # noqa: E302
 
     """  # noqa: E501
     # Validation `log_options`
+    log_options = dict(log_options)  # type: ignore[assignment]
     illegal_keys = log_options.keys() - {"file", "stdout", "time", "date"}
     if illegal_keys:
         key_str = ", ".join(repr(i) for i in sorted(illegal_keys))

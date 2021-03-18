@@ -286,7 +286,7 @@ def _inner_loop(
     # Calculate properties for the given chunk
     with ams_dir_cm as workdir, InitRestart(*os.path.split(workdir)):
         from scm.plams import config
-        config.log.update(LOG_DEFAULT)
+        config.log.update(log)
         config.job.pickle = False
 
         iterator = chain.from_iterable(

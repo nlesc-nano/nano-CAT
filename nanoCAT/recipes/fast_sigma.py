@@ -33,16 +33,16 @@ import warnings
 import contextlib
 import functools
 import multiprocessing
-from typing import Any, ContextManager, cast, overload, TYPE_CHECKING
+from typing import Any, ContextManager, cast, overload, TYPE_CHECKING, TypeVar
 from pathlib import Path
 from itertools import chain, repeat
-from collections.abc import Iterable, Mapping, Callable, Iterator
+from collections.abc import Iterable, Mapping, Callable, Iterator, Sequence
 
 import numpy as np
 import pandas as pd
 from more_itertools import chunked
 from qmflows import InitRestart
-from scm.plams import CRSJob, CRSResults, Settings
+from scm.plams import CRSJob, CRSResults, Settings, KFFile
 from CAT.utils import get_template
 
 if TYPE_CHECKING:
@@ -50,6 +50,9 @@ if TYPE_CHECKING:
         from typing import Literal, TypedDict
     else:
         from typing_extensions import Literal, TypedDict
+
+    _SCT = TypeVar("_SCT", bound=np.generic)
+    _NDArray = np.ndarray[Any, np.dtype[_SCT]]
 
     class _LogOptions(TypedDict, total=False):
         """Verbosity of log messages: 0:none  1:minimal  3:normal  5:verbose  7:extremely talkative."""  # noqa: E501
@@ -71,27 +74,24 @@ __all__ = ["get_compkf", "run_fast_sigma"]
 LOGP_SETTINGS = get_template('qd.yaml')['COSMO-RS logp']
 LOGP_SETTINGS.runscript.nproc = 1
 LOGP_SETTINGS.update(get_template('crs.yaml')['ADF combi2005'])
-LOGP_SETTINGS.input.compound.append(
-    Settings({"_h": None, "_1": "compkffile"})
-)
 
 GAMMA_E_SETTINGS = get_template('qd.yaml')['COSMO-RS activity coefficient']
 GAMMA_E_SETTINGS.runscript.nproc = 1
 GAMMA_E_SETTINGS.update(get_template('crs.yaml')['ADF combi2005'])
-GAMMA_E_SETTINGS.input.compound[0]._1 = "compkffile"
+del GAMMA_E_SETTINGS.input.compound[0]
 
 SOL_SETTINGS = copy.deepcopy(GAMMA_E_SETTINGS)
 SOL_SETTINGS.input.property._h = "puresolubility"
 SOL_SETTINGS.input.temperature = "298.15 298.15 1"
 SOL_SETTINGS.input.pressure = "1.01325"
+SOL_SETTINGS.input.compound = [Settings({"_h": None, "_1": "compkffile"})]
 
 BP_SETTINGS = copy.deepcopy(GAMMA_E_SETTINGS)
 BP_SETTINGS.input.property._h = "pureboilingpoint"
 BP_SETTINGS.input.property._1 = "Pure"
 BP_SETTINGS.input.temperature = "298.15"
 BP_SETTINGS.input.pressure = "1.01325 1.01325 1"
-BP_SETTINGS.input.compound[0].frac1 = 1.0
-del BP_SETTINGS.input.compound[1]
+del BP_SETTINGS.input.compound
 
 # The default PLAMS `config.log` options
 LOG_DEFAULT: _LogOptions = types.MappingProxyType({    # type: ignore[assignment]
@@ -149,103 +149,181 @@ def get_compkf(
     return abs_file
 
 
-def _get_properties(
-    smiles: str,
+def _get_compkf(
+    smiles_iter: Iterable[str],
     directory: str | os.PathLike[str],
-    solvents: Mapping[str, str],
-) -> list[float]:
-    smiles_name = hashlib.sha256(smiles.encode()).hexdigest()
-    solute = get_compkf(smiles, directory, name=smiles_name)
-    if solute is None:
-        return (2 + 3 * len(solvents)) * [np.nan]
+) -> _NDArray[np.object_]:
+    ret = []
+    for smiles in smiles_iter:
+        name = hashlib.sha256(smiles.encode()).hexdigest()
+        ret.append(get_compkf(smiles, directory, name=name))
+    return np.array(ret, dtype=np.object_)
 
-    ret = _get_boiling_point(solute, smiles_name)
-    ret += _get_logp(solute, smiles_name)
+
+def _set_properties(
+    df: pd.DataFrame,
+    solutes: _NDArray[np.object_],
+    solvents: Mapping[str, str],
+) -> None:
+    df[[
+        ("Boiling Point", None),
+        ("Vapor Pressure", None),
+        ("Enthalpy of Vaporization", None),
+    ]] = _get_boiling_point(solutes)
+
+    df["LogP", None] = _get_logp(solutes)
+
     for name, solv in solvents.items():
-        for func in [_get_gamma_e, _get_solubility]:
-            ret += func(solute, smiles_name, solv, name)
+        df[[
+            ("Activity Coefficient", name),
+            ("Solvation Energy", name),
+        ]] = _get_gamma_e(solutes, solv, name)
+
+    iterator = zip(
+        _get_compkf_prop(solutes),
+        [("Volume", None),
+         ("Area", None),
+         ("Formula", None),
+         ("Molar Mass", None),
+         ("Nring", None)]
+    )
+    for v, k in iterator:
+        df[k] = v
+
+
+def _get_compkf_prop(
+    solutes: _NDArray[np.object_]
+) -> tuple[
+    _NDArray[np.float64],
+    _NDArray[np.float64],
+    _NDArray[np.str_],
+    _NDArray[np.float64],
+    _NDArray[np.int64],
+]:
+    """Extract all (potentially) interesting properties from the compkf file."""
+    volume = np.full_like(solutes, np.nan, dtype=np.float64)
+    area = np.full_like(solutes, np.nan, dtype=np.float64)
+    formula = np.full_like(solutes, "", dtype="U160")
+    mass = np.full_like(solutes, np.nan, dtype=np.float64)
+    nring = np.full_like(solutes, 0, dtype=np.int64)
+    if (solutes == None).all():
+        return volume, area, formula, mass, nring
+
+    prop_iter = [
+        (volume, "COSMO", "Volume"),
+        (area, "COSMO", "Area"),
+        (formula, "Compound Data", "Formula"),
+        (mass, "Compound Data", "Molar Mass"),
+        (nring, "Compound Data", "Nring"),
+    ]
+
+    iterator = ((i, KFFile(f)) for i, f in enumerate(solutes) if f is not None)
+    for i, kf in iterator:
+        for array, section, variable in prop_iter:
+            try:
+                array[i] = kf.read(section, variable)
+            except Exception as ex:
+                smiles = kf.read("Compound Data", "SMILES")
+                warn = RuntimeWarning(f"Failed to extract the {variable!r} property of {smiles!r}")
+                warn.__cause__ = ex
+                warnings.warn(warn)
+    return volume, area, formula, mass, nring
+
+
+def _get_boiling_point(solutes: _NDArray[np.object_]) -> _NDArray[np.float64]:
+    """Perform a boiling point calculation."""
+    ret = np.full((len(solutes), 3), np.nan, dtype=np.float64)
+    mask = solutes != None
+    count = np.count_nonzero(mask)
+    if count == 0:
+        return ret
+
+    s = copy.deepcopy(BP_SETTINGS)
+    s.input.compound = [
+        Settings({"_h": f'"{sol}"', "frac1": 1.0, "_1": "compkffile"}) for sol in solutes[mask]
+    ]
+
+    ret[mask] = _run_crs(
+        s, count,
+        boiling_point=lambda r: r.readkf('PUREBOILINGPOINT', 'temperature'),
+        vapor_pressure=lambda r: r.readkf('PUREBOILINGPOINT', 'vapor pressure'),
+        enthalpy=lambda r: r.readkf('PUREBOILINGPOINT', 'Enthalpy of vaporization'),
+    )
     return ret
 
 
-def _get_boiling_point(solute: str, solute_name: str) -> list[float]:
-    """Perform a boiling point calculation."""
-    s = copy.deepcopy(BP_SETTINGS)
-    s.input.compound[0]._h = f'"{solute}"'
-
-    return _run_crs(
-        s, solute_name,
-        boiling_point=lambda r: r.readkf('PUREBOILINGPOINT', 'temperature'),
-    )
-
-
-def _get_logp(solute: str, solute_name: str) -> list[float]:
+def _get_logp(solutes: _NDArray[np.object_]) -> _NDArray[np.float64]:
     """Perform a LogP calculation."""
+    ret = np.full_like(solutes, np.nan, dtype=np.float64)
+    mask = solutes != None
+    count = np.count_nonzero(mask)
+    if count == 0:
+        return ret
+
     s = copy.deepcopy(LOGP_SETTINGS)
     for v in s.input.compound[:2]:
         v._h = v._h.format(os.environ["AMSRESOURCES"])
-    s.input.compound[2]._h = f'"{solute}"'
+    s.input.compound += [Settings({"_h": f'"{sol}"', "_1": "compkffile"}) for sol in solutes[mask]]
 
-    return _run_crs(
-        s, solute_name,
-        logp=lambda r: r.readkf('LOGP', 'logp')[2],
+    ret[mask] = _run_crs(
+        s, count,
+        logp=lambda r: r.readkf('LOGP', 'logp')[2:],
     )
+    return ret
 
 
-def _get_gamma_e(solute: str, solute_name: str, solvent: str, solvent_name: str) -> list[float]:
+def _get_gamma_e(
+    solutes: _NDArray[np.object_],
+    solvent: str,
+    solvent_name: str,
+) -> _NDArray[np.float64]:
     """Perform an activity coefficient and solvation energy calculation."""
+    ret = np.full((len(solutes), 2), np.nan, dtype=np.float64)
+    mask = solutes != None
+    count = np.count_nonzero(mask)
+    if count == 0:
+        return ret
+
     s = copy.deepcopy(GAMMA_E_SETTINGS)
-    s.input.compound[0]._h = f'"{solute}"'
-    s.input.compound[1]._h = f'"{solvent}"'
+    s.input.compound[0]._h = f'"{solvent}"'
+    s.input.compound += [Settings({"_h": f'"{sol}"', "_1": "compkffile"}) for sol in solutes[mask]]
 
-    return _run_crs(
-        s, solute_name, solvent_name,
-        activity_coefficient=lambda r: r.get_activity_coefficient(),
-        solvation_energy=lambda r: r.get_energy(),
+    ret[mask] = _run_crs(
+        s, count, solvent_name,
+        activity_coefficient=lambda r: r.readkf('ACTIVITYCOEF', 'gamma')[1:],
+        solvation_energy=lambda r: r.readkf('ACTIVITYCOEF', 'deltag')[1:],
     )
-
-
-def _get_solubility(solute: str, solute_name: str, solvent: str, solvent_name: str) -> list[float]:
-    """Perform a solubility calculation."""
-    s = copy.deepcopy(SOL_SETTINGS)
-    s.input.compound[0]._h = f'"{solute}"'
-    s.input.compound[1]._h = f'"{solvent}"'
-
-    return _run_crs(
-        s, solute_name,
-        solubility=lambda r: r.readkf('PURESOLUBILITY', 'solubility mol_per_L_solvent')[1],
-    )
+    return ret
 
 
 def _run_crs(
     settings: Settings,
-    solute: str,
+    count: int,
     solvent: None | str = None,
-    **callbacks: Callable[[CRSResults], float],
-) -> list[float]:
+    **callbacks: Callable[[CRSResults], float | Sequence[float]],
+) -> _NDArray[np.float64]:
     """Perform all COSMO-RS calculations."""
-    name = f'{solute}' if solvent is None else f'{solute}_{solvent}'
-    job = CRSJob(name=name, settings=settings)
+    job = CRSJob(settings=settings)
 
     results = job.run()
+    ret = np.full((len(callbacks), count), np.nan, dtype=np.float64)
     if job.status in ('failed', 'crashed'):
-        return len(callbacks) * [np.nan]
+        return ret.T if ret.shape[0] != 1 else np.squeeze(ret, 0)
 
-    ret = []
-    for prop, callback in callbacks.items():
+    for i, (prop, callback) in enumerate(callbacks.items()):
         try:
             value = callback(results)
         except Exception as ex:
-            msg = f"Failed to extract the {prop!r} property of {solute!r}"
+            msg = f"Failed to extract the {prop!r} property"
             if solvent is not None:
-                msg += f"in {solvent!r}"
+                msg += f" in {solvent!r}"
 
             warn = RuntimeWarning(msg)
             warn.__cause__ = ex
             warnings.warn(warn)
-            ret.append(np.nan)
         else:
-            ret.append(value)
-    return ret
+            ret[i] = value
+    return ret.T if ret.shape[0] != 1 else np.squeeze(ret, 0)
 
 
 def _abspath(path: str | bytes | os.PathLike[Any], isfile: bool = False) -> str:
@@ -284,21 +362,15 @@ def _inner_loop(
         ams_dir_cm = contextlib.nullcontext(ams_dir)
 
     # Calculate properties for the given chunk
+    df = pd.DataFrame(index=index, columns=columns)
     with ams_dir_cm as workdir, InitRestart(*os.path.split(workdir)):
         from scm.plams import config
         config.log.update(log)
         config.job.pickle = False
 
-        iterator = chain.from_iterable(
-            _get_properties(smiles, workdir, solvents) for smiles in index
-        )
+        compkf_array = _get_compkf(index, workdir)
+        _set_properties(df, compkf_array, solvents)
 
-        count = len(index) * len(columns)
-        shape = len(index), len(columns)
-        data = np.fromiter(iterator, dtype=np.float64, count=count)
-        data.shape = shape
-
-    df = pd.DataFrame(data, index=index, columns=columns)
     df.sort_index(axis=1, inplace=True)
     df.to_csv(df_filename)
     return i, df
@@ -336,7 +408,7 @@ def run_fast_sigma(  # noqa: E302
     *,
     output_dir: str | bytes | os.PathLike[Any] = "crs",
     ams_dir: None | str | bytes | os.PathLike[Any] = None,
-    chunk_size: int = 1000,
+    chunk_size: int = 100,
     processes: None | int = None,
     return_df: bool = False,
     log_options: _LogOptions = LOG_DEFAULT,
@@ -345,13 +417,19 @@ def run_fast_sigma(  # noqa: E302
 
     The output is exported to the ``cosmo-rs.csv`` file.
 
-    Includes the following 5 properties:
+    Includes the following properties:
 
     * Boiling Point
     * LogP
     * Activety Coefficient
     * Solvation Energy
-    * Solubility
+    * Vapor Pressure
+    * Enthalpy of Vaporization
+    * Volume
+    * Area
+    * Formula
+    * Molar Mass
+    * Nring
 
     Jobs are performed in parallel, with chunks of a given size being
     distributed to a user-specified number of processes and subsequently cashed.
@@ -447,8 +525,18 @@ def run_fast_sigma(  # noqa: E302
     solvents = cast("dict[str, str]", {k: _abspath(v, True) for k, v in solvents.items()})
 
     # Construct the dataframe columns
-    prop_names = ["Activity Coefficient", "Solvation Energy", "Solubility"]
-    _columns: list[tuple[str, None | str]] = [("Boiling Point", None), ("LogP", None)]
+    prop_names = ["Activity Coefficient", "Solvation Energy"]
+    _columns: list[tuple[str, None | str]] = [
+        ("Boiling Point", None),
+        ("Vapor Pressure", None),
+        ("Enthalpy of Vaporization", None),
+        ("LogP", None),
+        ("Volume", None),
+        ("Area", None),
+        ("Formula", None),
+        ("Molar Mass", None),
+        ("Nring", None),
+    ]
     for solv in solvents:
         _columns += [(prop, solv) for prop in prop_names]
     columns = pd.MultiIndex.from_tuples(_columns, names=["property", "solvent"])
@@ -508,5 +596,10 @@ def _concatenate_csv(output_dir: Path) -> None:
                 df = pd.read_csv(file, header=[0, 1], index_col=0)
             except pd.errors.EmptyDataError:
                 df = _read_empty_dataframe(file)
+            if header:
+                df.columns = pd.MultiIndex.from_tuples(
+                    [(i, (j if j != "nan" else None)) for i, j in df.columns],
+                    names=df.columns.names,
+                )
             df.to_csv(f, header=header)
             os.remove(file)

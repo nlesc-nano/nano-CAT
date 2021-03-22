@@ -23,6 +23,24 @@ SOLVENTS2 = {
     "octanol": PATH / "1-Octanol.coskf",
 }
 
+REF = pd.read_csv(PATH / "cosmo-rs.csv", header=[0, 1], index_col=0)
+REF.columns = pd.MultiIndex.from_tuples(
+    [(i, (j if j != "nan" else None)) for i, j in REF.columns],
+    names=REF.columns.names,
+)
+
+
+def compare_df(df1: pd.DataFrame, df2: pd.DataFrame) -> None:
+    np.testing.assert_array_equal(df1.columns, df2.columns, err_msg="columns")
+    np.testing.assert_array_equal(df1.index, df2.index, err_msg="index")
+
+    iterator = ((k, df1[k], df2[k]) for k in df1.keys())
+    for k, v1, v2 in iterator:
+        if issubclass(v2.dtype.type, np.inexact):
+            np.testing.assert_allclose(v1, v2, err_msg=k)
+        else:
+            np.testing.assert_array_equal(v1, v2, err_msg=k)
+
 
 class TestFastSigma:
     """Tests for :func:`nanoCAT.recipes.run_fast_sigma`."""
@@ -38,19 +56,21 @@ class TestFastSigma:
         # becomes too long for COSMO-RS
         tmp_path = PATH / "crs"
         try:
-            ref = pd.read_csv(PATH / "cosmo-rs.csv", header=[0, 1], index_col=0)
-            ref.to_csv(PATH / "cosmo-rs.csv")
-
             os.mkdir(tmp_path)
+
             out = run_fast_sigma(SMILES, SOLVENTS, output_dir=tmp_path, **kwargs)
             if out is not None:
-                np.testing.assert_allclose(out, ref)
+                compare_df(out, REF)
 
             csv_file = tmp_path / "cosmo-rs.csv"
             assertion.isfile(csv_file)
 
             df = pd.read_csv(csv_file, header=[0, 1], index_col=0)
-            np.testing.assert_allclose(df, ref)
+            df.columns = pd.MultiIndex.from_tuples(
+                [(i, (j if j != "nan" else None)) for i, j in df.columns],
+                names=df.columns.names,
+            )
+            compare_df(df, REF)
         finally:
             shutil.rmtree(tmp_path)
 

@@ -42,7 +42,7 @@ import numpy as np
 import pandas as pd
 from more_itertools import chunked
 from qmflows import InitRestart
-from scm.plams import CRSJob, CRSResults, Settings
+from scm.plams import CRSJob, CRSResults, Settings, KFFile
 from CAT.utils import get_template
 
 if TYPE_CHECKING:
@@ -165,16 +165,74 @@ def _set_properties(
     solutes: _NDArray[np.object_],
     solvents: Mapping[str, str],
 ) -> None:
-    df["Boiling Point", None] = _get_boiling_point(solutes)
+    df[[
+        ("Boiling Point", None),
+        ("Vapor Pressure", None),
+        ("Enthalpy of Vaporization", None),
+    ]] = _get_boiling_point(solutes)
+
     df["LogP", None] = _get_logp(solutes)
+
     for name, solv in solvents.items():
-        key = [("Activity Coefficient", name), ("Solvation Energy", name)]
-        df[key] = _get_gamma_e(solutes, solv, name)
+        df[[
+            ("Activity Coefficient", name),
+            ("Solvation Energy", name),
+        ]] = _get_gamma_e(solutes, solv, name)
+
+    iterator = zip(
+        _get_compkf_prop(solutes),
+        [("Volume", None),
+         ("Area", None),
+         ("Formula", None),
+         ("Molar Mass", None),
+         ("Nring", None)]
+    )
+    for v, k in iterator:
+        df[k] = v
+
+
+def _get_compkf_prop(
+    solutes: _NDArray[np.object_]
+) -> tuple[
+    _NDArray[np.float64],
+    _NDArray[np.float64],
+    _NDArray[np.str_],
+    _NDArray[np.float64],
+    _NDArray[np.int64],
+]:
+    """Extract all (potentially) interesting properties from the compkf file."""
+    volume = np.full_like(solutes, np.nan, dtype=np.float64)
+    area = np.full_like(solutes, np.nan, dtype=np.float64)
+    formula = np.full_like(solutes, "", dtype="U160")
+    mass = np.full_like(solutes, np.nan, dtype=np.float64)
+    nring = np.full_like(solutes, 0, dtype=np.int64)
+    if (solutes == None).all():
+        return volume, area, formula, mass, nring
+
+    prop_iter = [
+        (volume, "COSMO", "Volume"),
+        (area, "COSMO", "Area"),
+        (formula, "Compound Data", "Formula"),
+        (mass, "Compound Data", "Molar Mass"),
+        (nring, "Compound Data", "Nring"),
+    ]
+
+    iterator = ((i, KFFile(f)) for i, f in enumerate(solutes) if f is not None)
+    for i, kf in iterator:
+        for array, section, variable in prop_iter:
+            try:
+                array[i] = kf.read(section, variable)
+            except Exception as ex:
+                smiles = kf.read("Compound Data", "SMILES")
+                warn = RuntimeWarning(f"Failed to extract the {variable!r} property of {smiles!r}")
+                warn.__cause__ = ex
+                warnings.warn(warn)
+    return volume, area, formula, mass, nring
 
 
 def _get_boiling_point(solutes: _NDArray[np.object_]) -> _NDArray[np.float64]:
     """Perform a boiling point calculation."""
-    ret = np.full_like(solutes, np.nan, dtype=np.float64)
+    ret = np.full((len(solutes), 3), np.nan, dtype=np.float64)
     mask = solutes != None
     count = np.count_nonzero(mask)
     if count == 0:
@@ -188,6 +246,8 @@ def _get_boiling_point(solutes: _NDArray[np.object_]) -> _NDArray[np.float64]:
     ret[mask] = _run_crs(
         s, count,
         boiling_point=lambda r: r.readkf('PUREBOILINGPOINT', 'temperature'),
+        vapor_pressure=lambda r: r.readkf('PUREBOILINGPOINT', 'vapor pressure'),
+        enthalpy=lambda r: r.readkf('PUREBOILINGPOINT', 'Enthalpy of vaporization'),
     )
     return ret
 
@@ -302,7 +362,7 @@ def _inner_loop(
         ams_dir_cm = contextlib.nullcontext(ams_dir)
 
     # Calculate properties for the given chunk
-    df = pd.DataFrame(np.nan, index=index, columns=columns)
+    df = pd.DataFrame(index=index, columns=columns)
     with ams_dir_cm as workdir, InitRestart(*os.path.split(workdir)):
         from scm.plams import config
         config.log.update(log)
@@ -357,12 +417,19 @@ def run_fast_sigma(  # noqa: E302
 
     The output is exported to the ``cosmo-rs.csv`` file.
 
-    Includes the following 5 properties:
+    Includes the following properties:
 
     * Boiling Point
     * LogP
     * Activety Coefficient
     * Solvation Energy
+    * Vapor Pressure
+    * Enthalpy of Vaporization
+    * Volume
+    * Area
+    * Formula
+    * Molar Mass
+    * Nring
 
     Jobs are performed in parallel, with chunks of a given size being
     distributed to a user-specified number of processes and subsequently cashed.
@@ -459,7 +526,17 @@ def run_fast_sigma(  # noqa: E302
 
     # Construct the dataframe columns
     prop_names = ["Activity Coefficient", "Solvation Energy"]
-    _columns: list[tuple[str, None | str]] = [("Boiling Point", None), ("LogP", None)]
+    _columns: list[tuple[str, None | str]] = [
+        ("Boiling Point", None),
+        ("Vapor Pressure", None),
+        ("Enthalpy of Vaporization", None),
+        ("LogP", None),
+        ("Volume", None),
+        ("Area", None),
+        ("Formula", None),
+        ("Molar Mass", None),
+        ("Nring", None),
+    ]
     for solv in solvents:
         _columns += [(prop, solv) for prop in prop_names]
     columns = pd.MultiIndex.from_tuples(_columns, names=["property", "solvent"])
@@ -519,5 +596,10 @@ def _concatenate_csv(output_dir: Path) -> None:
                 df = pd.read_csv(file, header=[0, 1], index_col=0)
             except pd.errors.EmptyDataError:
                 df = _read_empty_dataframe(file)
+            if header:
+                df.columns = pd.MultiIndex.from_tuples(
+                    [(i, (j if j != "nan" else None)) for i, j in df.columns],
+                    names=df.columns.names,
+                )
             df.to_csv(f, header=header)
             os.remove(file)

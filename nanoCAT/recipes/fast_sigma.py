@@ -348,12 +348,17 @@ def _inner_loop(
     if not len(index):
         df = pd.DataFrame(index=index, columns=columns)
         df.sort_index(axis=1, inplace=True)
-        return df
+        return i, df
 
     # Skip if a .csv file already exists
     df_filename = output_dir / f"{i}.temp.csv"
     if os.path.isfile(df_filename):
-        return pd.read_csv(df_filename, header=[0, 1], index_col=0)
+        df = pd.read_csv(df_filename, header=[0, 1], index_col=0)
+        df.columns = pd.MultiIndex.from_tuples(
+            [(i, (j if j != "nan" else None)) for i, j in df.columns],
+            names=df.columns.names,
+        )
+        return i, df
 
     # Parse the ams directory
     if ams_dir is None:

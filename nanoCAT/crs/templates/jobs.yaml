@@ -1,0 +1,152 @@
+PUREVAPORPRESSURE:
+    description: Vapor Pressure Pure Solvents
+    properties:
+        "Enthalpy of vaporization": [1, float64]
+        "excess G": [1, float64]
+        "excess H": [1, float64]
+        filename: [1, U160]
+        gamma: [1, float64]
+        mu: [1, float64]
+        "mu gas": [1, float64]
+        "mu pure": [1, float64]
+        pressure: [1, float64]
+        temperature: [1, float64]
+        "vapor pressure": [1, float64]
+    default_properties: [pressure]
+    settings:
+        input:
+            property:
+                _h: purevaporpressure
+                _1: pure
+            temperature: "298.15 298.15 10"
+            compound: []
+
+VAPORPRESSURE:
+    description: Vapor Pressure Mixture
+    properties:
+        "Enthalpy of vaporization": [1, float64]
+        "excess G": [1, float64]
+        "excess H": [1, float64]
+        filename: [1, U160]
+        gamma: [1, float64]
+        mu: [1, float64]
+        "mu gas": [1, float64]
+        "mu pure": [1, float64]
+        pressure: [1, float64]
+        temperature: [1, float64]
+        "vapor pressure": [1, float64]
+    default_properties: [pressure]
+    settings:
+        input:
+            property:
+                _h: vaporpressure
+                _1: mixture
+            temperature: "298.15 298.15 10"
+            compound: []
+
+PUREBOILINGPOINT:
+    description: Boiling Point Pure Solvent
+    properties:
+        "Enthalpy of vaporization": [1, float64]
+        "excess G": [1, float64]
+        "excess H": [1, float64]
+        filename: [1, U160]
+        gamma: [1, float64]
+        mu: [1, float64]
+        "mu gas": [1, float64]
+        "mu pure": [1, float64]
+        pressure: [1, float64]
+        temperature: [1, float64]
+        "vapor pressure": [1, float64]
+    default_properties: [temperature]
+    settings:
+        input:
+            property:
+                _h: pureboilingpoint
+                _1: pure
+            temperature: 298.15
+            pressure: "1.01325 1.01325 10"
+            compound: []
+
+BOILINGPOINT:
+    description: Boiling Point Mixture
+    properties:
+        "Enthalpy of vaporization": [1, float64]
+        "excess G": [1, float64]
+        "excess H": [1, float64]
+        filename: [1, U160]
+        gamma: [1, float64]
+        mu: [1, float64]
+        "mu gas": [1, float64]
+        "mu pure": [1, float64]
+        pressure: [1, float64]
+        temperature: [1, float64]
+        "vapor pressure": [1, float64]
+    default_properties: [temperature]
+    settings:
+        input:
+            property:
+                _h: boilingpoint
+                _1: mixture
+            temperature: 298.15
+            pressure: "1.01325 1.01325 10"
+            compound: []
+
+ACTIVITYCOEF:
+    description: Actvity Coefficients
+    properties:
+        "E gas": [1, float64]
+        "G solute": [1, float64]
+        deltag: [1, float64]
+        filename: [1, U160]
+        gamma: [1, float64]
+        henryc: [1, float64]
+        henrycnodim: [1, float64]
+        molmass: [1, float64]
+        mu: [1, float64]
+        "mu gas": [1, float64]
+        "mu pure": [1, float64]
+    default_properties: ["gamma"]
+    settings:
+        input:
+            property:
+                _h: activitycoef
+            temperature: 298.15
+            compound: []
+
+LOGP:
+    description: Partition Coefficients (LogP)
+    properties:
+        filename: [1, U160]
+        frac1: [1, float64]
+        frac2: [1, float64]
+        frac3: [1, float64]
+        gamma: [2, float64]
+        logp: [1, float64]
+        molmass: [1, float64]
+        "mu in solvent 1": [1, float64]
+        "mu in solvent 2": [1, float64]
+        "mu in solvent 3": [1, float64]
+    default_properties: [logp]
+    settings:
+        input:
+            property:
+                _h: logp
+                volumequotient: 6.766
+            temperature: 298.15
+            compound:
+                -   _h: "{}/ADFCRS/1-Octanol.coskf"
+                    frac1: 0.725
+                    pvap: 1.01325
+                    tvap: 468.0
+                    meltingpoint: 257.0
+                    flashpoint: 354.0
+                    density: 0.824
+                -   _h: "{}/ADFCRS/Water.coskf"
+                    frac1: 0.275
+                    frac2: 1.0
+                    pvap: 1.01325
+                    tvap: 373.15
+                    meltingpoint: 273.15
+                    hfusion: 1.436
+                    density: 0.997

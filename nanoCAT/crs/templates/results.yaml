@@ -1,0 +1,15 @@
+LOGP:
+    filename: 0
+    frac1: 2
+    frac2: 2
+    gamma: 4
+    logp: 2
+    method: 0
+    molmass: 2
+    "mu in solvent 1": 2
+    "mu in solvent 2": 2
+    ncomp: 0
+    nitems: 0
+    property: 0
+    temperature: 2
+    usepolyunits: 2

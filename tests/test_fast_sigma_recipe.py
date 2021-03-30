@@ -1,5 +1,7 @@
 """Tests for :mod:`nanoCAT.recipes.fast_sigma`."""
 
+from __future__ import annotations
+
 import os
 import shutil
 from typing import Mapping, Any, Type
@@ -98,6 +100,5 @@ class TestFastSigma:
     def test_warns(self, tmp_path: Path) -> None:
         with pytest.warns(RuntimeWarning) as record:
             get_compkf("bob", tmp_path)
-        assertion.isinstance(
-            getattr(record[0].message, "__cause__", None), AssertionError,
-        )
+        cause: None | BaseException = getattr(record[0].message, "__cause__", None)
+        assertion.isinstance(cause, RuntimeError)

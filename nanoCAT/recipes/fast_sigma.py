@@ -179,8 +179,11 @@ def _run(command: str, smiles: str) -> None | subprocess.CompletedProcess[bytes]
     try:
         status = subprocess.run(command, shell=True, check=True, capture_output=True)
         stderr = status.stderr.decode()
+        stdout = status.stdout.decode()
         if stderr:
             raise RuntimeError(stderr)
+        elif "WARNING" in stdout:
+            raise RuntimeError(stdout.strip("\n").rstrip("\n"))
     except (RuntimeError, subprocess.SubprocessError) as ex:
         warn = RuntimeWarning(f"Failed to compute the sigma profile of {smiles!r}")
         warn.__cause__ = ex

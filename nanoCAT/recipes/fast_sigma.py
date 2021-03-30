@@ -240,8 +240,6 @@ def _set_properties(
 def _get_compkf_prop(solutes: _NDArray[np.object_]) -> _NDArray[np.void]:
     """Extract all (potentially) interesting properties from the compkf file."""
     prop_iter: list[tuple[str, str, type | str]] = [
-        ("COSMO", "Volume", np.float64),
-        ("COSMO", "Area", np.float64),
         ("Compound Data", "Formula", "U160"),
         ("Compound Data", "Molar Mass", np.float64),
         ("Compound Data", "Nring", np.int64),
@@ -469,8 +467,6 @@ def run_fast_sigma(  # noqa: E302
     * LogP
     * Activety Coefficient
     * Solvation Energy
-    * Volume
-    * Area
     * Formula
     * Molar Mass
     * Nring
@@ -594,8 +590,6 @@ def run_fast_sigma(  # noqa: E302
     prop_names = ["Activity Coefficient", "Solvation Energy"]
     _columns: list[tuple[str, None | str]] = [
         ("LogP", None),
-        ("Volume", None),
-        ("Area", None),
         ("Formula", None),
         ("Molar Mass", None),
         ("Nring", None),

@@ -74,6 +74,7 @@ __all__ = ["get_compkf", "get_fast_sigma_properties", "run_fast_sigma"]
 LOGP_SETTINGS = get_template('qd.yaml')['COSMO-RS logp']
 LOGP_SETTINGS.runscript.nproc = 1
 LOGP_SETTINGS.update(get_template('crs.yaml')['ADF combi2005'])
+LOGP_SETTINGS.input.property.volumequotient = 6.766
 
 GAMMA_E_SETTINGS = get_template('qd.yaml')['COSMO-RS activity coefficient']
 GAMMA_E_SETTINGS.runscript.nproc = 1

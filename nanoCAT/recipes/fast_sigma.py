@@ -69,7 +69,7 @@ if TYPE_CHECKING:
         #: Print date for each log event
         date: bool
 
-__all__ = ["get_compkf", "run_fast_sigma"]
+__all__ = ["get_compkf", "get_fast_sigma_properties", "run_fast_sigma"]
 
 LOGP_SETTINGS = get_template('qd.yaml')['COSMO-RS logp']
 LOGP_SETTINGS.runscript.nproc = 1
@@ -132,32 +132,86 @@ def get_compkf(
     filename = smiles if name is None else name
     if directory is None:
         directory = os.getcwd()
-    abs_file = os.path.join(directory, f'{filename}.compkf')
+    kf_file = os.path.join(directory, f'{filename}.compkf')
 
+    command = f'"$AMSBIN"/fast_sigma --smiles "{smiles}" -o "{kf_file}"'
+    return kf_file if _run(command, smiles) is not None else None
+
+
+def get_fast_sigma_properties(
+    smiles: str,
+    directory: None | str | os.PathLike[str] = None,
+    name: None | str = None,
+) -> None | str:
+    """Calculate various pure-compound properties with the COSMO-RS property prediction program.
+
+    See the COSMO-RS `docs <https://www.scm.com/doc/COSMO-RS/Property_Prediction.html>`_ for more details.
+
+    Parameters
+    ----------
+    smiles : :class:`str`
+        The SMILES string of the molecule of interest.
+    directory : :class:`str`, optional
+        The directory wherein the resulting ``.compkf`` file should be stored.
+        If :data:`None`, use the current working directory.
+    name : :class:`str`
+        The name of the to-be created .compkf file (excluding extensions).
+        If :data:`None`, use **smiles**.
+
+    Returns
+    -------
+    :class:`str`, optional
+        The absolute path to the created ``.compkf`` file.
+        :data:`None` will be returned if an error is raised by AMS.
+
+    """  # noqa: E501
+    filename = smiles if name is None else name
+    if directory is None:
+        directory = os.getcwd()
+    kf_file = os.path.join(directory, f'{filename}.compkf')
+
+    command = f'"$AMSBIN"/prop_prediction --smiles "{smiles}" -o "{kf_file}"'
+    return kf_file if _run(command, smiles) is not None else None
+
+
+def _run(command: str, smiles: str) -> None | subprocess.CompletedProcess[bytes]:
+    """Run **command** and return the the status."""
     try:
-        status = subprocess.run(
-            f'"$AMSBIN"/fast_sigma --smiles "{smiles}" -o "{abs_file}"',
-            shell=True, check=True, capture_output=True,
-        )
+        status = subprocess.run(command, shell=True, check=True, capture_output=True)
         stderr = status.stderr.decode()
-        assert not stderr, stderr
-    except (AssertionError, subprocess.SubprocessError) as ex:
+        if stderr:
+            raise RuntimeError(stderr)
+    except (RuntimeError, subprocess.SubprocessError) as ex:
         warn = RuntimeWarning(f"Failed to compute the sigma profile of {smiles!r}")
         warn.__cause__ = ex
-        warnings.warn(warn)
+        warnings.warn(warn, stacklevel=1)
         return None
-    return abs_file
+    else:
+        return status
+
+
+def _hash_smiles(smiles: str) -> str:
+    """Return the sha256 hash of the passed SMILES string."""
+    return hashlib.sha256(smiles.encode()).hexdigest()
 
 
 def _get_compkf(
     smiles_iter: Iterable[str],
     directory: str | os.PathLike[str],
 ) -> _NDArray[np.object_]:
-    ret = []
-    for smiles in smiles_iter:
-        name = hashlib.sha256(smiles.encode()).hexdigest()
-        ret.append(get_compkf(smiles, directory, name=name))
-    return np.array(ret, dtype=np.object_)
+    """Wrap :func:`get_compkf` in a for-loop."""
+    lst = [get_compkf(smiles, directory, name=_hash_smiles(smiles)) for smiles in smiles_iter]
+    return np.array(lst, dtype=np.object_)
+
+
+def _get_fast_sigma_properties(
+    smiles_iter: Iterable[str],
+    directory: str | os.PathLike[str],
+) -> _NDArray[np.object_]:
+    """Wrap :func:`get_fast_sigma_properties` in a for-loop."""
+    lst = [get_fast_sigma_properties(smiles, directory, name=_hash_smiles(smiles)) for
+           smiles in smiles_iter]
+    return np.array(lst, dtype=np.object_)
 
 
 def _set_properties(
@@ -165,12 +219,6 @@ def _set_properties(
     solutes: _NDArray[np.object_],
     solvents: Mapping[str, str],
 ) -> None:
-    df[[
-        ("Boiling Point", None),
-        ("Vapor Pressure", None),
-        ("Enthalpy of Vaporization", None),
-    ]] = _get_boiling_point(solutes)
-
     df["LogP", None] = _get_logp(solutes)
 
     for name, solv in solvents.items():
@@ -179,76 +227,65 @@ def _set_properties(
             ("Solvation Energy", name),
         ]] = _get_gamma_e(solutes, solv, name)
 
-    iterator = zip(
-        _get_compkf_prop(solutes),
-        [("Volume", None),
-         ("Area", None),
-         ("Formula", None),
-         ("Molar Mass", None),
-         ("Nring", None)]
-    )
-    for v, k in iterator:
-        df[k] = v
+    prop_array = _get_compkf_prop(solutes)
+    iterator = ((k, prop_array[k]) for k in prop_array.dtype.fields)
+    for k, v in iterator:
+        df[k, None] = v
 
 
-def _get_compkf_prop(
-    solutes: _NDArray[np.object_]
-) -> tuple[
-    _NDArray[np.float64],
-    _NDArray[np.float64],
-    _NDArray[np.str_],
-    _NDArray[np.float64],
-    _NDArray[np.int64],
-]:
+def _get_compkf_prop(solutes: _NDArray[np.object_]) -> _NDArray[np.void]:
     """Extract all (potentially) interesting properties from the compkf file."""
-    volume = np.full_like(solutes, np.nan, dtype=np.float64)
-    area = np.full_like(solutes, np.nan, dtype=np.float64)
-    formula = np.full_like(solutes, "", dtype="U160")
-    mass = np.full_like(solutes, np.nan, dtype=np.float64)
-    nring = np.full_like(solutes, 0, dtype=np.int64)
-    if (solutes == None).all():
-        return volume, area, formula, mass, nring
-
-    prop_iter = [
-        (volume, "COSMO", "Volume"),
-        (area, "COSMO", "Area"),
-        (formula, "Compound Data", "Formula"),
-        (mass, "Compound Data", "Molar Mass"),
-        (nring, "Compound Data", "Nring"),
+    prop_iter: list[tuple[str, str, type | str]] = [
+        ("COSMO", "Volume", np.float64),
+        ("COSMO", "Area", np.float64),
+        ("Compound Data", "Formula", "U160"),
+        ("Compound Data", "Molar Mass", np.float64),
+        ("Compound Data", "Nring", np.int64),
+        ("PROPPREDICTION", "boilingpoint", np.float64),
+        ("PROPPREDICTION", "criticalpressure", np.float64),
+        ("PROPPREDICTION", "criticaltemp", np.float64),
+        ("PROPPREDICTION", "criticalvol", np.float64),
+        ("PROPPREDICTION", "density", np.float64),
+        ("PROPPREDICTION", "dielectricconstant", np.float64),
+        ("PROPPREDICTION", "entropygas", np.float64),
+        ("PROPPREDICTION", "flashpoint", np.float64),
+        ("PROPPREDICTION", "gidealgas", np.float64),
+        ("PROPPREDICTION", "hcombust", np.float64),
+        ("PROPPREDICTION", "hformstd", np.float64),
+        ("PROPPREDICTION", "hfusion", np.float64),
+        ("PROPPREDICTION", "hidealgas", np.float64),
+        ("PROPPREDICTION", "hsublimation", np.float64),
+        ("PROPPREDICTION", "meltingpoint", np.float64),
+        ("PROPPREDICTION", "molarvol", np.float64),
+        ("PROPPREDICTION", "parachor", np.float64),
+        ("PROPPREDICTION", "solubilityparam", np.float64),
+        ("PROPPREDICTION", "tpt", np.float64),
+        ("PROPPREDICTION", "vdwarea", np.float64),
+        ("PROPPREDICTION", "vdwvol", np.float64),
+        ("PROPPREDICTION", "vaporpressure", np.float64),
     ]
+
+    dtype = np.dtype([i[1:] for i in prop_iter])
+    fill_value = np.array(tuple(
+        (np.nan if field_dtype == np.float64 else np.dtype(field_dtype).type())
+        for *_, field_dtype in prop_iter
+    ), dtype=dtype)
+    ret = np.full_like(solutes, fill_value, dtype=dtype)
+    if (solutes == None).all():
+        return ret
 
     iterator = ((i, KFFile(f)) for i, f in enumerate(solutes) if f is not None)
     for i, kf in iterator:
-        for array, section, variable in prop_iter:
+        for section, variable, _ in prop_iter:
             try:
-                array[i] = kf.read(section, variable)
+                ret[variable][i] = kf.read(section, variable)
             except Exception as ex:
-                smiles = kf.read("Compound Data", "SMILES")
-                warn = RuntimeWarning(f"Failed to extract the {variable!r} property of {smiles!r}")
+                smiles = kf.read("Compound Data", "SMILES").strip("\x00")
+                warn = RuntimeWarning(
+                    f'Failed to extract the "{section}%{variable}" property of {smiles!r}'
+                )
                 warn.__cause__ = ex
                 warnings.warn(warn)
-    return volume, area, formula, mass, nring
-
-
-def _get_boiling_point(solutes: _NDArray[np.object_]) -> _NDArray[np.float64]:
-    """Perform a boiling point calculation."""
-    ret = np.full((len(solutes), 3), np.nan, dtype=np.float64)
-    mask = solutes != None
-    count = np.count_nonzero(mask)
-    if count == 0:
-        return ret
-
-    s = copy.deepcopy(BP_SETTINGS)
-    s.input.compound = [
-        Settings({"_h": f'"{sol}"', "frac1": 1.0, "_1": "compkffile"}) for sol in solutes[mask]
-    ]
-
-    ret[mask] = _run_crs(
-        s, count,
-        boiling_point=lambda r: r.readkf('PUREBOILINGPOINT', 'temperature'),
-        vapor_pressure=lambda r: r.readkf('PUREBOILINGPOINT', 'vapor pressure'),
-        enthalpy=lambda r: r.readkf('PUREBOILINGPOINT', 'Enthalpy of vaporization'),
-    )
     return ret
 
 
@@ -374,6 +411,7 @@ def _inner_loop(
         config.job.pickle = False
 
         compkf_array = _get_compkf(index, workdir)
+        _ = _get_fast_sigma_properties(index, workdir)
         _set_properties(df, compkf_array, solvents)
 
     df.sort_index(axis=1, inplace=True)
@@ -424,17 +462,36 @@ def run_fast_sigma(  # noqa: E302
 
     Includes the following properties:
 
-    * Boiling Point
     * LogP
     * Activety Coefficient
     * Solvation Energy
-    * Vapor Pressure
-    * Enthalpy of Vaporization
     * Volume
     * Area
     * Formula
     * Molar Mass
     * Nring
+    * boilingpoint
+    * criticalpressure
+    * criticaltemp
+    * criticalvol
+    * density
+    * dielectricconstant
+    * entropygas
+    * flashpoint
+    * gidealgas
+    * hcombust
+    * hformstd
+    * hfusion
+    * hidealgas
+    * hsublimation
+    * meltingpoint
+    * molarvol
+    * parachor
+    * solubilityparam
+    * tpt
+    * vdwarea
+    * vdwvol
+    * vaporpressure
 
     Jobs are performed in parallel, with chunks of a given size being
     distributed to a user-specified number of processes and subsequently cashed.
@@ -532,15 +589,34 @@ def run_fast_sigma(  # noqa: E302
     # Construct the dataframe columns
     prop_names = ["Activity Coefficient", "Solvation Energy"]
     _columns: list[tuple[str, None | str]] = [
-        ("Boiling Point", None),
-        ("Vapor Pressure", None),
-        ("Enthalpy of Vaporization", None),
         ("LogP", None),
         ("Volume", None),
         ("Area", None),
         ("Formula", None),
         ("Molar Mass", None),
         ("Nring", None),
+        ('boilingpoint', None),
+        ('criticalpressure', None),
+        ('criticaltemp', None),
+        ('criticalvol', None),
+        ('density', None),
+        ('dielectricconstant', None),
+        ('entropygas', None),
+        ('flashpoint', None),
+        ('gidealgas', None),
+        ('hcombust', None),
+        ('hformstd', None),
+        ('hfusion', None),
+        ('hidealgas', None),
+        ('hsublimation', None),
+        ('meltingpoint', None),
+        ('molarvol', None),
+        ('parachor', None),
+        ('solubilityparam', None),
+        ('tpt', None),
+        ('vdwarea', None),
+        ('vdwvol', None),
+        ('vaporpressure', None),
     ]
     for solv in solvents:
         _columns += [(prop, solv) for prop in prop_names]

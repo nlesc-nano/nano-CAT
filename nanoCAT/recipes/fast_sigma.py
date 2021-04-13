@@ -276,16 +276,19 @@ def _get_compkf_prop(solutes: _NDArray[np.object_]) -> _NDArray[np.void]:
     if (solutes == None).all():
         return ret
 
-    iterator = ((i, KFFile(f)) for i, f in enumerate(solutes) if f is not None)
-    for i, kf in iterator:
+    iterator = ((i, KFFile(f), f) for i, f in enumerate(solutes) if f is not None)
+    for i, kf, file in iterator:  # type: int, KFFile, str
         for section, variable, _ in prop_iter:
             try:
                 ret[variable][i] = kf.read(section, variable)
             except Exception as ex:
-                smiles = kf.read("Compound Data", "SMILES").strip("\x00")
-                warn = RuntimeWarning(
-                    f'Failed to extract the "{section}%{variable}" property of {smiles!r}'
-                )
+                if kf.reader is None:
+                    warn = RuntimeWarning(f"No such file or directory: {file!r}")
+                else:
+                    smiles = kf.read("Compound Data", "SMILES").strip("\x00")
+                    warn = RuntimeWarning(
+                        f'Failed to extract the "{section}%{variable}" property of {smiles!r}'
+                    )
                 warn.__cause__ = ex
                 warnings.warn(warn)
     return ret

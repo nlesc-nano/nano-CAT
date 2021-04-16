@@ -30,6 +30,7 @@ REF.columns = pd.MultiIndex.from_tuples(
     [(i, (j if j != "nan" else None)) for i, j in REF.columns],
     names=REF.columns.names,
 )
+REF.loc[REF["Formula", None].isnull(), ("Formula", None)] = ""
 
 
 def compare_df(df1: pd.DataFrame, df2: pd.DataFrame) -> None:
@@ -72,6 +73,7 @@ class TestFastSigma:
                 [(i, (j if j != "nan" else None)) for i, j in df.columns],
                 names=df.columns.names,
             )
+            df.loc[df["Formula", None].isnull(), ("Formula", None)] = ""
             compare_df(df, REF)
         finally:
             shutil.rmtree(tmp_path)

@@ -136,7 +136,8 @@ def get_compkf(
     kf_file = os.path.join(directory, f'{filename}.compkf')
 
     command = f'"$AMSBIN"/fast_sigma --smiles "{smiles}" -o "{kf_file}"'
-    return kf_file if _run(command, smiles) is not None else None
+    output = _run(command, smiles, err_msg="Failed to compute the sigma profile of {!r}")
+    return kf_file if output is not None else None
 
 
 def get_fast_sigma_properties(
@@ -172,10 +173,14 @@ def get_fast_sigma_properties(
     kf_file = os.path.join(directory, f'{filename}.compkf')
 
     command = f'"$AMSBIN"/prop_prediction --smiles "{smiles}" -o "{kf_file}"'
-    return kf_file if _run(command, smiles) is not None else None
+    output = _run(
+        command, smiles,
+        err_msg="Failed to compute the pure compound properties of {!r}",
+    )
+    return kf_file if output is not None else None
 
 
-def _run(command: str, smiles: str) -> None | subprocess.CompletedProcess[bytes]:
+def _run(command: str, smiles: str, err_msg: str) -> None | subprocess.CompletedProcess[bytes]:
     """Run **command** and return the the status."""
     try:
         status = subprocess.run(command, shell=True, check=True, capture_output=True)
@@ -186,7 +191,7 @@ def _run(command: str, smiles: str) -> None | subprocess.CompletedProcess[bytes]
         elif b"WARNING" in stdout:
             raise RuntimeError(stdout.decode().strip("\n").rstrip("\n"))
     except (RuntimeError, subprocess.SubprocessError) as ex:
-        warn = RuntimeWarning(f"Failed to compute the sigma profile of {smiles!r}")
+        warn = RuntimeWarning(err_msg.format(smiles))
         warn.__cause__ = ex
         warnings.warn(warn, stacklevel=1)
         return None
@@ -222,6 +227,7 @@ def _set_properties(
     df: pd.DataFrame,
     solutes: _NDArray[np.object_],
     solvents: Mapping[str, str],
+    prop_mask: _NDArray[np.bool_],
 ) -> None:
     df["LogP", None] = _get_logp(solutes)
 
@@ -231,13 +237,16 @@ def _set_properties(
             ("Solvation Energy", name),
         ]] = _get_gamma_e(solutes, solv, name)
 
-    prop_array = _get_compkf_prop(solutes)
+    prop_array = _get_compkf_prop(solutes, prop_mask)
     iterator = ((k, prop_array[k]) for k in prop_array.dtype.fields)
     for k, v in iterator:
         df[k, None] = v
 
 
-def _get_compkf_prop(solutes: _NDArray[np.object_]) -> _NDArray[np.void]:
+def _get_compkf_prop(
+    solutes: _NDArray[np.object_],
+    prop_mask: _NDArray[np.bool_],
+) -> _NDArray[np.void]:
     """Extract all (potentially) interesting properties from the compkf file."""
     prop_iter: list[tuple[str, str, type | str]] = [
         ("Compound Data", "Formula", "U160"),
@@ -273,10 +282,12 @@ def _get_compkf_prop(solutes: _NDArray[np.object_]) -> _NDArray[np.void]:
         for *_, field_dtype in prop_iter
     ), dtype=dtype)
     ret = np.full_like(solutes, fill_value, dtype=dtype)
-    if (solutes == None).all():
+
+    mask = prop_mask & (solutes != None)
+    if not mask.any():
         return ret
 
-    iterator = ((i, KFFile(f), f) for i, f in enumerate(solutes) if f is not None)
+    iterator = ((i, KFFile(f), f) for i, (f, m) in enumerate(zip(solutes, mask)) if m)
     for i, kf, file in iterator:  # type: int, KFFile, str
         for section, variable, _ in prop_iter:
             try:
@@ -416,8 +427,8 @@ def _inner_loop(
         config.job.pickle = False
 
         compkf_array = _get_compkf(index, workdir)
-        _ = _get_fast_sigma_properties(index, workdir)
-        _set_properties(df, compkf_array, solvents)
+        prop_mask: _NDArray[np.bool_] = _get_fast_sigma_properties(index, workdir) != None
+        _set_properties(df, compkf_array, solvents, prop_mask)
 
     df.sort_index(axis=1, inplace=True)
     df.to_csv(df_filename)
@@ -678,10 +689,10 @@ def _concatenate_csv(output_dir: Path) -> None:
                 df = pd.read_csv(file, header=[0, 1], index_col=0)
             except pd.errors.EmptyDataError:
                 df = _read_empty_dataframe(file)
-            if header:
-                df.columns = pd.MultiIndex.from_tuples(
-                    [(i, (j if j != "nan" else None)) for i, j in df.columns],
-                    names=df.columns.names,
-                )
+            df.columns = pd.MultiIndex.from_tuples(
+                [(i, (j if j != "nan" else None)) for i, j in df.columns],
+                names=df.columns.names,
+            )
+            df.loc[df["Formula", None].isnull(), ("Formula", None)] = ""
             df.to_csv(f, header=header)
             os.remove(file)

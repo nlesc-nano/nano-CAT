@@ -11,7 +11,7 @@ import pytest
 import numpy as np
 import pandas as pd
 from assertionlib import assertion
-from nanoCAT.recipes import run_fast_sigma, get_compkf
+from nanoCAT.recipes import run_fast_sigma, get_compkf, read_csv
 
 PATH = Path("tests") / "test_files"
 
@@ -25,15 +25,15 @@ SOLVENTS2 = {
     "octanol": PATH / "1-Octanol.coskf",
 }
 
-REF = pd.read_csv(PATH / "cosmo-rs.csv", header=[0, 1], index_col=0)
-REF.columns = pd.MultiIndex.from_tuples(
-    [(i, (j if j != "nan" else None)) for i, j in REF.columns],
-    names=REF.columns.names,
-)
-REF.loc[REF["Formula", None].isnull(), ("Formula", None)] = ""
+REF = read_csv(PATH / "cosmo-rs.csv")
 
 
 def compare_df(df1: pd.DataFrame, df2: pd.DataFrame) -> None:
+    """Compare the content of two dataframes."""
+    __tracebackhide__ = True
+
+    assert isinstance(df1, pd.DataFrame)
+    assert isinstance(df2, pd.DataFrame)
     np.testing.assert_array_equal(df1.columns, df2.columns, err_msg="columns")
     np.testing.assert_array_equal(df1.index, df2.index, err_msg="index")
 
@@ -55,6 +55,7 @@ class TestFastSigma:
         ids=["default", "return_df", "chunk_size", "processes"]
     )
     def test_passes(self, kwargs: Mapping[str, Any]) -> None:
+        """Test that whether the code passes as expected."""
         # Can't use the pytest `tmp_path` paramater as the (absolute) filename
         # becomes too long for COSMO-RS
         tmp_path = PATH / "crs"
@@ -68,12 +69,7 @@ class TestFastSigma:
             csv_file = tmp_path / "cosmo-rs.csv"
             assertion.isfile(csv_file)
 
-            df = pd.read_csv(csv_file, header=[0, 1], index_col=0)
-            df.columns = pd.MultiIndex.from_tuples(
-                [(i, (j if j != "nan" else None)) for i, j in df.columns],
-                names=df.columns.names,
-            )
-            df.loc[df["Formula", None].isnull(), ("Formula", None)] = ""
+            df = read_csv(csv_file)
             compare_df(df, REF)
         finally:
             shutil.rmtree(tmp_path)
@@ -95,12 +91,57 @@ class TestFastSigma:
     def test_raises(
         self, solvents: Mapping[str, Any], kwargs: Mapping[str, Any], exc: Type[Exception]
     ) -> None:
+        """Test that whether appropiate exception is raised."""
         with pytest.raises(exc):
             run_fast_sigma(SMILES, solvents, **kwargs)
 
     @pytest.mark.slow
     def test_warns(self, tmp_path: Path) -> None:
+        """Test that whether appropiate warning is issued."""
         with pytest.warns(RuntimeWarning) as record:
             get_compkf("bob", tmp_path)
         cause: None | BaseException = getattr(record[0].message, "__cause__", None)
         assertion.isinstance(cause, RuntimeError)
+
+
+class TestReadCSV:
+    """Tests for :func:`nanoCAT.recipes.read_csv`."""
+
+    @pytest.mark.parametrize(
+        "columns",
+        [
+            None,
+            ["molarvol", "gidealgas", "Activity Coefficient"],
+            [("molarvol", None), ("gidealgas", None)],
+            ["molarvol"],
+            ("molarvol", None),
+            "molarvol",
+            [("Solvation Energy", "water")],
+            ("Solvation Energy", "water"),
+            ["Solvation Energy"],
+            "Solvation Energy",
+        ],
+    )
+    def test_pass(self, columns: None | Any) -> None:
+        """Test that whether the code passes as expected."""
+        df = read_csv(PATH / "cosmo-rs.csv", columns=columns)
+        if columns is None:
+            ref = REF
+        elif not isinstance(columns, list):
+            ref = REF[[columns]]
+        else:
+            ref = REF[columns]
+        compare_df(df, ref)
+
+    @pytest.mark.parametrize(
+        "exc,file,kwargs",
+        [
+            (FileNotFoundError, "bob.csv", {}),
+            (TypeError, "cosmo-rs.csv", {"bob": None}),
+            (TypeError, "cosmo-rs.csv", {"usecols": None}),
+        ]
+    )
+    def test_raises(self, exc: Type[Exception], file: str, kwargs: Mapping[str, Any]) -> None:
+        """Test that whether appropiate exception is raised."""
+        with pytest.raises(exc):
+            read_csv(PATH / file, **kwargs)

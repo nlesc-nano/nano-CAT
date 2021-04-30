@@ -10,11 +10,13 @@ Index
 .. autosummary::
     run_fast_sigma
     get_compkf
+    read_csv
 
 API
 ---
 .. autofunction:: run_fast_sigma
 .. autofunction:: get_compkf
+.. autofunction:: read_csv
 
 """  # noqa: E501
 
@@ -69,7 +71,7 @@ if TYPE_CHECKING:
         #: Print date for each log event
         date: bool
 
-__all__ = ["get_compkf", "get_fast_sigma_properties", "run_fast_sigma"]
+__all__ = ["get_compkf", "get_fast_sigma_properties", "run_fast_sigma", "read_csv"]
 
 LOGP_SETTINGS = get_template('qd.yaml')['COSMO-RS logp']
 LOGP_SETTINGS.runscript.nproc = 1
@@ -406,11 +408,7 @@ def _inner_loop(
     # Skip if a .csv file already exists
     df_filename = output_dir / f"{i}.temp.csv"
     if os.path.isfile(df_filename):
-        df = pd.read_csv(df_filename, header=[0, 1], index_col=0)
-        df.columns = pd.MultiIndex.from_tuples(
-            [(i, (j if j != "nan" else None)) for i, j in df.columns],
-            names=df.columns.names,
-        )
+        df = read_csv(df_filename)
         return i, df
 
     # Parse the ams directory
@@ -656,16 +654,6 @@ def run_fast_sigma(  # noqa: E302
     return ret
 
 
-def _read_empty_dataframe(file: str | bytes | os.PathLike[Any]) -> pd.DataFrame:
-    """Read a .csv file that is full of ``nan``s."""
-    df = pd.read_csv(file, header=[0, 1])
-    df.set_index(("property", "solvent"), inplace=True)
-    df.drop("smiles", inplace=True)
-    df.index.name = "smiles"
-    df.columns.names = ("property", "solvent")
-    return df
-
-
 def _concatenate_csv(output_dir: Path) -> None:
     """Concatenate all ``{i}.tmp.csv`` files into ``cosmo-rs.csv``."""
     pattern = re.compile(r"[0-9]+\.temp\.csv")
@@ -685,14 +673,106 @@ def _concatenate_csv(output_dir: Path) -> None:
     # Append its content using that of all other .csv files
     with open(output_csv, "a") as f:
         for file, header in zip(csv_files, header_iter):
-            try:
-                df = pd.read_csv(file, header=[0, 1], index_col=0)
-            except pd.errors.EmptyDataError:
-                df = _read_empty_dataframe(file)
-            df.columns = pd.MultiIndex.from_tuples(
-                [(i, (j if j != "nan" else None)) for i, j in df.columns],
-                names=df.columns.names,
-            )
-            df.loc[df["Formula", None].isnull(), ("Formula", None)] = ""
+            df = read_csv(file)
             df.to_csv(f, header=header)
             os.remove(file)
+
+
+def _read_columns(file: str | bytes | os.PathLike[Any], **kwargs: Any) -> pd.MultiIndex:
+    """Extract the dataframe columns from the passed .csv files."""
+    kwargs["nrows"] = 0
+    df = pd.read_csv(file, header=[0, 1], index_col=0, **kwargs)
+    return pd.MultiIndex.from_tuples(
+        [(i, (j if j != "nan" else None)) for i, j in df.columns],
+        names=df.columns.names,
+    )
+
+
+#: Invalid keyword arguments for :func:`read_csv`.
+_INVALID_KWARGS = frozenset({
+    "filepath_or_buffer",
+    "index_col",
+    "header",
+    "names",
+    "usecols",
+})
+
+
+def read_csv(
+    file: str | bytes | os.PathLike[Any],
+    *,
+    columns: None | Any = None,
+    **kwargs: Any,
+) -> pd.DataFrame:
+    r"""Read the passed .csv file as produced by :func:`run_fast_sigma`.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        >>> from nanoCAT.recipes import read_csv
+
+        >>> file: str = ...
+
+        >>> columns1 = ["molarvol", "gidealgas", "Activity Coefficient"]
+        >>> read_csv(file, usecols=columns1)
+        property  molarvol  gidealgas Activity Coefficient
+        solvent        NaN        NaN              octanol     water
+        smiles
+        CCCO[H]   0.905952  47.502557          -153.788589  0.078152
+        CCO[H]    0.980956  12.735228          -161.094955  0.061220
+        CO[H]     1.045891   4.954782                  NaN       NaN
+
+        >>> columns2 = [("Solvation Energy", "water")]
+        >>> read_csv(file, usecols=columns2)
+        property Solvation Energy
+        solvent             water
+        smiles
+        CCCO[H]         -3.779867
+        CCO[H]          -3.883986
+        CO[H]           -3.274420
+
+    Parameters
+    ----------
+    file : :term:`path-like object`
+        The name of the to-be opened .csv file.
+    columns : key or sequence of keys, optional
+        The to-be read columns.
+        Note that any passed value must be a valid dataframe (multiindex) key.
+    \**kwargs : :data:`~typing.Any`
+        Further keyword arguments for :func:`pd.read_csv <pandas.read_csv>`.
+
+    See Also
+    --------
+    :class:`pd.read_csv <pandas.read_csv>`
+        Read a comma-separated values (csv) file into DataFrame.
+
+    """
+    # Validate ``kwargs
+    if not _INVALID_KWARGS.isdisjoint(kwargs.keys()):
+        keys = sorted(_INVALID_KWARGS.intersection(kwargs.keys()))
+        raise TypeError(f"Invalid or duplicate keys: {keys}")
+
+    columns_superset = _read_columns(file, **kwargs)
+    ref = pd.read_csv(file, index_col=0, skiprows=2, **kwargs)
+    ref.columns = columns_superset
+    if columns is None:
+        df = pd.read_csv(file, index_col=0, skiprows=2, **kwargs)
+        df.columns = columns_superset
+    else:
+        columns_series = pd.Series(np.arange(1, 1 + len(columns_superset)), index=columns_superset)
+        columns_idx = np.append(0, columns_series.loc[columns])
+        columns_idx2 = columns_idx[1:] - 1
+
+        argsort = np.argsort(columns_idx2)
+        df = pd.read_csv(file, usecols=columns_idx, index_col=0, skiprows=2, **kwargs)
+        df.sort_index(
+            axis=1, inplace=True,
+            key=lambda i: i.str.strip("Unnamed: ").astype(np.int64)[argsort],
+        )
+        df.columns = columns_superset[columns_idx2]
+
+    formula = ("Formula", None)
+    if formula in df.columns:
+        df.loc[df[formula].isnull(), formula] = ""
+    return df

@@ -6,12 +6,14 @@ import os
 import shutil
 from typing import Mapping, Any, Type
 from pathlib import Path
+from collections.abc import Hashable
 
 import pytest
 import numpy as np
 import pandas as pd
+from rdkit.Chem import CanonSmiles
 from assertionlib import assertion
-from nanoCAT.recipes import run_fast_sigma, get_compkf, read_csv
+from nanoCAT.recipes import run_fast_sigma, get_compkf, read_csv, sanitize_smiles_df
 
 PATH = Path("tests") / "test_files"
 
@@ -26,6 +28,23 @@ SOLVENTS2 = {
 }
 
 REF = read_csv(PATH / "cosmo-rs.csv")
+
+SANITIZE_DF = pd.DataFrame(1, index=REF.index.copy(), columns=['a'])
+
+SANITIZE2_DF = SANITIZE_DF.copy()
+SANITIZE2_DF.columns = pd.MultiIndex.from_tuples(
+    [(i,) for i in SANITIZE_DF.columns],
+    names=(SANITIZE_DF.columns.name,),
+)
+
+SANITIZE3_DF = SANITIZE_DF.copy()
+SANITIZE3_DF.columns = pd.MultiIndex.from_tuples(
+    [(i, None) for i in SANITIZE_DF.columns],
+    names=(SANITIZE_DF.columns.name, None),
+)
+
+SANITIZE4_DF = SANITIZE_DF.copy()
+SANITIZE4_DF.index = pd.Index([None] * len(SANITIZE_DF.index), name=SANITIZE_DF.index.name)
 
 
 def compare_df(df1: pd.DataFrame, df2: pd.DataFrame) -> None:
@@ -145,3 +164,43 @@ class TestReadCSV:
         """Test that whether appropiate exception is raised."""
         with pytest.raises(exc):
             read_csv(PATH / file, **kwargs)
+
+
+class TestSanitize:
+    """Tests for :func:`nanoCAT.recipes.sanitize_smiles_df`."""
+
+    @pytest.mark.parametrize("column_levels", [1, 2, 3])
+    @pytest.mark.parametrize("column_padding", [None, 1.0])
+    @pytest.mark.parametrize("df", [SANITIZE_DF, SANITIZE2_DF])
+    def test_pass(self, df: pd.DataFrame, column_levels: int, column_padding: Hashable) -> None:
+        """Test that whether the code passes as expected."""
+        out = sanitize_smiles_df(df, column_levels, column_padding)
+        assertion.is_(out, df, invert=True)
+        assertion.is_(out.columns, df.columns, invert=True)
+        assertion.is_(out.index, df.index, invert=True)
+
+        assertion.eq(len(out.columns.levels), column_levels)
+        np.testing.assert_array_equal([CanonSmiles(i) for i in out.index], out.index)
+
+        offset = len(df.columns.levels) if isinstance(df.columns, pd.MultiIndex) else 1
+        for idx in out.columns.levels[offset:]:
+            np.testing.assert_array_equal(idx, column_padding)
+
+    @pytest.mark.parametrize(
+        "exc,kwargs",
+        [
+            (TypeError, {"column_levels": 1.0}),
+            (ValueError, {"column_levels": 0}),
+            (ValueError, {"column_levels": 1}),
+            (TypeError, {"column_padding": []}),
+        ]
+    )
+    def test_raises(self, exc: Type[Exception], kwargs: Mapping[str, Any]) -> None:
+        """Test that an appropiate exception is raised."""
+        with pytest.raises(exc):
+            sanitize_smiles_df(SANITIZE3_DF, **kwargs)
+
+    def test_warns(self) -> None:
+        """Test that an appropiate warning is issued."""
+        with pytest.warns(RuntimeWarning):
+            sanitize_smiles_df(SANITIZE4_DF)

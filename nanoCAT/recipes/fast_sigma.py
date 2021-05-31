@@ -11,12 +11,14 @@ Index
     run_fast_sigma
     get_compkf
     read_csv
+    sanitize_smiles_df
 
 API
 ---
 .. autofunction:: run_fast_sigma
 .. autofunction:: get_compkf
 .. autofunction:: read_csv
+.. autofunction:: sanitize_smiles_df
 
 """  # noqa: E501
 
@@ -38,20 +40,21 @@ import multiprocessing
 from typing import Any, ContextManager, cast, overload, TYPE_CHECKING, TypeVar
 from pathlib import Path
 from itertools import chain, repeat
-from collections.abc import Iterable, Mapping, Callable, Iterator, Sequence
+from collections.abc import Iterable, Mapping, Callable, Iterator, Sequence, Hashable
 
 import numpy as np
 import pandas as pd
 from more_itertools import chunked
 from qmflows import InitRestart
 from scm.plams import CRSJob, CRSResults, Settings, KFFile
+from rdkit.Chem import CanonSmiles
 from CAT.utils import get_template
 
 if TYPE_CHECKING:
     if sys.version_info >= (3, 8):
-        from typing import Literal, TypedDict
+        from typing import Literal, TypedDict, SupportsIndex
     else:
-        from typing_extensions import Literal, TypedDict
+        from typing_extensions import Literal, TypedDict, SupportsIndex
 
     _SCT = TypeVar("_SCT", bound=np.generic)
     _NDArray = np.ndarray[Any, np.dtype[_SCT]]
@@ -71,7 +74,13 @@ if TYPE_CHECKING:
         #: Print date for each log event
         date: bool
 
-__all__ = ["get_compkf", "get_fast_sigma_properties", "run_fast_sigma", "read_csv"]
+__all__ = [
+    "get_compkf",
+    "get_fast_sigma_properties",
+    "run_fast_sigma",
+    "read_csv",
+    "sanitize_smiles_df",
+]
 
 LOGP_SETTINGS = get_template('qd.yaml')['COSMO-RS logp']
 LOGP_SETTINGS.runscript.nproc = 1
@@ -776,3 +785,97 @@ def read_csv(
     if formula in df.columns:
         df.loc[df[formula].isnull(), formula] = ""
     return df
+
+
+def _canonicalize_smiles(smiles: str) -> None | str:
+    """Attempt to canonicalize a **smiles** string."""
+    try:
+        return CanonSmiles(smiles)
+    except Exception as ex:
+        warn = RuntimeWarning(f"Failed to canonicalize {smiles!r}")
+        warn.__cause__ = ex
+        warnings.warn(warn)
+        return None
+
+
+def sanitize_smiles_df(
+    df: pd.DataFrame,
+    column_levels: SupportsIndex = 2,
+    column_padding: Hashable = None,
+) -> pd.DataFrame:
+    """Sanitize the passed dataframe, canonicalizing the SMILES in its index, converting the columns into a multiIndex and removing duplicate entries.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        >>> import pandas as pd
+        >>> from nanoCAT.recipes import sanitize_smiles_df
+
+        >>> df: pd.DataFrame = ...
+        >>> print(df)
+                 a
+        smiles
+        CCCO[H]  1
+        CCO[H]   2
+        CO[H]    3
+
+        >>> sanitize_smiles_df(df)
+                 a
+               NaN
+        smiles
+        CCCO     1
+        CCO      2
+        CO       3
+
+    Parameters
+    ----------
+    df : :class:`pd.DataFrame <pandas.DataFrame>`
+        The dataframe in question.
+        The dataframes' index should consist of smiles strings.
+    column_levels : :class:`int`
+        The number of multiindex column levels that should be in the to-be returned dataframe.
+    column_padding : :class:`~collections.abc.Hashable`
+        The object used as padding for the multiindex levels (where appropiate).
+
+    Returns
+    -------
+    :class:`pd.DataFrame <pandas.DataFrame>`
+        The newly sanitized dataframe.
+        Returns either the initially passed dataframe or a copy thereof.
+
+    """  # noqa: E501
+    # Sanitize `arguments`
+    column_levels = operator.index(column_levels)
+    if column_levels < 1:
+        raise ValueError("`column_levels` must be larger than or equal to 1")
+    elif isinstance(df.columns, pd.MultiIndex) and len(df.columns.levels) > column_levels:
+        raise ValueError("`column_levels` must be larger than or equal to number "
+                         "of MultiIndex levels in `df`")
+    elif not isinstance(column_padding, Hashable):
+        raise TypeError("`column_padding` expected a hashable object")
+
+    # Sanitize the index
+    index = pd.Index(
+        [_canonicalize_smiles(i) for i in df.index],
+        dtype=df.index.dtype, name=df.index.name,
+    )
+
+    # Create or pad a MultiIndex
+    padding = (column_levels - 1) * (column_padding,)
+    if not isinstance(df.columns, pd.MultiIndex):
+        columns = pd.MultiIndex.from_tuples(
+            [(i, *padding) for i in df.columns], names=(df.columns.name, *padding)
+        )
+    elif len(df.columns.levels) < column_levels:
+        columns = pd.MultiIndex.from_tuples(
+            [(*j, *padding) for j in df.columns], names=(*df.columns.names, *padding)
+        )
+    else:
+        columns = df.columns.copy()
+
+    mask = ~df.index.duplicated(keep='first') & (df.index != None)
+    ret = df[mask]
+    ret.index = index[mask]
+    ret.columns = columns
+    return ret

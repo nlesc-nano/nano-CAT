@@ -30,7 +30,7 @@ from .multi_lig_job import multi_ligand_job
 from .mol_filter import get_mol_length, filter_mol, filter_data
 from .cdft_utils import run_jobs, get_global_descriptors, cdft
 from .entropy import get_entropy
-from .fast_sigma import run_fast_sigma, get_compkf, read_csv
+from .fast_sigma import run_fast_sigma, get_compkf, read_csv, sanitize_smiles_df
 
 __all__ = [
     'bulk_workflow', 'replace_surface', 'dissociate_surface', 'dissociate_bulk',
@@ -39,5 +39,5 @@ __all__ = [
     'get_mol_length', 'filter_mol', 'filter_data',
     'run_jobs', 'get_global_descriptors', 'cdft',
     'get_entropy',
-    'run_fast_sigma', 'get_compkf', 'read_csv',
+    'run_fast_sigma', 'get_compkf', 'read_csv', 'sanitize_smiles_df',
 ]

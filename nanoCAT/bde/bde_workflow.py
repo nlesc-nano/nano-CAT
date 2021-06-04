@@ -165,7 +165,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     # Optimize XYn
     len_core = len(core)
     if job is AMSJob:
-        s_cp = s.copy()
+        s_cp = Settings(s)
         s_cp.input.ams.GeometryOptimization.coordinatetype = 'Cartesian'
         lig.job_geometry_opt(job, s_cp, name='E_XYn_opt')
     elif forcefield:

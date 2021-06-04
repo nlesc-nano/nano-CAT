@@ -21,7 +21,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from itertools import chain
 from collections.abc import Iterable
-from typing import Dict, Tuple, NamedTuple, Generator, TYPE_CHECKING, Callable
+from typing import Dict, Tuple, NamedTuple, Generator, TYPE_CHECKING, Callable, TypeVar, overload, Any
 
 import numpy as np
 from scm.plams import Molecule, Atom, MoleculeError
@@ -33,13 +33,15 @@ from CAT.attachment.edge_distance import edge_dist
 if TYPE_CHECKING:
     import numpy.typing as npt
 
+_T = TypeVar("_T")
+
 __all__ = ["GraphConstructor", "NeighborTuple", "yield_distances"]
 
 
 class NeighborTuple(NamedTuple):
     """A namedtuple with the output of :meth:`GraphConstructor.__call__`."""
 
-    alligned: bool
+    alligned: np.bool_
     mol: Molecule
     mol_next: Dict[Molecule, Tuple[float, Atom]]
     mol_prev: None | Molecule
@@ -105,7 +107,7 @@ class GraphConstructor:
 
         with SplitMol(self.mol, bonds) as mol_tup:
             mol_start = self._find_start(mol_tup, anchor)
-            self._dfs(mol_start, anchor, True)
+            self._dfs(mol_start, anchor)
 
         dct = self.neighbor_dict
         return mol_start, dct
@@ -114,14 +116,14 @@ class GraphConstructor:
         self,
         mol: Molecule,
         start: Atom,
-        alligned: bool,
+        alligned: np.bool_ = np.True_,
         mol_prev: None | Molecule = None,
     ) -> None:
         """Depth-first search helper method for :meth:`__call__`."""
         tup = self._find_neighbors(mol, alligned, start, mol_prev)
         self.neighbor_dict[mol] = tup
         for m, (_, start) in tup.mol_next.items():
-            self._dfs(m, start, not(alligned), mol)
+            self._dfs(m, start, ~alligned, mol)
 
     @staticmethod
     def _find_start(mol_list: Iterable[Molecule], atom: Atom) -> Molecule:
@@ -134,7 +136,7 @@ class GraphConstructor:
     def _find_neighbors(
         self,
         mol: Molecule,
-        alligned: bool,
+        alligned: np.bool_,
         start: Atom,
         mol_prev: None | Molecule = None,
     ) -> NeighborTuple:
@@ -162,16 +164,43 @@ def _get_dist_mat(mol: Molecule) -> np.ndarray:
     return edge_dist(mol, edges=idx_ar.T)
 
 
+@overload
 def yield_distances(
     mol_graph: Dict[Molecule, NeighborTuple],
     start: Molecule,
-    offset: float = 0,
-    func: None | Callable[[float], float] = None,
-) -> Generator[float, None, None]:
+    *,
+    offset_x: float | np.float64 = ...,
+    offset_y: float | np.float64 = ...,
+    func: None = ...,
+) -> Generator[Tuple[np.float64, np.float64], None, None]:
+    ...
+@overload
+def yield_distances(
+    mol_graph: Dict[Molecule, NeighborTuple],
+    start: Molecule,
+    *,
+    offset_x: float | np.float64 = ...,
+    offset_y: float | np.float64 = ...,
+    func: Callable[[np.float64, np.float64], _T],
+) -> Generator[Tuple[_T, np.float64], None, None]:
+    ...
+def yield_distances(
+    mol_graph: Dict[Molecule, NeighborTuple],
+    start: Molecule,
+    *,
+    offset_x: float | np.float64 = 0,
+    offset_y: float | np.float64 = 0,
+    func: None | Callable[[np.float64, np.float64], Any] = None,
+) -> Generator[Tuple[Any, np.float64], None, None]:
     """Traverse the graph and sum the distances."""
     tup = mol_graph[start]
     alligned = tup.alligned
     for m, (i, _) in tup.mol_next.items():
-        ret = (i * offset) + alligned
-        yield ret if func is None else func(ret)
-        yield from yield_distances(mol_graph, m, offset=ret, func=func)
+        ret_y = (i * ~alligned) + offset_y
+        _ret_x = (i * alligned) + offset_x
+        ret_x = _ret_x if func is None else func(_ret_x, ret_y)
+
+        yield ret_x, ret_y
+        yield from yield_distances(
+            mol_graph, m, offset_x=_ret_x, offset_y=ret_y, func=func
+        )

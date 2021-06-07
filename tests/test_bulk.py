@@ -10,14 +10,14 @@ from assertionlib import assertion
 from nanoCAT.recipes import bulk_workflow, fast_bulk_workflow
 
 FAST_BULK_REF = np.array([
-    [40.16235, 444.729658, 3078.99711],
-    [41.16235, 445.729658, 3079.99711],
-    [8.852858, 25.303044, 46.181948],
-    [0.0, 50.346531, 209.358452],
-    [0.0, 0.39862758, 1.05186054],
-    [0.0, 302.038354, 2962.669593],
-    [0.0, 302.038354, 2962.669593],
-    [0.0, 302.038354, 2962.669593],
+    [40.16235, 207.024513, 987.120114],
+    [41.16235, 208.024513, 988.120114],
+    [8.852858, 21.181752, 38.191051],
+    [0.0, 0.0, 91.447878],
+    [0.0, 0.0, 0.54337059],
+    [0.0, 0.0, 749.750132],
+    [0.0, 0.0, 749.750132],
+    [0.0, 0.0, 749.750132],
 ], dtype=np.float64)
 FAST_BULK_REF.setflags(write=False)
 
@@ -57,5 +57,4 @@ def test_fast_bulk_workflow(kwargs: Mapping[str, Any], i: int) -> None:
         assertion.eq(mol.get_formula(), formula)
 
     ref = FAST_BULK_REF[i]
-    # import pdb; pdb.set_trace()
     np.testing.assert_allclose(bulk_ar, ref, rtol=1e-07)

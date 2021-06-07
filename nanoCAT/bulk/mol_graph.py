@@ -160,7 +160,7 @@ class GraphConstructor:
             if id not in self.id_set:
                 self.id_set.add(id)
                 dist = self.dist_mat[at1.id, start.id].item()
-                mol_next[at2.mol] = (dist, at1)
+                mol_next[at2.mol] = (dist, at2)
 
         return NeighborTuple(
             alligned,

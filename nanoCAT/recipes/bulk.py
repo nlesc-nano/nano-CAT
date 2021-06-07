@@ -9,21 +9,37 @@ Index
 .. currentmodule:: nanoCAT.recipes
 .. autosummary::
     bulk_workflow
+    fast_bulk_workflow
 
 API
 ---
 .. autofunction:: bulk_workflow
+.. autofunction:: fast_bulk_workflow
 
 """
 
 from __future__ import annotations
 
-from typing import Iterable, List, Iterator, Callable, Generator, Tuple, Any, TYPE_CHECKING
+import sys
+import functools
 from itertools import chain
+from typing import (
+    Iterable,
+    List,
+    Iterator,
+    Callable,
+    Generator,
+    Tuple,
+    Union,
+    SupportsFloat,
+    TYPE_CHECKING,
+    TypeVar,
+)
+
 
 import numpy as np
 
-from scm.plams import Molecule
+from scm.plams import Molecule, Atom
 from CAT.data_handling.mol_import import read_mol
 from CAT.data_handling.validate_mol import validate_mol
 from CAT.attachment.ligand_anchoring import _smiles_to_rdmol, find_substructure
@@ -34,8 +50,18 @@ from nanoCAT.bulk import yield_distances, GraphConstructor
 
 if TYPE_CHECKING:
     import numpy.typing as npt
+    from typing_extensions import SupportsIndex
 
-__all__ = ['bulk_workflow']
+if sys.version_info > (3, 8):
+    _WeightReturn = Union[str, bytes, SupportsFloat, "SupportsIndex"]
+else:
+    _WeightReturn = Union[str, bytes, SupportsFloat]
+
+_WT = TypeVar("_WT", bound=_WeightReturn)
+_WeightFunc1 = Callable[[np.float64], _WT]
+_WeightFunc2 = Callable[[np.float64, np.float64], _WT]
+
+__all__ = ['bulk_workflow', 'fast_bulk_workflow']
 
 
 def bulk_workflow(
@@ -100,11 +126,17 @@ def bulk_workflow(
     return mol_list, V_bulk
 
 
-def fast_bulk_weight(r: np.float64, h: np.float64) -> np.float64:
-    if h > 10:
-        return np.float64()
+def _weight(
+    r: np.float64,
+    h: np.float64,
+    w_func: _WeightFunc1[_WT],
+    h_max: float = 10,
+    r_min: float = 4.5,
+) -> _WT | int:
+    if r < r_min or h > h_max:
+        return 0
     else:
-        return np.exp(r)
+        return w_func(r)
 
 
 def fast_bulk_workflow(
@@ -112,18 +144,20 @@ def fast_bulk_workflow(
     anchor: str = 'O(C=O)[H]',
     *,
     anchor_condition: None | Callable[[int], bool] = None,
-    weight: None | Callable[[np.float64, np.float64], float | np.number[Any]] = np.exp,
+    diameter: None | float = 4.5,
+    height_lim: None | float = 10.0,
+    func: None | _WeightFunc1 = np.exp,
 ) -> Tuple[List[Molecule], npt.NDArray[np.float64]]:
-    """Start the CAT ligand bulkiness workflow with an iterable of smiles strings.
+    """Start the ligand fast-bulkiness workflow with an iterable of smiles strings.
 
     Examples
     --------
     .. code:: python
 
-        >>> from CAT.recipes import bulk_workflow
+        >>> from CAT.recipes import fast_bulk_workflow
 
         >>> smiles_list = [...]
-        >>> mol_list, bulk_array = bulk_workflow(smiles_list, optimize=True)
+        >>> mol_list, bulk_array = fast_bulk_workflow(smiles_list, optimize=True)
 
 
     Parameters
@@ -149,6 +183,9 @@ def fast_bulk_workflow(
         A cutoff above which all atoms are ignored.
         Set to :data:`None` to ignore the height cutoff.
         Units should be in Angstrom.
+    func : :class:`Callable[[np.float64], Any] <collections.abc.Callable>`
+        A function for weighting each radial distance.
+        Defaults to :func:`np.exp <numpy.exp>`.
 
     Returns
     -------
@@ -159,8 +196,30 @@ def fast_bulk_workflow(
     proto_mol_list = read_smiles(smiles_list)  # smiles to molecule
     mol_list = list(_filter_mol(proto_mol_list, anchor=anchor, condition=anchor_condition))
 
-    V_bulk = NotImplemented
+    if height_lim is None:
+        height_lim = np.inf
+    if diameter is None:
+        diameter = -np.inf
+
+    if func is None:
+        w_func = lambda x, y: x
+    else:
+        w_func = functools.partial(_weight, h_max=height_lim, r_min=diameter, w_func=func)
+
+    arg_iter = ((m, m.properties.dummies) for m in mol_list)
+    iterator = _fast_bulkiness_iter(arg_iter, w_func)
+    V_bulk = np.fromiter(iterator, dtype=np.float64, count=len(mol_list))
     return mol_list, V_bulk
+
+
+def _fast_bulkiness_iter(
+    iterator: Iterator[Tuple[Molecule, Atom]],
+    func: _WeightFunc2[_WT],
+) -> Generator[_WT | int, None, None]:
+    for mol, atom in iterator:
+        graph = GraphConstructor(mol)
+        dct = graph(atom)
+        yield sum(i for i, *_ in yield_distances(dct, func=func))
 
 
 def read_smiles(smiles_list: Iterable[str]) -> List[Molecule]:

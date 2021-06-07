@@ -21,6 +21,7 @@ API
 from __future__ import annotations
 
 import sys
+import warnings
 import functools
 from itertools import chain
 from typing import (
@@ -192,6 +193,13 @@ def fast_bulk_workflow(
     :class:`list[plams.Molecule] <list>` and :class:`np.ndarray[np.float64] <numpy.ndarray>`
         A list of plams Molecules and a matching array of :math:`V_{bulk}` values.
 
+    Raises
+    ------
+    RuntimeWarning
+        Issued if an exception is encountered when constructing or traversing
+        one of the molecular graphs.
+        The corresponding bulkiness value will be set to ``nan`` in such case.
+
     """
     proto_mol_list = read_smiles(smiles_list)  # smiles to molecule
     mol_list = list(_filter_mol(proto_mol_list, anchor=anchor, condition=anchor_condition))
@@ -215,11 +223,29 @@ def fast_bulk_workflow(
 def _fast_bulkiness_iter(
     iterator: Iterator[Tuple[Molecule, Atom]],
     func: _WeightFunc2[_WT],
-) -> Generator[_WT | int, None, None]:
+) -> Generator[_WT | float, None, None]:
     for mol, atom in iterator:
-        graph = GraphConstructor(mol)
-        dct = graph(atom)
-        yield sum(i for i, *_ in yield_distances(dct, func=func))
+        try:
+            graph = GraphConstructor(mol)
+            dct = graph(atom)
+        except Exception as ex1:
+            warn_ = RuntimeWarning("Failed to construct the molecular graph "
+                                   f"of {mol.properties.smiles!r}")
+            warn_.__cause__ = ex1
+            warnings.warn(warn_, stacklevel=2)
+            yield np.nan
+            continue
+
+        try:
+            ret = sum(i for i, *_ in yield_distances(dct, func=func))
+        except Exception as ex2:
+            warn_ = RuntimeWarning("Failed to traverse the molecular graph "
+                                   f"of {mol.properties.smiles!r}")
+            warn_.__cause__ = ex2
+            warnings.warn(warn_, stacklevel=2)
+            yield np.nan
+        else:
+            yield ret
 
 
 def read_smiles(smiles_list: Iterable[str]) -> List[Molecule]:

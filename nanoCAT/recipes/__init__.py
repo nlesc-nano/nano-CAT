@@ -21,7 +21,7 @@ Examples
 
 """
 
-from .bulk import bulk_workflow
+from .bulk import bulk_workflow, fast_bulk_workflow
 from .charges import get_lig_charge
 from .mark_surface import replace_surface
 from .dissociation import dissociate_surface, row_accumulator, dissociate_bulk
@@ -33,7 +33,8 @@ from .entropy import get_entropy
 from .fast_sigma import run_fast_sigma, get_compkf, read_csv, sanitize_smiles_df
 
 __all__ = [
-    'bulk_workflow', 'replace_surface', 'dissociate_surface', 'dissociate_bulk',
+    'bulk_workflow', 'fast_bulk_workflow',
+    'replace_surface', 'dissociate_surface', 'dissociate_bulk',
     'row_accumulator', 'get_lig_charge', 'coordination_number',
     'multi_ligand_job',
     'get_mol_length', 'filter_mol', 'filter_data',

@@ -33,7 +33,7 @@ from typing import (
 )
 
 import numpy as np
-from scm.plams import Molecule, Atom, MoleculeError
+from scm.plams import Molecule, Atom, Bond, MoleculeError
 
 from CAT.attachment.mol_split_cm import SplitMol
 from CAT.attachment.ligand_opt import split_mol
@@ -172,17 +172,30 @@ class GraphConstructor:
         )
 
 
+def _idx_iter(atoms: Iterable[Atom], bonds: Iterable[Bond]) -> Generator[int, None, None]:
+    """Helper function for :func:`_get_dist_mat`."""
+    atom_dict = {at: i for i, at in enumerate(atoms)}
+    for at1, at2 in bonds:
+        # Filter out the temporary capping atoms added by `SplitMol`;
+        # those won't have the `id` attribute and are thus absent from `atom_dict`
+        try:
+            i = atom_dict[at1]
+            j = atom_dict[at2]
+        except KeyError:
+            continue
+        yield from (i, j, j, i)
+
+
 def _get_dist_mat(mol: Molecule) -> np.ndarray:
     """Construct a distance matrix from the molecular graph of **mol**."""
-    bonds = chain.from_iterable((i.id, j.id, j.id, i.id) for i, j in mol.bonds)
-
-    shape = 2 * len(mol.bonds), 2
-    count = 4 * len(mol.bonds)
-    idx_ar = np.fromiter(bonds, dtype=np.intp, count=count).reshape(shape)
-    return edge_dist(mol, edges=idx_ar)
+    atom_list = [at for at in mol if hasattr(at, "id")]
+    idx_ar = np.fromiter(_idx_iter(atom_list, mol.bonds), dtype=np.intp).reshape(-1, 2)
+    mol_array = np.fromiter(chain.from_iterable(atom_list), dtype=np.float64).reshape(-1, 3)
+    return edge_dist(mol_array, edges=idx_ar)
 
 
 def _find_start(mol_graph: Mapping[Molecule, NeighborTuple]) -> Tuple[Molecule, NeighborTuple]:
+    """Find the start of the molecular graph."""
     for m, tup in mol_graph.items():
         if tup.mol_prev is None:
             return m, tup

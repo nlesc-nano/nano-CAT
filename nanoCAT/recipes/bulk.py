@@ -25,6 +25,7 @@ import warnings
 import functools
 from itertools import chain
 from typing import (
+    Any,
     Iterable,
     List,
     Iterator,
@@ -32,6 +33,7 @@ from typing import (
     Generator,
     Tuple,
     Union,
+    Sequence,
     SupportsFloat,
     TYPE_CHECKING,
     TypeVar,
@@ -40,7 +42,8 @@ from typing import (
 
 import numpy as np
 
-from scm.plams import Molecule, Atom
+from scm.plams import Molecule, Atom, Bond
+from rdkit import Chem
 from CAT.data_handling.mol_import import read_mol
 from CAT.data_handling.validate_mol import validate_mol
 from CAT.attachment.ligand_anchoring import _smiles_to_rdmol, find_substructure
@@ -201,8 +204,7 @@ def fast_bulk_workflow(
         The corresponding bulkiness value will be set to ``nan`` in such case.
 
     """
-    proto_mol_list = read_smiles(smiles_list)  # smiles to molecule
-    mol_list = list(_filter_mol(proto_mol_list, anchor=anchor, condition=anchor_condition))
+    mol_list = list(read_smiles2(smiles_list, anchor=anchor, condition=anchor_condition))
 
     if height_lim is None:
         height_lim = np.inf
@@ -253,6 +255,106 @@ def read_smiles(smiles_list: Iterable[str]) -> List[Molecule]:
     input_mol = list(smiles_list)
     validate_mol(input_mol, 'input_ligands')
     return read_mol(input_mol)
+
+
+def _iter_mol_block(
+    mol_block: str,
+    size: int,
+) -> Generator[Tuple[str, Tuple[str, str, str]], None, None]:
+    """Yield the symbols and coordinates embedded within the passed ``MolBlock``."""
+    slc = np.s_[4:4 + size]
+    lst = mol_block.split("\n")[slc]
+    for i in lst:
+        x, y, z, symbol, *_ = i.split()
+        yield symbol, (x, y, z)
+
+
+def _molecule_from_rdmol(
+    rdmol: Chem.Mol,
+    smiles: str,
+    matches: Iterable[Sequence[int]],
+    split: bool = True,
+) -> Generator[Molecule, None, None]:
+    """Construct a PLAMS molecule from the passed rdkit mol's ``MolBlock``."""
+    for tup in matches:
+        try:
+            i, *_, j = tup  # type: int, Any, None | int
+        except ValueError:
+            i = tup[0]
+            j = None
+
+        # Split the capping atom (j) from the main molecule
+        if j is not None and split:
+            if i > j:
+                i -= 1
+            rdmol_edit = Chem.EditableMol(rdmol)
+            rdmol_edit.RemoveAtom(j)
+            rdmol_new = rdmol_edit.GetMol()
+            anchor = rdmol_new.GetAtoms()[i]
+            anchor.SetFormalCharge(anchor.GetFormalCharge() - 1)
+        else:
+            rdmol_new = rdmol
+
+        # Parse the .mol block and convert it into a PLAMS molecule
+        mol_block = Chem.MolToMolBlock(rdmol)
+        iterator = _iter_mol_block(mol_block, size=len(rdmol.GetAtoms()))
+        mol = Molecule()
+        mol.atoms = [Atom(symbol=symbol, coords=xyz, mol=mol) for symbol, xyz in iterator]
+        for bond in rdmol.GetBonds():
+            at1 = mol.atoms[bond.GetBeginAtomIdx()]
+            at2 = mol.atoms[bond.GetEndAtomIdx()]
+            mol.add_bond(Bond(at1, at2, order=bond.GetBondTypeAsDouble()))
+
+        # Set properties and yield
+        mol.properties.smiles = Chem.MolToSmiles(Chem.RemoveHs(rdmol_new))
+        mol.properties.dummies = mol.atoms[i]
+        mol.properties.anchor = f"{mol.properties.dummies}{i + 1}"
+        yield mol
+
+
+def read_smiles2(
+    smiles_list: Iterable[str],
+    anchor: str = "O(C=O)[H]",
+    condition: None | Callable[[int], bool] = None,
+) -> Generator[Molecule, None, None]:
+    """Convert smiles strings into CAT-compatible plams molecules."""
+    anchor_rdmol = _smiles_to_rdmol(anchor)
+    for smiles in smiles_list:
+        # Read the SMILES strings
+        try:
+            canon_smiles = Chem.CanonSmiles(smiles)
+            rdmol = Chem.AddHs(Chem.MolFromSmiles(smiles))
+        except Exception as ex1:
+            warn_ = RuntimeWarning(f"Failed to parse {smiles!r}")
+            warn_.__cause__ = ex1
+            warnings.warn(warn_, stacklevel=2)
+            continue
+
+        # Perform a substructure match
+        try:
+            matches = rdmol.GetSubstructMatches(anchor_rdmol, useChirality=True)
+            n_matches = len(matches)
+
+            assertable = bool(n_matches)
+            if condition is not None:
+                assertable &= condition(n_matches)
+            assert assertable
+        except AssertionError:
+            continue
+        except Exception as ex2:
+            warn_ = RuntimeWarning(f"Failed to match {smiles!r} and {anchor!r}")
+            warn_.__cause__ = ex2
+            warnings.warn(warn_, stacklevel=2)
+            continue
+
+        # Construct a new PLAMS molecule from the rdkit molecule
+        try:
+            yield from _molecule_from_rdmol(rdmol, canon_smiles, matches)
+        except Exception as ex3:
+            warn_ = RuntimeWarning(f"Failed to construct a PLAMS Molecule from {smiles!r}")
+            warn_.__cause__ = ex3
+            warnings.warn(warn_, stacklevel=2)
+            continue
 
 
 def _filter_mol(

@@ -12,6 +12,8 @@ from assertionlib import assertion
 from nanoCAT.recipes import bulk_workflow, fast_bulk_workflow
 
 PATH = Path("tests") / "test_files"
+
+SMILES = pd.read_csv(PATH / "bulk_input.csv")["smiles"]
 FAST_BULK_REF = pd.read_csv(PATH / "bulk.csv", index_col=0)
 FAST_BULK_REF.columns = FAST_BULK_REF.columns.astype(np.int64)
 
@@ -31,21 +33,19 @@ def test_bulk_workflow() -> None:
     np.testing.assert_allclose(bulk_ar, ref)
 
 
-@pytest.mark.skip(reason="Needs more work")
-@pytest.mark.parametrize("kwargs,i,j", [
-    (dict(diameter=1), 0, 15),
-    (dict(diameter=None), 1, 15),
-    (dict(func=None), 2, 15),
-    (dict(func=lambda x: x**2), 3, 15),
-    (dict(func=lambda x: 1/x), 4, 15),
-    (dict(height_lim=5), 5, 15),
-    (dict(height_lim=None), 6, 15),
-    ({}, 7, None),
+@pytest.mark.xfail(reason="Needs more work", raises=AssertionError)
+@pytest.mark.parametrize("kwargs,i", [
+    (dict(diameter=1), 0),
+    (dict(diameter=None), 1),
+    (dict(func=None), 2),
+    (dict(func=lambda x: x**2), 3),
+    (dict(func=lambda x: 1/x), 4),
+    (dict(height_lim=5), 5),
+    (dict(height_lim=None), 6),
+    ({}, 7),
 ])
-def test_fast_bulk_workflow(kwargs: Mapping[str, Any], i: int, j: None | int) -> None:
+def test_fast_bulk_workflow(kwargs: Mapping[str, Any], i: int) -> None:
     """Tests for :func:`fast_bulk_workflow`."""
-    smiles_list = FAST_BULK_REF.index[:j]
-    _, bulk_ar = fast_bulk_workflow(smiles_list, **kwargs)
-
-    ref = FAST_BULK_REF.iloc[:j, i]
+    _, bulk_ar = fast_bulk_workflow(SMILES, **kwargs)
+    ref = FAST_BULK_REF[i]
     np.testing.assert_allclose(bulk_ar, ref)

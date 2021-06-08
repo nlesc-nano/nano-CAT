@@ -33,7 +33,7 @@ from typing import (
 )
 
 import numpy as np
-from scm.plams import Molecule, Atom, MoleculeError
+from scm.plams import Molecule, Atom, Bond, MoleculeError
 
 from CAT.attachment.mol_split_cm import SplitMol
 from CAT.attachment.ligand_opt import split_mol
@@ -50,7 +50,7 @@ __all__ = ["GraphConstructor", "NeighborTuple", "yield_distances"]
 class NeighborTuple(NamedTuple):
     """A namedtuple with the output of :meth:`GraphConstructor.__call__`."""
 
-    alligned: np.bool_
+    aligned: np.bool_
     mol: Molecule
     mol_next: Dict[Molecule, Tuple[float, Atom]]
     mol_prev: None | Molecule
@@ -126,14 +126,14 @@ class GraphConstructor:
         self,
         mol: Molecule,
         start: Atom,
-        alligned: np.bool_ = np.True_,
+        aligned: np.bool_ = np.True_,
         mol_prev: None | Molecule = None,
     ) -> None:
         """Depth-first search helper method for :meth:`__call__`."""
-        tup = self._find_neighbors(mol, alligned, start, mol_prev)
+        tup = self._find_neighbors(mol, aligned, start, mol_prev)
         self.neighbor_dict[mol] = tup
         for m, (_, start) in tup.mol_next.items():
-            self._dfs(m, start, ~alligned, mol)
+            self._dfs(m, start, ~aligned, mol)
 
     @staticmethod
     def _find_start(mol_list: Iterable[Molecule], atom: Atom) -> Molecule:
@@ -146,7 +146,7 @@ class GraphConstructor:
     def _find_neighbors(
         self,
         mol: Molecule,
-        alligned: np.bool_,
+        aligned: np.bool_,
         start: Atom,
         mol_prev: None | Molecule = None,
     ) -> NeighborTuple:
@@ -160,10 +160,10 @@ class GraphConstructor:
             if id not in self.id_set:
                 self.id_set.add(id)
                 dist = self.dist_mat[at1.id, start.id].item()
-                mol_next[at2.mol] = (dist, at1)
+                mol_next[at2.mol] = (dist, at2)
 
         return NeighborTuple(
-            alligned,
+            aligned,
             mol,
             mol_next,
             mol_prev,
@@ -172,17 +172,30 @@ class GraphConstructor:
         )
 
 
+def _idx_iter(atoms: Iterable[Atom], bonds: Iterable[Bond]) -> Generator[int, None, None]:
+    """Helper function for :func:`_get_dist_mat`."""
+    atom_dict = {at: i for i, at in enumerate(atoms)}
+    for at1, at2 in bonds:
+        # Filter out the temporary capping atoms added by `SplitMol`;
+        # those won't have the `id` attribute and are thus absent from `atom_dict`
+        try:
+            i = atom_dict[at1]
+            j = atom_dict[at2]
+        except KeyError:
+            continue
+        yield from (i, j, j, i)
+
+
 def _get_dist_mat(mol: Molecule) -> np.ndarray:
     """Construct a distance matrix from the molecular graph of **mol**."""
-    bonds = chain.from_iterable((i.id, j.id, j.id, i.id) for i, j in mol.bonds)
-
-    shape = 2 * len(mol.bonds), 2
-    count = 4 * len(mol.bonds)
-    idx_ar = np.fromiter(bonds, dtype=np.intp, count=count).reshape(shape)
-    return edge_dist(mol, edges=idx_ar)
+    atom_list = [at for at in mol if hasattr(at, "id")]
+    idx_ar = np.fromiter(_idx_iter(atom_list, mol.bonds), dtype=np.intp).reshape(-1, 2)
+    mol_array = np.fromiter(chain.from_iterable(atom_list), dtype=np.float64).reshape(-1, 3)
+    return edge_dist(mol_array, edges=idx_ar)
 
 
 def _find_start(mol_graph: Mapping[Molecule, NeighborTuple]) -> Tuple[Molecule, NeighborTuple]:
+    """Find the start of the molecular graph."""
     for m, tup in mol_graph.items():
         if tup.mol_prev is None:
             return m, tup
@@ -225,19 +238,19 @@ def yield_distances(
         start, tup = _find_start(mol_graph)
     else:
         tup = mol_graph[start]
-    alligned = tup.alligned
+    aligned = tup.aligned
 
     # Traverse the distance matrix of `start`, starting from its starting point
     for i in tup.mol_dist_mat[tup.start]:  # type: np.float64
-        ret_xy = (i * alligned) + offset_xy
-        ret_z = (i * ~alligned) + offset_z
+        ret_xy = (i * ~aligned) + offset_xy
+        ret_z = (i * aligned) + offset_z
         ret_xy_weight = func(ret_xy, ret_z)
         yield (ret_xy_weight, ret_xy, ret_z)
 
     # Calculate the new offsets and continue traversing the graph in a dfs-based manner
     for m, (delta, _) in tup.mol_next.items():
-        offset_xy_new = offset_xy + (delta * alligned)
-        offset_z_new = offset_z + (delta * ~alligned)
+        offset_xy_new = offset_xy + (delta * ~aligned)
+        offset_z_new = offset_z + (delta * aligned)
         yield from yield_distances(
             mol_graph,
             func=func,

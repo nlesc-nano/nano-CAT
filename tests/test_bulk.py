@@ -31,6 +31,7 @@ def test_bulk_workflow() -> None:
     np.testing.assert_allclose(bulk_ar, ref)
 
 
+@pytest.mark.skip(reason="Needs more work")
 @pytest.mark.parametrize("kwargs,i,j", [
     (dict(diameter=1), 0, 15),
     (dict(diameter=None), 1, 15),

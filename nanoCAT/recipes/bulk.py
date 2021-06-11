@@ -306,7 +306,7 @@ def _molecule_from_rdmol(
             mol.add_bond(Bond(at1, at2, order=bond.GetBondTypeAsDouble()))
 
         # Set properties and yield
-        mol.properties.smiles = Chem.MolToSmiles(Chem.RemoveHs(rdmol_new))
+        mol.properties.smiles = smiles
         mol.properties.dummies = mol.atoms[i]
         mol.properties.anchor = f"{mol.properties.dummies.symbol}{i + 1}"
         yield mol

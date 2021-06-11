@@ -140,7 +140,7 @@ def _weight(
     if r < r_min or h > h_max:
         return 0
     else:
-        return w_func(r)
+        return w_func(r - (r_min / 2))
 
 
 def fast_bulk_workflow(

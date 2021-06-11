@@ -308,7 +308,7 @@ def _molecule_from_rdmol(
         # Set properties and yield
         mol.properties.smiles = Chem.MolToSmiles(Chem.RemoveHs(rdmol_new))
         mol.properties.dummies = mol.atoms[i]
-        mol.properties.anchor = f"{mol.properties.dummies}{i + 1}"
+        mol.properties.anchor = f"{mol.properties.dummies.symbol}{i + 1}"
         yield mol
 
 

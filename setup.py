@@ -29,6 +29,7 @@ setup(
         'nanoCAT.ff',
         'nanoCAT.recipes',
         'nanoCAT.bulk',
+        'nanoCAT.core_construct',
     ],
     package_dir={'nanoCAT': 'nanoCAT'},
     package_data={'nanoCAT': ['data/*csv', 'py.typed', '*.pyi']},

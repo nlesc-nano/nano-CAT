@@ -65,7 +65,7 @@ setup(
         'AssertionLib>=2.3',
         'noodles',
         'more-itertools',
-        'plams@git+https://github.com/SCM-NV/PLAMS@master',
+        'plams>=1.5.1',
         'qmflows@git+https://github.com/SCM-NV/qmflows@master',
         'CAT@git+https://github.com/nlesc-nano/CAT@master',
         'Auto-FOX@git+https://github.com/nlesc-nano/auto-FOX@master',

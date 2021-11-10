@@ -46,6 +46,7 @@ from scm.plams import Molecule, Atom, Bond
 from rdkit import Chem
 from CAT.data_handling.mol_import import read_mol
 from CAT.data_handling.validate_mol import validate_mol
+from CAT.data_handling.anchor_parsing import parse_anchors
 from CAT.attachment.ligand_anchoring import _smiles_to_rdmol, find_substructure
 from CAT.attachment.ligand_opt import optimize_ligand, allign_axis
 
@@ -363,7 +364,7 @@ def _filter_mol(
     condition: None | Callable[[int], bool] = None,
 ) -> Iterator[Molecule]:
     """Filter all input molecules based on the presence of a functional group (the "anchor")."""
-    anchor_rdmols = (_smiles_to_rdmol(anchor),)
+    anchor_rdmols = parse_anchors(anchor)
     return chain.from_iterable(
         find_substructure(mol, anchor_rdmols, condition=condition) for mol in mol_list
     )
@@ -371,10 +372,7 @@ def _filter_mol(
 
 def opt_and_allign(mol_list: Iterable[Molecule], opt: bool = True) -> None:
     """Optimize all molecules and allign them along the x-axis; set :code:`opt=False` to disable the optimization."""  # noqa
-    def _allign_axis(mol: Molecule) -> None:
-        return allign_axis(mol, mol.properties.dummies)
-
-    process_mol: Callable[[Molecule], None] = optimize_ligand if opt else _allign_axis
+    process_mol: Callable[[Molecule], None] = optimize_ligand if opt else allign_axis
     for mol in mol_list:
         process_mol(mol)
 

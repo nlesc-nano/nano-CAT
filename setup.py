@@ -85,7 +85,6 @@ setup(
             'pytest',
             'pytest-cov',
             'pytest-mock',
-            'flake8',
             'CAT@git+https://github.com/nlesc-nano/CAT@master',
         ],
     }

@@ -43,6 +43,7 @@ setup(
         'python-3',
         'python-3-7',
         'python-3-8',
+        'python-3-9',
         'automation',
         'scientific-workflows'
     ],
@@ -53,7 +54,8 @@ setup(
         'License :: OSI Approved :: GNU Lesser General Public License',
         'Natural Language :: English',
         'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8'
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
     ],
     test_suite='tests',
     python_requires='>=3.7',
@@ -83,7 +85,6 @@ setup(
             'pytest',
             'pytest-cov',
             'pytest-mock',
-            'flake8',
             'CAT@git+https://github.com/nlesc-nano/CAT@master',
         ],
     }

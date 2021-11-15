@@ -7,29 +7,29 @@ from typing import Union, TypeVar, Any, TYPE_CHECKING
 
 import ase.io.cif
 import numpy as np
-from numpy import float64 as f8, int64 as i8, bool_ as b
 from scipy.spatial import cKDTree
 from scm.plams import Molecule, Atom, fromASE
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray, ArrayLike
+    from numpy import (
+        bool_ as b,
+        int64 as i8,
+        float64 as f8,
+    )
 
-_SCT = TypeVar("_SCT", bound=Union[np.bool_, np.integer, np.floating])
+_SCT = TypeVar("_SCT", bound=np.generic)
 
 __all__ = ["parse_miller_keys", "get_surface_intersections", "get_interior_points"]
 
 
-def parse_miller_keys(keys: Iterable[str] | Iterable[tuple[int, int, int]]) -> NDArray[i8]:
+def parse_miller_keys(keys: Iterable[str | bytes] | Iterable[tuple[int, int, int]]) -> NDArray[i8]:
     """Parse and validate the passed miller indices."""
     ar = np.array([i for i in keys])
-
-    if ar.dtype.kind == "U":
-        try:
-            ar_str = ar.view(("U1", 3))
-        except ValueError as ex:
-            raise ValueError("Miller indices must be of length 3") from ex
-        return ar_str.astype(np.int64)
-
+    if ar.dtype.kind in "US":
+        if ar.dtype.itemsize != 3:
+            raise ValueError("Miller indices must be of length 3")
+        return ar.view(((ar.dtype.kind, 1), 3)).astype(np.int64)
     else:
         if ar.ndim != 2 or ar.shape[1] != 3:
             raise ValueError("Miller indices must be of length 3")
@@ -44,7 +44,10 @@ def _filter_rank(coef: NDArray[f8], aug: NDArray[f8]) -> NDArray[b]:
 
 
 def _get_miller_combinations(miller: NDArray[_SCT]) -> NDArray[_SCT]:
-    """Construct all combinations of three miller indices."""
+    """Construct all combinations of three miller indices.
+
+    Converts a ``(n, 3)`` array into a ``(n, 3, 3)`` array.
+    """
     # Get all unique sign- and position-permutations of the Miller indices
     sign_perm = list(product([1, -1], repeat=3))
     pos_perm = list(permutations(range(3), 3))
@@ -78,23 +81,18 @@ def get_surface_intersections(
     miller = np.array(miller, ndmin=2, copy=False)
     if miller.ndim != 2 or miller.shape[-1] != 3:
         raise ValueError("`miller` expected a (n, 3)-shaped array")
-    elif miller.dtype.kind not in "buif":
-        raise TypeError("`miller` expected an int or float array")
-
-    if radius < 0:
-        raise ValueError("`radius` must be larger than 0")
 
     # Construct all combinations of coefficient- and augmented coefficient matrices
     coef = _get_miller_combinations(miller)
     coef_norm = coef / np.linalg.norm(coef, axis=-1)[..., None]
     aug = np.empty(coef_norm.shape[:2] + (4,))
     aug[..., :3] = coef_norm
-    aug[..., 3] = -radius
+    aug[..., 3] = -np.sqrt(radius**2 / 3)
 
     # Evaluate the matrix ranks
-    rank_ge_3 = _filter_rank(coef_norm, aug)
-    coef_subset = coef_norm[rank_ge_3]
-    aug_subset = aug[rank_ge_3]
+    rank_eq_3 = _filter_rank(coef_norm, aug)
+    coef_subset = coef_norm[rank_eq_3]
+    aug_subset = aug[rank_eq_3]
 
     # Get the coordinates of the intersection points
     xyz = np.empty((aug_subset.shape[0], 3))
@@ -103,8 +101,9 @@ def get_surface_intersections(
     xyz[..., 2] = np.linalg.det(aug_subset[..., [0, 1, 3]])
     xyz /= np.linalg.det(coef_subset)[..., None]
 
-    miller_ret = coef[rank_ge_3].astype(miller.dtype, copy=False)
-    return np.unique(xyz, axis=0), np.unique(miller_ret, axis=0)
+    xyz_ret, idx_ref = np.unique(xyz, axis=0, return_index=True)
+    miller_ret = coef[rank_eq_3][idx_ref].astype(miller.dtype, copy=False)
+    return xyz_ret, miller_ret
 
 
 def get_interior_points(vertices: NDArray[f8], points: ArrayLike) -> NDArray[b]:
@@ -129,7 +128,7 @@ def read_cif(file: str | bytes | os.PathLike[Any]) -> Molecule:
 def get_supercell(mol: Molecule, r: float) -> Molecule:
     """Construct a supercell from **mol** that is at least as large as the radius **r**."""
     cell = np.asarray(mol.lattice)
-    if cell.dtype.kind not in "buif":
+    if not np.can_cast(cell, np.float64, casting="same_kind"):
         raise TypeError("`mol.lattice` expected an int or float array")
     elif cell.shape != (3, 3):
         raise ValueError("`mol.lattice` expected a (3, 3)-shaped array")
@@ -139,9 +138,8 @@ def get_supercell(mol: Molecule, r: float) -> Molecule:
     if (n / 2).is_integer():
         n += 1  # Ensure that `n` is odd
 
-    ret: Molecule = mol.supercell(n, n, n)
-
     # Translate the supercell so that it is centered on the original cell
+    ret = mol.supercell(n, n, n)
     coords = np.array(ret)
     coords -= cell.sum(axis=1) * max(1, (n - 1) / 2)
     ret.from_array(coords)

@@ -51,11 +51,12 @@ setup(
         'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Chemistry',
-        'License :: OSI Approved :: GNU Lesser General Public License',
+        'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
         'Natural Language :: English',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Typing :: Typed',
     ],
     test_suite='tests',
     python_requires='>=3.7',
@@ -68,12 +69,9 @@ setup(
         'noodles',
         'more-itertools',
         'plams>=1.5.1',
-        'qmflows@git+https://github.com/SCM-NV/qmflows@master',
-        'CAT@git+https://github.com/nlesc-nano/CAT@master',
-        'Auto-FOX@git+https://github.com/nlesc-nano/auto-FOX@master',
-    ],
-    setup_requires=[
-        'pytest-runner'
+        'qmflows>=0.11.0',
+        'nlesc-CAT>=0.10.0',
+        'Auto-FOX>=0.10.0',
     ],
     tests_require=[
         'pytest',
@@ -81,11 +79,6 @@ setup(
         'flake8',
     ],
     extras_require={
-        'test': [
-            'pytest',
-            'pytest-cov',
-            'pytest-mock',
-            'CAT@git+https://github.com/nlesc-nano/CAT@master',
-        ],
+        'test': ['pytest', 'pytest-cov', 'pytest-mock'],
     }
 )

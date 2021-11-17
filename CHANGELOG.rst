@@ -5,6 +5,13 @@ Change Log
 All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
+0.7.0
+*****
+* Added a new fast-bulkiness workflow.
+* Added a new COSMO-RS recipe.
+* Various fixes.
+
+
 0.6.1
 *****
 * Added a new conceptual DFT (CDFT) workflow.

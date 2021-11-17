@@ -51,7 +51,7 @@ Package installation
 --------------------
 Finally, install **Nano-CAT** using pip:
 
-- **Nano-CAT**: ``pip install git+https://github.com/nlesc-nano/nano-CAT@master --upgrade``
+- **Nano-CAT**: ``pip install nano-CAT --upgrade``
 
 Now you are ready to use **Nano-CAT**.
 

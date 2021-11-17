@@ -69,9 +69,9 @@ setup(
         'noodles',
         'more-itertools',
         'plams>=1.5.1',
-        'qmflows@git+https://github.com/SCM-NV/qmflows@master',
-        'CAT@git+https://github.com/nlesc-nano/CAT@master',
-        'Auto-FOX@git+https://github.com/nlesc-nano/auto-FOX@master',
+        'qmflows>=0.11.0',
+        'nlesc-CAT>=0.10.0',
+        'Auto-FOX>=0.10.0',
     ],
     setup_requires=[
         'pytest-runner'
@@ -82,11 +82,6 @@ setup(
         'flake8',
     ],
     extras_require={
-        'test': [
-            'pytest',
-            'pytest-cov',
-            'pytest-mock',
-            'CAT@git+https://github.com/nlesc-nano/CAT@master',
-        ],
+        'test': ['pytest', 'pytest-cov', 'pytest-mock'],
     }
 )

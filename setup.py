@@ -73,9 +73,6 @@ setup(
         'nlesc-CAT>=0.10.0',
         'Auto-FOX>=0.10.0',
     ],
-    setup_requires=[
-        'pytest-runner'
-    ],
     tests_require=[
         'pytest',
         'pytest-cov',

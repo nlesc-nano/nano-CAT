@@ -7,18 +7,18 @@ import numpy as np
 from scm.plams import Molecule
 from assertionlib import assertion
 
-from nanoCAT.recipes import coordination_number
+from nanoCAT.recipes import get_coordination_number
 
 PATH = Path('tests') / 'test_files'
 MOL = Molecule(PATH / 'Cd68Se55.xyz')
 
 
 def test_coordination_number() -> None:
-    """Tests for :func:`nanoCAT.recipes.coordination_number`."""
+    """Tests for :func:`nanoCAT.recipes.get_coordination_number`."""
 
-    out_inner = coordination_number(MOL, shell='inner')
+    out_inner = get_coordination_number(MOL, shell='inner')
 
-    out_outer = coordination_number(MOL, shell='outer', d_outer=5.2)
+    out_outer = get_coordination_number(MOL, shell='outer', d_outer=5.2)
 
     ref_inner = {'Cd': {3: [30, 31, 34, 35, 36, 46, 47, 52, 53, 54, 57, 58, 59, 60, 63, 64, 65, 67,
                             69, 70, 71, 75, 78, 79],
@@ -50,5 +50,6 @@ def test_coordination_number() -> None:
     np.testing.assert_equal(out_inner, ref_inner)
     np.testing.assert_equal(out_outer, ref_outer)
 
-    assertion.assert_(coordination_number, MOL, shell='bob', exception=ValueError)
-    assertion.assert_(coordination_number, MOL, shell='outer', d_outer=None, exception=TypeError)
+    assertion.assert_(get_coordination_number, MOL, shell='bob', exception=ValueError)
+    assertion.assert_(get_coordination_number, MOL, shell='outer', d_outer=None,
+                      exception=TypeError)

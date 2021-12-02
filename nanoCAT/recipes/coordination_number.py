@@ -8,11 +8,13 @@ Index
 -----
 .. currentmodule:: nanoCAT.recipes
 .. autosummary::
-    coordination_number
+    get_coordination_number
+    coordination_outer
 
 API
 ---
-.. autofunction:: coordination_number
+.. autofunction:: get_coordination_number
+.. autofunction:: coordination_outer
 
 """
 
@@ -26,7 +28,7 @@ from scm.plams import Molecule
 from nanoutils import group_by_values
 from nanoCAT.bde.guess_core_dist import guess_core_core_dist
 
-__all__: List[str] = ['coordination_number', 'coordination_outer']
+__all__ = ['get_coordination_number', 'coordination_outer']
 
 #: A nested dictonary
 NestedDict = Dict[str, Dict[int, List[int]]]
@@ -116,8 +118,8 @@ def map_coordination(coord: np.ndarray, idx_dict: Dict[str, np.ndarray]) -> Nest
     return cn_dict
 
 
-def coordination_number(mol: Molecule, shell: str = 'inner',
-                        d_outer: Optional[float] = None) -> NestedDict:
+def get_coordination_number(mol: Molecule, shell: str = 'inner',
+                            d_outer: Optional[float] = None) -> NestedDict:
     """Take a molecule and identify the coordination number of each atom.
 
     The function first compute the pair distance between all reference atoms in **mol**.
@@ -192,3 +194,6 @@ def coordination_number(mol: Molecule, shell: str = 'inner',
 
     # Return the final dictionary
     return map_coordination(coord, idx_dict)
+
+
+coordination_number = get_coordination_number

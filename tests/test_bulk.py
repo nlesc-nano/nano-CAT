@@ -14,6 +14,7 @@ from assertionlib import assertion
 from scm.plams import Molecule
 from scipy.spatial.distance import cdist
 from nanoCAT.recipes import bulk_workflow, fast_bulk_workflow
+from CAT.utils import get_formula
 
 if TYPE_CHECKING:
     import _pytest
@@ -45,7 +46,7 @@ def test_bulk_workflow() -> None:
     iterator = enumerate(zip(mol_list, formula_list), start=2)
     for i, (mol, formula) in iterator:
         assertion.eq(mol[i].coords, (0.0, 0.0, 0.0))
-        assertion.eq(mol.get_formula(), formula)
+        assertion.eq(get_formula(mol), formula)
 
     ref = [17.07131616, 64.15117841, 74.79488029]
     np.testing.assert_allclose(bulk_ar, ref)

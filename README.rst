@@ -2,6 +2,8 @@
    :target: https://github.com/nlesc-nano/nano-CAT/actions?query=workflow%3A%22Build+with+Conda%22
 .. image:: https://readthedocs.org/projects/cat/badge/?version=latest
    :target: https://cat.readthedocs.io/en/latest/
+.. image:: https://badge.fury.io/py/nano-CAT.svg
+   :target: https://badge.fury.io/py/nano-CAT
 
 |
 
@@ -14,7 +16,7 @@
 
 
 ##############
-Nano-CAT 0.7.0
+Nano-CAT 0.7.1
 ##############
 
 **Nano-CAT** is a collection of tools for the analysis of nanocrystals,

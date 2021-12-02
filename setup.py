@@ -79,6 +79,11 @@ setup(
         'flake8',
     ],
     extras_require={
-        'test': ['pytest', 'pytest-cov', 'pytest-mock'],
+        'test': [
+            'pytest',
+            'pytest-cov',
+            'pytest-mock',
+            'nlesc-CAT>=0.10.1',
+        ],
     }
 )

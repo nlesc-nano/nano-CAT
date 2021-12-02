@@ -5,6 +5,13 @@ Change Log
 All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
+
+0.7.1
+*****
+* Deprecate usage of ``Molecule.get_formula`` in favor of a PLAMS <=1.5.1-based backport.
+* Fix a failure in the documentation generation
+
+
 0.7.0
 *****
 * Added a new fast-bulkiness workflow.

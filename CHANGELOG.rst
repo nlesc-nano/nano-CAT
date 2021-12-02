@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 
+0.7.2
+*****
+* *placeholder*.
+
+
 0.7.1
 *****
 * Deprecate usage of ``Molecule.get_formula`` in favor of a PLAMS <=1.5.1-based backport.

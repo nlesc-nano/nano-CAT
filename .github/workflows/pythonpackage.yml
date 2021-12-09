@@ -9,10 +9,47 @@ on:
             - master
     pull_request:
 
+env:
+    AMS_URL: https://downloads.scm.com/Downloads/download2021/bin/ams2021.105.pc64_linux.intelmpi.bin.tgz
+    AMS: ams2021.105
+    SCMLICENSE: license.txt
+    AMSHOME: ams
+    AMSBIN: ams/bin
+    AMSRESOURCES: ams/atomicdata
+
 jobs:
-    build:
-        name: Python ${{ matrix.version }} on ${{ matrix.os }}
+    ams:
+        name: Load AMS
+        runs-on: ubuntu-latest
+        steps:
+            -   uses: actions/checkout@v2
+
+            -   name: Enable cache
+                id: enable-cache
+                uses: actions/cache@v2
+                with:
+                    path: ams
+                    key: ${{ env.AMS }}
+
+            -   name: Download AMS
+                if: steps.enable-cache.outputs.cache-hit != 'true'
+                env:
+                    WGETRC: "${{ secrets.WGETRC }}"
+                run: |
+                    echo "$WGETRC" > ~/.wgetrc
+                    wget -q "$AMS_URL" -O ams.bin.tgz
+
+            -   name: Unpack archive
+                if: steps.enable-cache.outputs.cache-hit != 'true'
+                run: |
+                    tar -xvzf ams.bin.tgz
+                    mv $AMS_DIR ams
+                    chmod -R U+rx ams
+
+    tests:
+        name: Tests ${{ matrix.version }} on ${{ matrix.os }}
         runs-on: ${{ matrix.os }}
+        needs: [ams]
         strategy:
             fail-fast: false
             matrix:
@@ -27,6 +64,14 @@ jobs:
 
             -   uses: actions/checkout@v2
 
+            -   name: Load AMS
+                id: load-ams
+                uses: actions/cache@v2
+                if: matrix.os == 'ubuntu-latest'
+                with:
+                    path: ams
+                    key: ${{ env.AMS }}
+
             -   name: Set up Conda
                 uses: s-weigand/setup-conda@v1
                 with:
@@ -34,13 +79,7 @@ jobs:
 
             -   name: Install dependencies
                 run: |
-                    case "${{ matrix.os }}" in
-                        "macos-latest")
-                            # TODO: Remove when/if scipy and h5py wheels are available again
-                            conda create -n test -c conda-forge python=${{ matrix.version }} rdkit "pip<=20.2" scipy h5py ;;
-                        *)
-                            conda create -n test -c conda-forge python=${{ matrix.version }} rdkit "pip<=20.2" ;;
-                    esac
+                    conda create -n test -c conda-forge python=${{ matrix.version }} "rdkit>=2021.03.4"
                     source $CONDA/bin/activate test
                     pip install -e .[test]
 
@@ -53,9 +92,18 @@ jobs:
                 run: conda list -n test
 
             -   name: Run tests
+                env:
+                    SCMLICENSE: "${{ secrets.SCMLICENSE }}"
                 run: |
                     source $CONDA/bin/activate test
-                    pytest -m "not slow"
+                    case "${{ steps.load-ams.outputs.cache-hit }}" in
+                        "true")
+                            echo "$SCMLICENSE" > license.txt
+                            pytest
+                            ;;
+                        *)
+                            pytest -m "not slow" ;;
+                    esac
 
             -   name: Run codecov
                 uses: codecov/codecov-action@v2

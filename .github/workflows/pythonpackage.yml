@@ -8,6 +8,7 @@ on:
         branches:
             - master
     pull_request:
+    workflow_dispatch:
 
 jobs:
     build:
@@ -27,35 +28,21 @@ jobs:
 
             -   uses: actions/checkout@v2
 
-            -   name: Set up Conda
-                uses: s-weigand/setup-conda@v1
+            -   name: Set up Python
+                uses: actions/setup-python@v2
                 with:
-                    update-conda: false
+                    python-version: ${{ matrix.version }}
 
             -   name: Install dependencies
-                run: |
-                    case "${{ matrix.os }}" in
-                        "macos-latest")
-                            # TODO: Remove when/if scipy and h5py wheels are available again
-                            conda create -n test -c conda-forge python=${{ matrix.version }} rdkit "pip<=20.2" scipy h5py ;;
-                        *)
-                            conda create -n test -c conda-forge python=${{ matrix.version }} rdkit "pip<=20.2" ;;
-                    esac
-                    source $CONDA/bin/activate test
-                    pip install -e .[test]
+                run: pip install -e .[test]
 
-            -   name: Info Conda
+            -   name: Info Python
                 run: |
-                    source $CONDA/bin/activate test
-                    conda info
+                    which python
+                    python --version
 
             -   name: Info installed packages
-                run: conda list -n test
-
-            -   name: Run tests
-                run: |
-                    source $CONDA/bin/activate test
-                    pytest -m "not slow"
+                run: pip list
 
             -   name: Run codecov
                 uses: codecov/codecov-action@v2

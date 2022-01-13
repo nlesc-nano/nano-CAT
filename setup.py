@@ -62,8 +62,8 @@ setup(
     python_requires='>=3.7',
     install_requires=[
         'Nano-Utils>=0.3.2',
-        'numpy',
-        'scipy',
+        'numpy>=1.15.0',
+        'scipy>=0.19.1',
         'pandas>=0.24.0',
         'AssertionLib>=2.3',
         'noodles',
@@ -72,6 +72,7 @@ setup(
         'qmflows>=0.11.0',
         'nlesc-CAT>=0.10.0',
         'Auto-FOX>=0.10.0',
+        'rdkit-pypi>=2018.03.1',
     ],
     tests_require=[
         'pytest',

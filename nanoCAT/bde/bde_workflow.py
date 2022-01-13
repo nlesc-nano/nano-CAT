@@ -33,6 +33,7 @@ from itertools import product
 
 import numpy as np
 
+import qmflows
 from scm.plams import AMSJob, Molecule, Settings, Cp2kJob
 from scm.plams.core.basejob import Job
 
@@ -171,7 +172,13 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     elif forcefield:
         qd_opt_ff(lig, Settings({'job1': Cp2kJob, 's1': s}), name='E_XYn_opt')
     else:
-        lig.job_geometry_opt(job, s, name='E_XYn_opt')
+        # TODO Generalize this to more QM packages
+        if job is Cp2kJob:
+            s_geom = s.copy()
+            s.input.soft_update(qmflows.geometry.cp2k)
+        else:
+            s_geom = s
+        lig.job_geometry_opt(job, s_geom, name='E_XYn_opt')
 
     E_lig = lig.properties.energy.E
     if E_lig in (None, np.nan):
@@ -182,7 +189,13 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     if forcefield:
         qd_opt_ff(tot, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD_opt')
     else:
-        tot.job_single_point(job, s, name='E_QD_sp')
+        # TODO Generalize this to more QM packages
+        if job is Cp2kJob:
+            s_sp = s.copy()
+            s_sp.input.soft_update(qmflows.singlepoint.cp2k)
+        else:
+            s_sp = s
+        tot.job_single_point(job, s_sp, name='E_QD_sp')
 
     E_tot = tot.properties.energy.E
     if E_tot in (None, np.nan):
@@ -194,7 +207,7 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         if forcefield:
             qd_opt_ff(mol, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD-XYn_opt')
         else:
-            mol.job_single_point(job, s, name='E_QD-XYn_sp')
+            mol.job_single_point(job, s_sp, name='E_QD-XYn_sp')
     E_core = np.fromiter([mol.properties.energy.E for mol in core], count=len_core, dtype=float)
 
     # Calculate and return dE

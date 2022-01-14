@@ -191,11 +191,19 @@ def _construct_xyn(
         dist = anchor.radius + X.radius
 
         # Translate and rotate the ligand
+        #
+        # NOTE: `nan` can appear in the rotation matrix and `vec3`
+        # if the ligand only has a single atom
         mol.translate(vec1)
-        mol.rotate(rotmat)
+        if not np.isnan(rotmat).all():
+            mol.rotate(rotmat)
+
         vec3 = anchor.vector_to(mol.get_center_of_mass())
         vec3 /= np.linalg.norm(vec3) / dist
-        mol.translate(vec3)
+        if np.isnan(vec3).all():
+            mol.translate((0, 0, dist))
+        else:
+            mol.translate(vec3)
 
         # Set pdb attributes
         for at in mol:

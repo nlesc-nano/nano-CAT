@@ -1,0 +1,7 @@
+ATOM      1  H2  UNL     1       0.000   0.000   5.968  1.00  0.00           H  
+HETATM    2 CL2  UNL     1       0.000   0.000   4.675  1.00  0.00          CL  
+ATOM      3  H1  UNL     1       0.000   0.000   1.293  1.00  0.00           H  
+HETATM    4 CL1  UNL     2       0.000   0.000   0.000  1.00  0.00          CL  
+CONECT    1    2
+CONECT    3    4
+END

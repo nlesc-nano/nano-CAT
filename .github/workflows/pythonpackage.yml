@@ -19,6 +19,8 @@ jobs:
             matrix:
                 os: [ubuntu-latest, macos-latest]
                 version: ["3.7", "3.8", "3.9", "3.10"]
+        env:
+            CP2K_DATA_DIR: "/usr/share/cp2k"
 
         steps:
             -   name: Cancel Previous Runs
@@ -27,6 +29,12 @@ jobs:
                     access_token: ${{ github.token }}
 
             -   uses: actions/checkout@v2
+
+            -   name: Install CP2K
+                if: matrix.os == 'ubuntu-latest'
+                run: |
+                    sudo apt-get update
+                    sudo apt install cp2k
 
             -   name: Set up Python
                 uses: actions/setup-python@v2
@@ -43,6 +51,13 @@ jobs:
 
             -   name: Info installed packages
                 run: pip list
+
+            -   name: Info CP2K
+                if: matrix.os == 'ubuntu-latest'
+                run: cp2k.popt --version
+
+            -   name: Run tests
+                run: pytest -m "not slow"
 
             -   name: Run codecov
                 uses: codecov/codecov-action@v2

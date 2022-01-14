@@ -101,7 +101,8 @@ def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List
 
 def start_bde(mol_list: Iterable[Molecule],
               jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
-              forcefield=None, lig_count=None, core_atom=None, **kwargs) -> List[np.ndarray]:
+              forcefield=None, lig_count=None, core_atom=None,
+              core_index=None, **kwargs) -> List[np.ndarray]:
     """Calculate the BDEs with thermochemical corrections."""
     job1, job2 = jobs
     s1, s2 = settings
@@ -111,11 +112,16 @@ def start_bde(mol_list: Iterable[Molecule],
     for qd_complete in mol_list:
         # Dissociate a XYn molecule from the quantum dot surface
         qd_complete.round_coords()
-        XYn: Molecule = get_xyn(qd_complete, lig_count, core_atom)
+        # import pdb; pdb.set_trace()
+        if core_index is None:
+            XYn = get_xyn(qd_complete, lig_count, core_atom)
+        else:
+            XYn = get_xyn(qd_complete, lig_count, qd_complete[core_index[0]].symbol)
 
         # Create all possible quantum dots where XYn is dissociated
         qd_list: List[Molecule] = list(dissociate_ligand(
-            qd_complete, lig_count, core_atom=core_atom, **kwargs
+            qd_complete, lig_count, core_atom=core_atom,
+            core_index=core_index, **kwargs,
         ))
 
         # Construct labels describing the topology of all XYn-dissociated quantum dots

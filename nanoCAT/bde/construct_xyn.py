@@ -299,6 +299,8 @@ def _get_ligand(mol: Molecule) -> Molecule:
             ret.atoms = at_list
             ret.bonds = list(set(chain.from_iterable(at.bonds for at in at_list)))
             return ret.copy()
+    else:
+        raise MoleculeError(f"Failed to extract a ligand from {mol.get_formula()}")
 
 
 def get_perpendicular_vec(vec: np.ndarray) -> np.ndarray:

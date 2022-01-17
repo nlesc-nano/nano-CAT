@@ -72,7 +72,7 @@ setup(
         'more-itertools',
         'plams>=1.5.1',
         'qmflows>=0.11.0',
-        'nlesc-CAT>=0.10.0',
+        'nlesc-CAT>=0.10.3',
         'Auto-FOX>=0.10.0',
         'rdkit-pypi>=2018.03.1',
     ],
@@ -86,7 +86,6 @@ setup(
             'pytest',
             'pytest-cov',
             'pytest-mock',
-            'nlesc-CAT>=0.10.1',
         ],
     }
 )

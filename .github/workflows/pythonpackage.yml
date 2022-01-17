@@ -76,7 +76,7 @@ jobs:
                     python-version: 3.9
 
             -   name: Install linters
-                run: pip install "flake8>=3.8.0" "pydocstyle>=5.0.0"
+                run: pip install "flake8>=3.8.0"
 
             -   name: Python info
                 run: |
@@ -88,4 +88,3 @@ jobs:
 
             -   name: Run flake8
                 run: flake8 nanoCAT tests
-                continue-on-error: true

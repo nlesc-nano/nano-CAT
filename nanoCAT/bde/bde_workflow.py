@@ -270,7 +270,8 @@ def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         return np.full(len_core, np.nan)
 
     # Optimize XYn
-    s.input.ams.Constraints.Atom = lig.properties.indices
+    if job is AMSJob:
+        s.input.ams.Constraints.Atom = lig.properties.indices
     lig.job_freq(job, s, name='G_XYn_freq')
 
     # Extract energies
@@ -282,7 +283,8 @@ def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         return np.full(len_core, np.nan)
 
     # Optimize the full quantum dot
-    s.input.ams.Constraints.Atom = tot.properties.indices
+    if job is AMSJob:
+        s.input.ams.Constraints.Atom = tot.properties.indices
     tot.job_freq(job, s, name='G_QD_freq')
 
     # Extract energies
@@ -295,7 +297,8 @@ def get_bde_ddG(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
 
     # Optimize the quantum dot(s) - XYn
     for mol in core:
-        s.input.ams.Constraints.Atom = mol.properties.indices
+        if job is AMSJob:
+            s.input.ams.Constraints.Atom = mol.properties.indices
         mol.job_freq(job, s, name='G_QD-XYn_freq')
 
     # Extract energies

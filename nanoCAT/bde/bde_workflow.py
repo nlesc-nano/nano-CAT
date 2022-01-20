@@ -28,7 +28,9 @@ API
 
 """
 
-from typing import Iterable, Type, List, Tuple, Optional
+from __future__ import annotations
+
+from typing import Iterable, Type, List, Tuple, Optional, Any
 from itertools import product
 
 import numpy as np
@@ -99,10 +101,18 @@ def _construct_columns(workflow: WorkFlow, mol_list: Iterable[Molecule]) -> List
     return list(product(super_keys, sub_keys))
 
 
-def start_bde(mol_list: Iterable[Molecule],
-              jobs: Tuple[Type[Job], ...], settings: Tuple[Settings, ...],
-              forcefield=None, lig_count=None, core_atom=None,
-              core_index=None, xyn_pre_opt=True, **kwargs) -> List[np.ndarray]:
+def start_bde(
+    mol_list: Iterable[Molecule],
+    jobs: Tuple[Type[Job], ...],
+    settings: Tuple[Settings, ...],
+    forcefield=None,
+    lig_count: None | int = None,
+    core_atom: None | Molecule | str | int = None,
+    core_index: None | int = None,
+    xyn_pre_opt: bool = True,
+    qd_opt: bool = False,
+    **kwargs: Any,
+) -> List[np.ndarray]:
     """Calculate the BDEs with thermochemical corrections."""
     job1, job2 = jobs
     s1, s2 = settings
@@ -129,7 +139,7 @@ def start_bde(mol_list: Iterable[Molecule],
         labels = [qd.properties.df_index for qd in qd_list]
 
         # Run the BDE calculations
-        dE = get_bde_dE(qd_complete, XYn, qd_list, job1, s1, forcefield)
+        dE = get_bde_dE(qd_complete, XYn, qd_list, job1, s1, forcefield, qd_opt)
         ddG = get_bde_ddG(qd_complete, XYn, qd_list, job2, s2)
         dG = dE + ddG
 
@@ -149,7 +159,8 @@ def start_bde(mol_list: Iterable[Molecule],
 
 
 def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
-               job: Type[Job], s: Settings, forcefield: bool = False) -> np.ndarray:
+               job: Type[Job], s: Settings, forcefield: bool = False,
+               qd_opt: bool = True) -> np.ndarray:
     """Calculate the bond dissociation energy: dE = dE(mopac) + (dG(uff) - dE(uff)).
 
     Parameters
@@ -199,10 +210,15 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
         # TODO Generalize this to more QM packages
         if job is Cp2kJob:
             s_sp = s.copy()
-            s_sp.input.soft_update(qmflows.singlepoint.cp2k)
+            s_sp.input.soft_update(
+                qmflows.singlepoint.cp2k if not qd_opt else qmflows.geometry.cp2k
+            )
         else:
             s_sp = s
-        tot.job_single_point(job, s_sp, name='E_QD_sp')
+        if not qd_opt:
+            tot.job_single_point(job, s_sp, name='E_QD_sp')
+        else:
+            tot.job_geometry_opt(job, s_sp, name='E_QD_opt')
 
     E_tot = tot.properties.energy.E
     if E_tot in (None, np.nan):
@@ -213,8 +229,10 @@ def get_bde_dE(tot: Molecule, lig: Molecule, core: Iterable[Molecule],
     for mol in core:
         if forcefield:
             qd_opt_ff(mol, Settings({'job1': Cp2kJob, 's1': s}), name='E_QD-XYn_opt')
-        else:
+        elif not qd_opt:
             mol.job_single_point(job, s_sp, name='E_QD-XYn_sp')
+        else:
+            mol.job_geometry_opt(job, s_sp, name='E_QD-XYn_opt')
     E_core = np.fromiter([mol.properties.energy.E for mol in core], count=len_core, dtype=float)
 
     # Calculate and return dE

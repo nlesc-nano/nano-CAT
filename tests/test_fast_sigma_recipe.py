@@ -47,6 +47,11 @@ SANITIZE4_DF = SANITIZE_DF.copy()
 SANITIZE4_DF.index = pd.Index([None] * len(SANITIZE_DF.index), name=SANITIZE_DF.index.name)
 
 
+def has_env_vars(*env_vars: str) -> bool:
+    """Check if the passed environment variables are available."""
+    return set(env_vars).issubset(os.environ)
+
+
 def compare_df(df1: pd.DataFrame, df2: pd.DataFrame) -> None:
     """Compare the content of two dataframes."""
     __tracebackhide__ = True
@@ -64,10 +69,11 @@ def compare_df(df1: pd.DataFrame, df2: pd.DataFrame) -> None:
             np.testing.assert_array_equal(v1, v2, err_msg=k)
 
 
+@pytest.mark.slow
+@pytest.mark.skipif(not has_env_vars("AMSBIN", "AMSHOME", "AMSRESOURCES"), reason="Requires AMS")
 class TestFastSigma:
     """Tests for :func:`nanoCAT.recipes.run_fast_sigma`."""
 
-    @pytest.mark.slow
     @pytest.mark.parametrize(
         "kwargs",
         [{}, {"return_df": True}, {"chunk_size": 1, "return_df": True}, {"processes": 1}],
@@ -114,7 +120,6 @@ class TestFastSigma:
         with pytest.raises(exc):
             run_fast_sigma(SMILES, solvents, **kwargs)
 
-    @pytest.mark.slow
     def test_warns(self, tmp_path: Path) -> None:
         """Test that whether appropiate warning is issued."""
         with pytest.warns(RuntimeWarning) as record:

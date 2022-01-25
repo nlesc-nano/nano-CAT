@@ -83,6 +83,7 @@ setup(
     ],
     extras_require={
         'test': [
+            'pyyaml>=5.1',
             'pytest',
             'pytest-cov',
             'pytest-mock',

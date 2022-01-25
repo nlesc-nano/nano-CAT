@@ -61,6 +61,7 @@ jobs:
                             ;;
                         *)
                             pip install -e .[test]
+                            pip install git+https://github.com/nlesc-nano/CAT@master --upgrade
                             ;;
                     esac
 

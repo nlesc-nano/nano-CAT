@@ -34,7 +34,7 @@ from nanoutils import Literal
 from scm.plams import Molecule
 
 from CAT.settings_dataframe import SettingsDataFrame
-from CAT.workflows import WorkFlow, MOL
+from CAT.workflows import WorkFlow, MOL, V_BULK
 
 __all__ = ['init_lig_bulkiness']
 
@@ -71,14 +71,24 @@ def init_lig_bulkiness(qd_df: SettingsDataFrame, ligand_df: SettingsDataFrame,
     """
     workflow = WorkFlow.from_template(qd_df, name='bulkiness')
     workflow.keep_files = False
+    d = qd_df.settings.optional.qd.bulkiness.d
 
     # Import from the database and start the calculation
     idx = workflow.from_db(qd_df)
-    workflow(start_lig_bulkiness, qd_df, index=idx,
+    if getattr(d, "ndim", 0) == 1:
+        columns = pd.MultiIndex.from_tuples(
+            [("V_bulk", f"d={i}") for i in d], names=qd_df.columns.names
+        )
+        del qd_df[V_BULK]
+        for i in columns:
+            qd_df[i] = np.nan
+    else:
+        columns = None
+    workflow(start_lig_bulkiness, qd_df, index=idx, columns=columns,
              lig_series=ligand_df[MOL], core_series=core_df[MOL])
 
     # Export to the database
-    workflow.to_db(qd_df, index=idx)
+    workflow.to_db(qd_df, index=idx, columns=columns)
 
 
 def start_lig_bulkiness(
@@ -86,7 +96,7 @@ def start_lig_bulkiness(
     lig_series: pd.Series,
     core_series: pd.Series,
     h_lim: Optional[float] = 10,
-    d: Union[None, Literal['auto'], float] = "auto",
+    d: Union[None, Literal['auto'], float, np.ndarray] = "auto",
     **kwargs: Any,
 ) -> List[float]:
     """Start the main loop for the ligand bulkiness calculation."""
@@ -103,11 +113,11 @@ def start_lig_bulkiness(
                 "`optional.qd.bulkiness.d = 'auto'` is not allowed for cores with <= 1 anchor atoms"
             )
 
-        if d == "auto":
-            angle, r_ref = get_core_angle(core)  # type: Any, Optional[float]
+        if isinstance(d, str) and d == "auto":
+            angle, r_ref = get_core_angle(core)  # type: Any, Optional[np.ndarray]
         else:
             angle = None
-            r_ref = d
+            r_ref = np.asarray(d, dtype=np.float64) if d is not None else None
 
         # Calculate V_bulk
         r, h = get_lig_radius(ligand)
@@ -191,8 +201,13 @@ def _get_anchor_idx(mol: Molecule) -> int:
     raise ValueError   # I give up
 
 
-def get_V(radius_array: np.ndarray, height_array: np.ndarray,
-          d: Optional[float], angle: Any, h_lim: Optional[float] = 10.0) -> float:
+def get_V(
+    radius_array: np.ndarray,
+    height_array: np.ndarray,
+    d: "None | float | np.ndarray",
+    angle: Any,
+    h_lim: Optional[float] = 10.0,
+) -> float:
     r"""Calculate the :math:`V_{bulk}`, a ligand- and core-sepcific descriptor of a ligands' bulkiness.
 
     .. math::
@@ -243,9 +258,13 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
     """  # noqa
     r = np.array(radius_array, dtype=float, ndmin=1, copy=False)
     h = np.array(height_array, dtype=float, ndmin=1, copy=False)
+    ndim_1 = getattr(d, "ndim", 0) == 1
 
     if d is not None:
-        step1 = (2 * r) / d - 1
+        if ndim_1:
+            step1 = (2 * r[..., None]) / d[None, ...] - 1
+        else:
+            step1 = (2 * r) / d - 1
         step1[step1 < 0] = 0
     else:
         step1 = 1
@@ -253,8 +272,11 @@ def get_V(radius_array: np.ndarray, height_array: np.ndarray,
     if h_lim is not None:
         step2 = 1 - (h / h_lim)
         step2[step2 < 0] = 0
+        if ndim_1:
+            step2 = step2[..., None]
     else:
         step2 = 1
 
-    ret = step1 * step2 * np.exp(r)
-    return ret.sum()
+    if ndim_1:
+        r = r[..., None]
+    return (step1 * step2 * np.exp(r)).sum(axis=0)

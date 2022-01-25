@@ -1,0 +1,20 @@
+path: tests/test_files/bulk
+
+input_cores:
+    - tests/test_files/core/Cd68Se55.xyz
+
+input_ligands:
+    - CO
+    - CCO
+    - CCCO
+
+optional:
+    core:
+        dummy: Cl
+
+    ligand:
+        split: True
+        anchor: "O(C)[H]"
+
+    qd:
+        bulkiness:

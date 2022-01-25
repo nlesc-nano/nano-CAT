@@ -24,7 +24,7 @@ class TestMain:
         SETTINGS = Settings(yaml.load(f, Loader=yaml.SafeLoader))
 
     @pytest.fixture(scope="function", autouse=True)
-    def teardown(self) -> Generator[None, None, None]:
+    def setup_cat(self) -> Generator[None, None, None]:
         if not os.path.isdir(BULK_PATH):
             os.mkdir(BULK_PATH)
         yield None
@@ -33,7 +33,7 @@ class TestMain:
 
     @pytest.mark.parametrize("d", [None, 5.0, range(3, 7)], ids=["None", "0d", "1d"])
     @pytest.mark.parametrize("h_lim", [None, 5.0], ids=["None", "0d"])
-    def test_pass(self, d, h_lim, teardown) -> None:
+    def test_pass(self, d, h_lim, setup_cat) -> None:
         s = self.SETTINGS.copy()
         s.optional.qd.bulkiness = {"d": d, "h_lim": h_lim}
         qd_df, *_ = prep(s)

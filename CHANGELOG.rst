@@ -8,7 +8,12 @@ This project adheres to `Semantic Versioning <http://semver.org/>`_.
 
 0.7.2
 *****
-* *placeholder*.
+* Apply qmflows templates when using the dissociation workflow.
+* Fixed an issue wherein the `core_index` option was not properly respected.
+* Add the option to optimize QDs and XYn-dissociated QDs in the dissociation workflow.
+* Fix the frequency analysis component of the BDE workflow being incompatible with custom CP2K settings.
+* Allow computing the bulkiness for multiple lattice spacing values.
+* Add a new workflow for computing ligand cone angles.
 
 
 0.7.1

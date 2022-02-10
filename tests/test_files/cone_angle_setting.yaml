@@ -1,0 +1,18 @@
+path: tests/test_files/cone_angle
+
+input_cores:
+    - tests/test_files/core/Cd68Se55.xyz
+
+input_ligands:
+    - CO
+    - CCO
+    - CCCO
+
+optional:
+    core:
+        dummy: Cl
+
+    ligand:
+        split: True
+        anchor: "O(C)[H]"
+        cone_angle: True

@@ -87,10 +87,23 @@ def _minimize_func(vec: NDArray[f8], xyz: NDArray[f8], i: int) -> np.float64:
     return _get_angle(xyz_rot)
 
 
+def _remove_anchor_hydrogens(mol: Molecule, anchor: int) -> tuple[NDArray[f8], int]:
+    """Remove all hydrogen atoms connected to the anchor atom."""
+    mol = mol.copy()
+    anchor_at = mol.atoms[anchor]
+    neighbors = anchor_at.neighbors()
+    for at in neighbors:
+        if at.atnum == 1:
+            mol.delete_atom(at)
+    return np.asarray(mol, dtype=np.float64), mol.atoms.index(anchor_at)
+
+
 def get_cone_angle(
     mol: Molecule,
     anchor: SupportsIndex,
     surface_dist: ArrayLike = 0,
+    *,
+    remove_anchor_hydrogens: bool = False,
 ) -> NDArray[f8] | f8:
     r"""Compute the smallest enclosing cone angle in ``mol``.
 
@@ -112,6 +125,8 @@ def get_cone_angle(
         The (0-based) index of the anchor atom.
     surface_dist : :class:`float`
         The distance of ``anchor`` w.r.t. to the surface of interest.
+    remove_anchor_hydrogens : :class:`bool`
+        If :data:`True`, remove all hydrogens connected to the anchor atom.
 
     Returns
     -------
@@ -122,7 +137,10 @@ def get_cone_angle(
     # Parse arguments
     surface_dist = np.asarray(surface_dist, dtype=np.float64)
     anchor = operator.index(anchor)
-    xyz = np.asarray(mol, dtype=np.float64)
+    if remove_anchor_hydrogens:
+        xyz, anchor = _remove_anchor_hydrogens(mol, anchor)
+    else:
+        xyz = np.asarray(mol, dtype=np.float64)
 
     # Rotate the system such that the maximum angle w.r.t. the X-axis is minimized
     trial_vec = np.array([1, 0, 0], dtype=np.float64)

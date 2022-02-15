@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
+from scipy.optimize import minimize, Bounds
 from scm.plams import Molecule, rotation_matrix
 
 from CAT.workflows import WorkFlow, CONE_ANGLE
@@ -59,7 +59,7 @@ def _start_cone_angle(
     lig_series: pd.Series,
     surface_dist: float = 0.0,
     **kwargs: Any,
-) -> list[f8 | NDArray[f8]]:
+) -> list[f8] | list[NDArray[f8]]:
     """Start the main loop for the ligand cone angle calculation."""
     ret = []
     for ligand in lig_series:
@@ -72,13 +72,12 @@ def _start_cone_angle(
 @np.errstate(invalid="ignore")
 def _get_angle(xyz: NDArray[f8]) -> NDArray[f8] | f8:
     """Return the maximum angle in ``xyz`` w.r.t. to the X-axis"""
-    vecs = xyz.copy()
-    vecs /= np.linalg.norm(vecs, axis=-1)[..., None]
+    vecs = xyz / np.linalg.norm(xyz, axis=-1)[..., None]
     angles = np.arccos(vecs @ [1, 0, 0])
     return np.nanmax(angles, axis=-1)
 
 
-def _minimize_func(vec: NDArray[f8], xyz: NDArray[f8], i: int) -> np.float64:
+def _minimize_func(vec: NDArray[f8], xyz: NDArray[f8], i: int) -> f8:
     """Rotate the X-axis in ``xyz`` to ``vec`` and \
     compute the maximum angle w.r.t. to the X-axis."""
     rotmat = rotation_matrix([1, 0, 0], vec)
@@ -144,7 +143,12 @@ def get_cone_angle(
 
     # Rotate the system such that the maximum angle w.r.t. the X-axis is minimized
     trial_vec = np.array([1, 0, 0], dtype=np.float64)
-    output = minimize(_minimize_func, trial_vec, args=(xyz, anchor))
+    output = minimize(
+        _minimize_func,
+        trial_vec,
+        args=(xyz, anchor),
+        bounds=Bounds(-1, 1, keep_feasible=True),
+    )
     vecs_opt = xyz @ rotation_matrix(trial_vec, output.x).T
 
     if surface_dist.ndim == 0:

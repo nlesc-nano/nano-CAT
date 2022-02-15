@@ -47,7 +47,7 @@ class TestConeAngle:
 
     REMOVE_H_PARAMS = {
         "default": (False, (220, 232)),
-        "remove_hydrogens": (True, 81),
+        "remove_hydrogens": (True, 79),
     }
 
     @pytest.mark.parametrize("remove_h,ref", REMOVE_H_PARAMS.values(), ids=REMOVE_H_PARAMS)
@@ -79,5 +79,5 @@ class TestWorkflow:
     def test_pass(self) -> None:
         s = self.SETTINGS.copy()
         *_, ligand_df = prep(s)
-        ref = [61, 81, 85]
+        ref = [61, 81, 82]
         np.testing.assert_allclose(ligand_df[CONE_ANGLE], ref, rtol=0, atol=1)

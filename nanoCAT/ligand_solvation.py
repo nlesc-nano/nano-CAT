@@ -34,6 +34,8 @@ API
 
 """
 
+from __future__ import annotations
+
 import os
 import math
 import logging
@@ -130,7 +132,10 @@ def start_crs_jobs(mol_list: Iterable[Molecule],
         # Calculate the COSMO surface
         mol_conj = _protonate_mol(mol)
         coskf = get_surface_charge(mol, job=j1, s=s1)
-        coskf_conj = get_surface_charge(mol_conj, job=j1, s=s1)
+        if mol_conj is not None:
+            coskf_conj = get_surface_charge(mol_conj, job=j1, s=s1)
+        else:
+            coskf_conj = None
 
         # Perform the actual COSMO-RS calculation
         lst = get_solv(mol, solvent_list, coskf, job=j2, s=s2)
@@ -174,13 +179,13 @@ def get_solvent_list(solvent_list: Optional[Sequence[str]] = None) -> Sequence[s
         return solvent_list
 
 
-def _protonate_mol(mol: Molecule) -> Molecule:
+def _protonate_mol(mol: Molecule) -> Molecule | None:
     mol_cp = mol.copy()
 
     i = mol.index(mol.properties.dummies)
     anchor = mol_cp[i]
     if anchor.properties.charge != -1:
-        raise NotImplementedError("Non-anionic anchors are not supported")
+        return None
 
     anchor.properties.charge = 0
     return add_Hs(mol_cp, forcefield="uff")

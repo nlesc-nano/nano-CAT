@@ -18,6 +18,7 @@ API
 
 """
 
+import os
 from pathlib import Path
 from typing import Iterable, Tuple, Any, Type, Generator, Sequence
 from itertools import chain
@@ -197,6 +198,14 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
     """
     for mol in mol_list:
+        # Ensure that the `charge_float` and `symbol` fields are populated
+        psf_name = Path(mol.properties.path) / f"{mol.properties.name}.psf"
+        if not os.path.isfile(psf_name):
+            psf = get_psf(mol, settings.input.force_eval.mm.forcefield.get('charge', None))
+            for at, charge, symbol in zip(mol, psf.charge, psf.atom_type):
+                at.properties.charge_float = charge
+                at.properties.symbol = symbol
+
         # Keyword arguments
         kwargs = {'distance_upper_bound': distance_upper_bound,
                   'shift_cutoff': shift_cutoff,
@@ -221,8 +230,7 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
         md_trajec = MultiMolecule.from_xyz(md_results['cp2k-pos-1.xyz'])[iter_start:]
         psf_charged = PSFContainer.read(md_results['QD_MD.psf'])
-        psf_charged.charge = [(at.properties.charge_float if at.properties.charge_float else 0.0)
-                              for at in mol]
+        psf_charged.charge = [at.properties.get("charge_float", 0.0) for at in mol]
 
         # Optimize a single ligand
         opt_results = qd_opt_ff(lig, job, _md2opt(settings), new_psf=True, name='ligand_opt')

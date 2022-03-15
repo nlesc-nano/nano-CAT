@@ -52,6 +52,7 @@ jobs:
                     wget -nv https://github.com/cp2k/cp2k/releases/download/v9.1.0/cp2k-9.1-Linux-x86_64.ssmp -O cp2k.ssmp
                     chmod a+rx cp2k.ssmp
                     ln -s cp2k.ssmp /usr/local/bin/cp2k.popt
+                    ls -lta /usr/local/bin
 
             -   name: Install MATCH
                 if: matrix.special == '; slow'

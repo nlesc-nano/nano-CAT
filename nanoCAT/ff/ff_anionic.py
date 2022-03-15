@@ -68,11 +68,11 @@ def run_ff_anionic(mol: Molecule, anchor: Atom, s: Settings) -> None:
     _cap_h = mol_with_h[-1]
     cap_h = Atom(atnum=_cap_h.atnum,
                  coords=_cap_h.coords,
-                 mol=mol,
-                 settings=mol[1].properties.copy())
+                 mol=mol)
 
+    cap_h.properties = mol[1].properties.copy()
     cap_h.properties.pdb_info.IsHeteroAtom = False
-    cap_h.properties.pdb_info.Name = 'Hxx'
+    cap_h.properties.pdb_info.Name = 'Hxx '
     mol.add_atom(cap_h)
     mol.add_bond(Bond(anchor, cap_h, mol=mol))
 

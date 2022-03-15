@@ -319,7 +319,7 @@ def _get_neutral_psf(psf: PSFContainer, frag_neutral: Molecule, frag_count: int)
 
 def _md2opt(s: Settings) -> Settings:
     """Convert CP2K MD settings to CP2K geometry optimization settings."""
-    s2 = s.copy()
+    s2 = Settings(s)
     del s2.input.motion.md
     s2.input['global'].run_type = 'geometry_optimization'
 

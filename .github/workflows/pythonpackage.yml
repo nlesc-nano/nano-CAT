@@ -36,18 +36,22 @@ jobs:
                     special: '; slow'
                     version: '3.10'
         env:
-            CP2K_DATA_DIR: "/usr/share/cp2k/data"
+            CP2K_DATA_DIR: "/home/runner/work/nano-CAT/nano-CAT/cp2k/data"
             MATCH: "/home/runner/work/nano-CAT/nano-CAT/MATCH/MATCH"
             PerlChemistry: "/home/runner/work/nano-CAT/nano-CAT/MATCH/PerlChemistry"
 
         steps:
             -   uses: actions/checkout@v3
 
-            -   name: Install CP2K
-                if: matrix.special == '; slow'
+            -   name: Install cp2k
+                if: matrix.os == 'ubuntu-latest'
                 run: |
-                    sudo apt-get update
-                    sudo apt install cp2k
+                    git clone https://github.com/cp2k/cp2k -q
+                    cd cp2k
+                    git -c advice.detachedHead=false checkout tags/v9.1.0
+                    wget -nv https://github.com/cp2k/cp2k/releases/download/$VERSION/cp2k-9.1-Linux-x86_64.ssmp -O cp2k.ssmp
+                    chmod a+rx cp2k.ssmp
+                    ln -s cp2k.ssmp /usr/local/bin/cp2k.popt
 
             -   name: Install MATCH
                 if: matrix.special == '; slow'

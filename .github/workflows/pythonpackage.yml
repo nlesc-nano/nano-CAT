@@ -49,7 +49,7 @@ jobs:
                     git clone https://github.com/cp2k/cp2k -q
                     cd cp2k
                     git -c advice.detachedHead=false checkout tags/v9.1.0
-                    wget -nv https://github.com/cp2k/cp2k/releases/download/$VERSION/cp2k-9.1-Linux-x86_64.ssmp -O cp2k.ssmp
+                    wget -nv https://github.com/cp2k/cp2k/releases/download/9.1/cp2k-9.1-Linux-x86_64.ssmp -O cp2k.ssmp
                     chmod a+rx cp2k.ssmp
                     ln -s cp2k.ssmp /usr/local/bin/cp2k.popt
 

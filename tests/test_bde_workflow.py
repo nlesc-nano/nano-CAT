@@ -80,7 +80,7 @@ def construct_df() -> SettingsDataFrame:
     settings.optional.qd.dissociate.xyn_opt = False
 
     # Set all quantum dot properties
-    qd = readpdb(PATH / "qd" / "[HCl]2.pdb")
+    qd = readpdb(PATH / "[HCl]2.pdb")
     qd.properties.name = "[HCl]2"
     qd.properties.job_path = []
     qd[4].properties.anchor = True
@@ -108,15 +108,16 @@ class TestBDEWorkflow:
         qd_opt={"core_index": [3], "qd_opt": True},
     )
 
-    @pytest.fixture(scope="function", autouse=True)
-    def clear_db(self) -> Generator[None, None, None]:
+    @pytest.fixture(scope="class", autouse=True)
+    def clear_dirs(self) -> Generator[None, None, None]:
         """Teardown script for deleting directies."""
         yield None
         shutil.rmtree(PATH / "database", ignore_errors=True)
-        shutil.rmtree(PATH / "qd" / "bde", ignore_errors=True)
+        shutil.rmtree(PATH / "ligand", ignore_errors=True)
+        shutil.rmtree(PATH / "qd", ignore_errors=True)
 
     @pytest.mark.parametrize("kwargs", PARAMS.values(), ids=PARAMS)
-    def test_pass(self, kwargs: dict[str, Any], clear_db: None) -> None:
+    def test_pass(self, kwargs: dict[str, Any]) -> None:
         qd_df = construct_df()
         qd_df.settings.optional.qd.dissociate.update(kwargs)
         init_bde(qd_df)

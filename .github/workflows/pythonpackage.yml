@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 
-name: Build with Conda
+name: Tests
 
 on:
     push:
@@ -10,9 +10,17 @@ on:
     pull_request:
     workflow_dispatch:
 
+concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+    cancel-in-progress: true
+
+defaults:
+    run:
+        shell: bash
+
 jobs:
     build:
-        name: ${{ matrix.os }} (py ${{ matrix.version }}${{ matrix.special }})
+        name: ${{ matrix.os }}; py ${{ matrix.version }}${{ matrix.special }}
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
@@ -28,21 +36,27 @@ jobs:
                     special: '; slow'
                     version: '3.10'
         env:
-            CP2K_DATA_DIR: "/usr/share/cp2k"
+            CP2K_DATA_DIR: "/usr/share/cp2k/data"
+            MATCH: "/home/runner/work/nano-CAT/nano-CAT/MATCH/MATCH"
+            PerlChemistry: "/home/runner/work/nano-CAT/nano-CAT/MATCH/PerlChemistry"
 
         steps:
-            -   name: Cancel Previous Runs
-                uses: styfle/cancel-workflow-action@0.9.1
-                with:
-                    access_token: ${{ github.token }}
-
-            -   uses: actions/checkout@v2
+            -   uses: actions/checkout@v3
 
             -   name: Install CP2K
                 if: matrix.special == '; slow'
                 run: |
                     sudo apt-get update
                     sudo apt install cp2k
+
+            -   name: Install MATCH
+                if: matrix.special == '; slow'
+                run: |
+                    git clone https://github.com/nlesc-nano/MATCH -q
+                    cd MATCH
+                    git -c advice.detachedHead=false checkout main
+                    chmod -R a+rx MATCH/scripts
+                    ln -s MATCH/scripts/*.pl /usr/local/bin/
 
             -   name: Set up Python
                 uses: actions/setup-python@v2

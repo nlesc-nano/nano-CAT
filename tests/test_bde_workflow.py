@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from assertionlib import assertion
 from nanoutils import UniqueLoader
-from scm.plams import readpdb, Settings, Cp2kJob, add_to_class, Results
+from scm.plams import readpdb, Settings, Cp2kJob
 
 from CAT.base import validate_input
 from CAT.settings_dataframe import SettingsDataFrame
@@ -98,12 +98,6 @@ def construct_df() -> SettingsDataFrame:
     return df
 
 
-@add_to_class(Results)
-def _replace_job_name(self, string, oldname, newname):
-    """If *string* starts with *oldname*, maybe followed by some extension, replace *oldname* with *newname*."""
-    return string.replace(oldname, newname) if (os.path.splitext(string)[0] == oldname) else string
-
-
 @pytest.mark.skipif(find_executable("cp2k.popt") is None, reason="requires CP2K")
 @pytest.mark.slow
 class TestBDEWorkflow:
@@ -125,7 +119,7 @@ class TestBDEWorkflow:
         shutil.rmtree(PATH / "qd", ignore_errors=True)
 
     @pytest.mark.parametrize("kwargs", PARAMS.values(), ids=PARAMS)
-    def test_pass(self, kwargs: dict[str, Any]) -> None:
+    def test_pass(self, kwargs: dict[str, Any], clear_dirs: None) -> None:
         qd_df = construct_df()
         qd_df.settings.optional.qd.dissociate.update(kwargs)
         init_bde(qd_df)

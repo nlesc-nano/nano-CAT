@@ -92,6 +92,6 @@ class TestMDASA:
         df, *_ = prep(self.SETTINGS.copy())
 
         values = df["ASA"].values
-        assertion.eq(values.dtype.type, np.float64)
+        assertion.eq(values.dtype, np.float64)
+        assertion.eq(values.shape, (1, 3))
         assertion.assert_(np.isreal, values, post_process=np.all)
-        assertion.eq(values.shape, (3, 1))

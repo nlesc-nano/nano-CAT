@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import textwrap
 from collections.abc import Generator
@@ -111,6 +112,7 @@ class TestBDEWorkflow:
     @pytest.fixture(scope="class", autouse=True)
     def clear_dirs(self) -> Generator[None, None, None]:
         """Teardown script for deleting directies."""
+        os.mkdir(PATH / "qd")
         yield None
         shutil.rmtree(PATH / "database", ignore_errors=True)
         shutil.rmtree(PATH / "ligand", ignore_errors=True)

@@ -115,7 +115,6 @@ class TestBDEWorkflow:
         os.mkdir(PATH / "qd")
         yield None
         shutil.rmtree(PATH / "database", ignore_errors=True)
-        shutil.rmtree(PATH / "ligand", ignore_errors=True)
         shutil.rmtree(PATH / "qd", ignore_errors=True)
 
     @pytest.mark.parametrize("kwargs", PARAMS.values(), ids=PARAMS)

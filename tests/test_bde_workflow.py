@@ -113,8 +113,11 @@ class TestBDEWorkflow:
     def clear_dirs(self) -> Generator[None, None, None]:
         """Teardown script for deleting directies."""
         os.mkdir(PATH / "qd")
+        shutil.copy2(PATH / "[HCl]2.xyz", PATH / "qd" / "[HCl]2.xyz")
+        shutil.copy2(PATH / "[HCl]2.pdb", PATH / "qd" / "[HCl]2.pdb")
         yield None
         shutil.rmtree(PATH / "database", ignore_errors=True)
+        shutil.rmtree(PATH / "ligand", ignore_errors=True)
         shutil.rmtree(PATH / "qd", ignore_errors=True)
 
     @pytest.mark.parametrize("kwargs", PARAMS.values(), ids=PARAMS)

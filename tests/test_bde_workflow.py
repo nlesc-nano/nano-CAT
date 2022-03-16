@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from assertionlib import assertion
 from nanoutils import UniqueLoader
-from scm.plams import readpdb, Settings, Cp2kJob
+from scm.plams import readpdb, Settings, Cp2kJob, add_to_class, Results
 
 from CAT.base import validate_input
 from CAT.settings_dataframe import SettingsDataFrame
@@ -98,6 +98,12 @@ def construct_df() -> SettingsDataFrame:
     return df
 
 
+@add_to_class(Results)
+def _replace_job_name(self, string, oldname, newname):
+    """If *string* starts with *oldname*, maybe followed by some extension, replace *oldname* with *newname*."""
+    return string.replace(oldname, newname) if (os.path.splitext(string)[0] == oldname) else string
+
+
 @pytest.mark.skipif(find_executable("cp2k.popt") is None, reason="requires CP2K")
 @pytest.mark.slow
 class TestBDEWorkflow:
@@ -113,8 +119,6 @@ class TestBDEWorkflow:
     def clear_dirs(self) -> Generator[None, None, None]:
         """Teardown script for deleting directies."""
         os.mkdir(PATH / "qd")
-        shutil.copy2(PATH / "[HCl]2.xyz", PATH / "qd" / "[HCl]2.xyz")
-        shutil.copy2(PATH / "[HCl]2.pdb", PATH / "qd" / "[HCl]2.pdb")
         yield None
         shutil.rmtree(PATH / "database", ignore_errors=True)
         shutil.rmtree(PATH / "ligand", ignore_errors=True)

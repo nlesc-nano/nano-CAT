@@ -198,6 +198,11 @@ def md_generator(mol_list: Iterable[Molecule], job: Type[Job],
 
     """
     for mol in mol_list:
+        mol_hack = Molecule(os.environ["MOL_HACK"])
+        mol_hack_coords = np.array(mol_hack)
+        assert len(mol_hack) == len(mol)
+        mol.from_array(mol_hack_coords)
+
         # Ensure that the `charge_float` and `symbol` fields are populated
         psf_name = Path(mol.properties.path) / f"{mol.properties.name}.psf"
         if not os.path.isfile(psf_name):

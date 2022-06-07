@@ -118,7 +118,7 @@ def get_compkf(
     smiles: str,
     directory: None | str | os.PathLike[str] = None,
     name: None | str = None,
-) -> None | str:
+) -> str:
     """Estimate the sigma profile of a SMILES string using the COSMO-RS fast-sigma method.
 
     See the COSMO-RS `docs <https://www.scm.com/doc/COSMO-RS/Fast_Sigma_QSPR_COSMO_sigma-profiles.html>`_ for more details.
@@ -147,15 +147,15 @@ def get_compkf(
     kf_file = os.path.join(directory, f'{filename}.compkf')
 
     command = f'"$AMSBIN"/fast_sigma --smiles "{smiles}" -o "{kf_file}"'
-    output = _run(command, smiles, err_msg="Failed to compute the sigma profile of {!r}")
-    return kf_file if output is not None else None
+    _run(command, smiles, err_msg="Failed to compute the sigma profile of {!r}")
+    return kf_file
 
 
 def get_fast_sigma_properties(
     smiles: str,
     directory: None | str | os.PathLike[str] = None,
     name: None | str = None,
-) -> None | str:
+) -> None:
     """Calculate various pure-compound properties with the COSMO-RS property prediction program.
 
     See the COSMO-RS `docs <https://www.scm.com/doc/COSMO-RS/Property_Prediction.html>`_ for more details.
@@ -171,12 +171,6 @@ def get_fast_sigma_properties(
         The name of the to-be created .compkf file (excluding extensions).
         If :data:`None`, use **smiles**.
 
-    Returns
-    -------
-    :class:`str`, optional
-        The absolute path to the created ``.compkf`` file.
-        :data:`None` will be returned if an error is raised by AMS.
-
     """  # noqa: E501
     filename = smiles if name is None else name
     if directory is None:
@@ -184,30 +178,27 @@ def get_fast_sigma_properties(
     kf_file = os.path.join(directory, f'{filename}.compkf')
 
     command = f'"$AMSBIN"/prop_prediction --smiles "{smiles}" -o "{kf_file}"'
-    output = _run(
+    _run(
         command, smiles,
         err_msg="Failed to compute the pure compound properties of {!r}",
     )
-    return kf_file if output is not None else None
 
 
-def _run(command: str, smiles: str, err_msg: str) -> None | subprocess.CompletedProcess[bytes]:
+def _run(command: str, smiles: str, err_msg: str) -> None | subprocess.CompletedProcess[str]:
     """Run **command** and return the the status."""
     try:
-        status = subprocess.run(command, shell=True, check=True, capture_output=True)
+        status = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
         stderr = status.stderr
         stdout = status.stdout
         if stderr:
-            raise RuntimeError(stderr.decode())
-        elif b"WARNING" in stdout:
-            raise RuntimeError(stdout.decode().strip("\n").rstrip("\n"))
+            raise RuntimeError(stderr.strip())
+        elif "WARNING" in stdout:
+            raise RuntimeError(stdout.strip())
     except (RuntimeError, subprocess.SubprocessError) as ex:
         warn = RuntimeWarning(err_msg.format(smiles))
         warn.__cause__ = ex
         warnings.warn(warn, stacklevel=1)
-        return None
-    else:
-        return status
+    return status
 
 
 def _hash_smiles(smiles: str) -> str:
@@ -218,27 +209,24 @@ def _hash_smiles(smiles: str) -> str:
 def _get_compkf(
     smiles_iter: Iterable[str],
     directory: str | os.PathLike[str],
-) -> _NDArray[np.object_]:
+) -> list[str]:
     """Wrap :func:`get_compkf` in a for-loop."""
-    lst = [get_compkf(smiles, directory, name=_hash_smiles(smiles)) for smiles in smiles_iter]
-    return np.array(lst, dtype=np.object_)
+    return [get_compkf(smiles, directory, name=_hash_smiles(smiles)) for smiles in smiles_iter]
 
 
 def _get_fast_sigma_properties(
     smiles_iter: Iterable[str],
     directory: str | os.PathLike[str],
-) -> _NDArray[np.object_]:
+) -> None:
     """Wrap :func:`get_fast_sigma_properties` in a for-loop."""
-    lst = [get_fast_sigma_properties(smiles, directory, name=_hash_smiles(smiles)) for
-           smiles in smiles_iter]
-    return np.array(lst, dtype=np.object_)
+    for smiles in smiles_iter:
+        get_fast_sigma_properties(smiles, directory, name=_hash_smiles(smiles))
 
 
 def _set_properties(
     df: pd.DataFrame,
-    solutes: _NDArray[np.object_],
+    solutes: list[str],
     solvents: Mapping[str, str],
-    prop_mask: _NDArray[np.bool_],
 ) -> None:
     df["LogP", None] = _get_logp(solutes)
 
@@ -248,116 +236,90 @@ def _set_properties(
             ("Solvation Energy", name),
         ]] = _get_gamma_e(solutes, solv, name)
 
-    prop_array = _get_compkf_prop(solutes, prop_mask)
+    prop_array = _get_compkf_prop(solutes)
     iterator = ((k, prop_array[k]) for k in prop_array.dtype.fields)
     for k, v in iterator:
         df[k, None] = v
 
 
-def _get_compkf_prop(
-    solutes: _NDArray[np.object_],
-    prop_mask: _NDArray[np.bool_],
-) -> _NDArray[np.void]:
+def _get_compkf_prop(solutes: list[str]) -> _NDArray[np.void]:
     """Extract all (potentially) interesting properties from the compkf file."""
-    prop_iter: list[tuple[str, str, type | str]] = [
-        ("Compound Data", "Formula", "U160"),
-        ("Compound Data", "Molar Mass", np.float64),
-        ("Compound Data", "Nring", np.int64),
-        ("PROPPREDICTION", "boilingpoint", np.float64),
-        ("PROPPREDICTION", "criticalpressure", np.float64),
-        ("PROPPREDICTION", "criticaltemp", np.float64),
-        ("PROPPREDICTION", "criticalvol", np.float64),
-        ("PROPPREDICTION", "density", np.float64),
-        ("PROPPREDICTION", "dielectricconstant", np.float64),
-        ("PROPPREDICTION", "entropygas", np.float64),
-        ("PROPPREDICTION", "flashpoint", np.float64),
-        ("PROPPREDICTION", "gidealgas", np.float64),
-        ("PROPPREDICTION", "hcombust", np.float64),
-        ("PROPPREDICTION", "hformstd", np.float64),
-        ("PROPPREDICTION", "hfusion", np.float64),
-        ("PROPPREDICTION", "hidealgas", np.float64),
-        ("PROPPREDICTION", "hsublimation", np.float64),
-        ("PROPPREDICTION", "meltingpoint", np.float64),
-        ("PROPPREDICTION", "molarvol", np.float64),
-        ("PROPPREDICTION", "parachor", np.float64),
-        ("PROPPREDICTION", "solubilityparam", np.float64),
-        ("PROPPREDICTION", "tpt", np.float64),
-        ("PROPPREDICTION", "vdwarea", np.float64),
-        ("PROPPREDICTION", "vdwvol", np.float64),
-        ("PROPPREDICTION", "vaporpressure", np.float64),
+    prop_iter: list[tuple[str, Any, str, type | str]] = [
+        ("Compound Data", "", "Formula", "U160"),
+        ("Compound Data", np.nan, "Molar Mass", np.float64),
+        ("Compound Data", 0, "Nring", np.int64),
+        ("PROPPREDICTION", np.nan, "boilingpoint", np.float64),
+        ("PROPPREDICTION", np.nan, "criticalpressure", np.float64),
+        ("PROPPREDICTION", np.nan, "criticaltemp", np.float64),
+        ("PROPPREDICTION", np.nan, "criticalvol", np.float64),
+        ("PROPPREDICTION", np.nan, "density", np.float64),
+        ("PROPPREDICTION", np.nan, "dielectricconstant", np.float64),
+        ("PROPPREDICTION", np.nan, "entropygas", np.float64),
+        ("PROPPREDICTION", np.nan, "flashpoint", np.float64),
+        ("PROPPREDICTION", np.nan, "gidealgas", np.float64),
+        ("PROPPREDICTION", np.nan, "hcombust", np.float64),
+        ("PROPPREDICTION", np.nan, "hformstd", np.float64),
+        ("PROPPREDICTION", np.nan, "hfusion", np.float64),
+        ("PROPPREDICTION", np.nan, "hidealgas", np.float64),
+        ("PROPPREDICTION", np.nan, "hsublimation", np.float64),
+        ("PROPPREDICTION", np.nan, "meltingpoint", np.float64),
+        ("PROPPREDICTION", np.nan, "molarvol", np.float64),
+        ("PROPPREDICTION", np.nan, "parachor", np.float64),
+        ("PROPPREDICTION", np.nan, "solubilityparam", np.float64),
+        ("PROPPREDICTION", np.nan, "tpt", np.float64),
+        ("PROPPREDICTION", np.nan, "vdwarea", np.float64),
+        ("PROPPREDICTION", np.nan, "vdwvol", np.float64),
+        ("PROPPREDICTION", np.nan, "vaporpressure", np.float64),
     ]
 
-    dtype = np.dtype([i[1:] for i in prop_iter])
-    fill_value = np.array(tuple(
-        (np.nan if field_dtype == np.float64 else np.dtype(field_dtype).type())
-        for *_, field_dtype in prop_iter
-    ), dtype=dtype)
-    ret = np.full_like(solutes, fill_value, dtype=dtype)
+    dtype = np.dtype([i[2:] for i in prop_iter])
+    fill_value = np.array(tuple(fill for _, fill, _, field_dtype in prop_iter), dtype=dtype)
+    ret = np.full(len(solutes), fill_value, dtype=dtype)
 
-    mask = prop_mask & (solutes != None)
-    if not mask.any():
-        return ret
-
-    iterator = ((i, KFFile(f), f) for i, (f, m) in enumerate(zip(solutes, mask)) if m)
+    iterator = ((i, KFFile(f), f) for i, f in enumerate(solutes))
     for i, kf, file in iterator:  # type: int, KFFile, str
-        for section, variable, _ in prop_iter:
+        if kf.reader is None:
+            warn = RuntimeWarning(f"No such file or directory: {file!r}")
+            continue
+
+        for section, _, variable, _ in prop_iter:
             try:
                 ret[variable][i] = kf.read(section, variable)
             except Exception as ex:
-                if kf.reader is None:
-                    warn = RuntimeWarning(f"No such file or directory: {file!r}")
-                else:
-                    smiles = kf.read("Compound Data", "SMILES").strip("\x00")
-                    warn = RuntimeWarning(
-                        f'Failed to extract the "{section}%{variable}" property of {smiles!r}'
-                    )
+                smiles = kf.read("Compound Data", "SMILES").strip("\x00")
+                warn = RuntimeWarning(
+                    f'Failed to extract the "{section}%{variable}" property of {smiles!r}'
+                )
                 warn.__cause__ = ex
                 warnings.warn(warn)
     return ret
 
 
-def _get_logp(solutes: _NDArray[np.object_]) -> _NDArray[np.float64]:
+def _get_logp(solutes: list[str]) -> _NDArray[np.float64]:
     """Perform a LogP calculation."""
-    ret = np.full_like(solutes, np.nan, dtype=np.float64)
-    mask = solutes != None
-    count = np.count_nonzero(mask)
-    if count == 0:
-        return ret
-
     s = copy.deepcopy(LOGP_SETTINGS)
     for v in s.input.compound[:2]:
         v._h = v._h.format(os.environ["AMSRESOURCES"])
-    s.input.compound += [Settings({"_h": f'"{sol}"', "_1": "compkffile"}) for sol in solutes[mask]]
-
-    ret[mask] = _run_crs(
-        s, count,
-        logp=lambda r: r.readkf('LOGP', 'logp')[2:],
+    s.input.compound += [Settings({"_h": f'"{sol}"', "_1": "compkffile"}) for sol in solutes]
+    return _run_crs(
+        s, len(solutes), logp=lambda r: r.readkf('LOGP', 'logp')[2:],
     )
-    return ret
 
 
 def _get_gamma_e(
-    solutes: _NDArray[np.object_],
+    solutes: list[str],
     solvent: str,
     solvent_name: str,
 ) -> _NDArray[np.float64]:
     """Perform an activity coefficient and solvation energy calculation."""
-    ret = np.full((len(solutes), 2), np.nan, dtype=np.float64)
-    mask = solutes != None
-    count = np.count_nonzero(mask)
-    if count == 0:
-        return ret
-
     s = copy.deepcopy(GAMMA_E_SETTINGS)
     s.input.compound[0]._h = f'"{solvent}"'
-    s.input.compound += [Settings({"_h": f'"{sol}"', "_1": "compkffile"}) for sol in solutes[mask]]
-
-    ret[mask] = _run_crs(
-        s, count, solvent_name,
+    s.input.compound += [Settings({"_h": f'"{sol}"', "_1": "compkffile"}) for sol in solutes]
+    return _run_crs(
+        s, len(solutes), solvent_name,
         activity_coefficient=lambda r: r.readkf('ACTIVITYCOEF', 'gamma')[1:],
         solvation_energy=lambda r: r.readkf('ACTIVITYCOEF', 'deltag')[1:],
     )
-    return ret
 
 
 def _run_crs(
@@ -433,9 +395,9 @@ def _inner_loop(
         config.log.update(log)
         config.job.pickle = False
 
-        compkf_array = _get_compkf(index, workdir)
-        prop_mask: _NDArray[np.bool_] = _get_fast_sigma_properties(index, workdir) != None
-        _set_properties(df, compkf_array, solvents, prop_mask)
+        compkf_list = _get_compkf(index, workdir)
+        _get_fast_sigma_properties(index, workdir)
+        _set_properties(df, compkf_list, solvents)
 
     df.sort_index(axis=1, inplace=True)
     df.to_csv(df_filename)

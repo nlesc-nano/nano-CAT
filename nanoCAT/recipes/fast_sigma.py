@@ -147,7 +147,7 @@ def get_compkf(
     kf_file = os.path.join(directory, f'{filename}.compkf')
 
     command = f'"$AMSBIN"/fast_sigma --smiles "{smiles}" -o "{kf_file}"'
-    output = _run(command, smiles, err_msg="Failed to compute the sigma profile of {!r}")
+    _run(command, smiles, err_msg="Failed to compute the sigma profile of {!r}")
     return kf_file
 
 

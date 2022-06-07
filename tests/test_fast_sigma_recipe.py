@@ -61,7 +61,7 @@ def compare_df(df1: pd.DataFrame, df2: pd.DataFrame) -> None:
     np.testing.assert_array_equal(df1.columns, df2.columns, err_msg="columns")
     np.testing.assert_array_equal(df1.index, df2.index, err_msg="index")
 
-    iterator = ((k, df1[k], df2[k]) for k in df1.keys())
+    iterator = ((repr(k), df1[k], df2[k]) for k in df1.keys())
     for k, v1, v2 in iterator:
         if issubclass(v2.dtype.type, np.inexact):
             np.testing.assert_allclose(v1, v2, err_msg=k)

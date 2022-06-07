@@ -186,6 +186,7 @@ def get_fast_sigma_properties(
 
 def _run(command: str, smiles: str, err_msg: str) -> None | subprocess.CompletedProcess[str]:
     """Run **command** and return the the status."""
+    status = None
     try:
         status = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
         stderr = status.stderr

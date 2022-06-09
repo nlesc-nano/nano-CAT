@@ -189,12 +189,12 @@ def _run(command: str, smiles: str, err_msg: str) -> None | subprocess.Completed
     status = None
     try:
         status = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
-        stderr = status.stderr
-        stdout = status.stdout
+        stderr = status.stderr.strip()
+        stdout = status.stdout.strip()
         if stderr:
-            raise RuntimeError(stderr.strip())
+            raise RuntimeError(stderr)
         elif "WARNING" in stdout:
-            raise RuntimeError(stdout.strip())
+            raise RuntimeError(stdout)
     except (RuntimeError, subprocess.SubprocessError) as ex:
         warn = RuntimeWarning(err_msg.format(smiles))
         warn.__cause__ = ex

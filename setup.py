@@ -72,7 +72,7 @@ setup(
         'more-itertools>=1.0',
         'plams>=1.5.1',
         'qmflows>=0.11.1',
-        'nlesc-CAT>=0.10.6',
+        'nlesc-CAT>=0.11.1',
         'Auto-FOX>=0.10.0',
         'rdkit-pypi>=2018.03.1',
     ],

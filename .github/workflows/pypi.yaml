@@ -8,10 +8,12 @@ jobs:
     publish:
         runs-on: ubuntu-latest
         steps:
-            -   uses: actions/checkout@v2
+            -   uses: actions/checkout@v3
 
             -   name: Set up Python
-                uses: actions/setup-python@v2
+                uses: actions/setup-python@v4
+                with:
+                    python-version: '3.x'
 
             -   name: Install dependencies
                 run: pip install wheel twine
@@ -28,7 +30,7 @@ jobs:
                 run: python setup.py sdist bdist_wheel
 
             -   name: Publish the package
-                uses: pypa/gh-action-pypi-publish@master
+                uses: pypa/gh-action-pypi-publish@release/v1
                 with:
                     user: __token__
                     password: ${{ secrets.PYPI_TOKEN }}

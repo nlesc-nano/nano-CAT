@@ -17,9 +17,9 @@
    :target: https://docs.python.org/3.10/
 
 
-##############
-Nano-CAT 0.7.2
-##############
+########
+Nano-CAT
+########
 
 **Nano-CAT** is a collection of tools for the analysis of nanocrystals,
 building on the framework of the Compound Attachment Tools package (CAT_).

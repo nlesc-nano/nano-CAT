@@ -71,7 +71,7 @@ setup(
         'noodles>=0.3.3',
         'more-itertools>=1.0',
         'plams>=1.5.1',
-        'qmflows>=0.11.1',
+        'qmflows>=0.12.0',
         'nlesc-CAT>=0.11.1',
         'Auto-FOX>=0.10.0',
         'rdkit-pypi>=2018.03.1',

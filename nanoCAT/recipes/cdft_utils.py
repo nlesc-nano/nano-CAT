@@ -68,7 +68,7 @@ def run_jobs(mol: Molecule, *settings: Mapping,
         >>> from qmflows import Settings
         >>> from qmflows.templates import geometry
         >>> from qmflows.utils import InitRestart
-        >>> from qmflows.packages.SCM import ADF_Result
+        >>> from qmflows.packages import ADF_Result
 
         >>> from CAT.recipes import run_jobs, cdft
 
@@ -92,7 +92,7 @@ def run_jobs(mol: Molecule, *settings: Mapping,
         A single job will be run for each provided settings object.
         The output molecule of each job will be passed on to the next one.
 
-    job_type : :class:`~qmflows.packages.packages.Package`
+    job_type : :class:`~qmflows.packages.Package`
         A QMFlows package instance.
 
     job_name : :class:`str`, optional
@@ -110,7 +110,7 @@ def run_jobs(mol: Molecule, *settings: Mapping,
 
     Returns
     -------
-    :class:`~qmflows.packages.packages.Result`
+    :class:`~qmflows.packages.Result`
         A QMFlows Result object as constructed by the last calculation.
         The exact type depends on the passed **job_type**.
 

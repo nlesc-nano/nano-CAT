@@ -5,7 +5,7 @@ import yaml
 import pandas as pd
 
 from qmflows import templates as _templates
-from qmflows.packages.SCM import ADF_Result
+from qmflows.packages import ADF_Result
 from scm.plams import Molecule, Settings, ADFJob, ADFResults, Units, Results
 from scm.plams.core.basejob import Job
 from CAT.workflows import WorkFlow, JOB_SETTINGS_CDFT, MOL

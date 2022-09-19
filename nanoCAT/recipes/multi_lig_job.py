@@ -34,8 +34,7 @@ from scm.plams import Settings, Molecule, config, Units
 from qmflows import cp2k_mm, Settings as QmSettings
 from qmflows.utils import InitRestart
 from qmflows.cp2k_utils import prm_to_df
-from qmflows.packages import registry
-from qmflows.packages.cp2k_mm import CP2KMM_Result
+from qmflows.packages import registry, CP2KMM_Result
 from noodles.run.threading.sqlite3 import run_parallel
 
 from nanoutils import SetAttr
@@ -126,12 +125,12 @@ def multi_ligand_job(mol: Molecule,
 
     \**kwargs : :data:`~typing.Any`
         Further keyword arguments for
-        :meth:`qmflows.cp2k_mm()<qmflows.packages.packages.Package.__call__>`.
+        :meth:`qmflows.cp2k_mm()<qmflows.packages.Package.__call__>`.
 
     Returns
     -------
     :class:`~qmflows.packages.cp2k_mm.CP2KMM_Result`
-        The results of the :class:`~qmflows.packages.cp2k_mm.CP2KMM` calculation.
+        The results of the :class:`~qmflows.packages.CP2KMM` calculation.
 
     See Also
     --------
@@ -139,8 +138,8 @@ def multi_ligand_job(mol: Molecule,
         Generate a :class:`~FOX.io.read_psf.PSFContainer` instance for **qd**
         with multiple different **ligands**.
 
-    :data:`qmflows.cp2k_mm()<qmflows.packages.cp2k_mm.cp2k_mm>`
-        An instance of :class:`~qmflows.packages.cp2k_mm.CP2KMM`;
+    :data:`qmflows.cp2k_mm()<qmflows.cp2k_mm>`
+        An instance of :class:`~qmflows.packages.CP2KMM`;
         used for running classical forcefield calculations with `CP2K <https://www.cp2k.org/>`_.
 
     `10.1002/jcc.21963 <https://doi.org/10.1002/jcc.21963>`_

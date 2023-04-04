@@ -15,7 +15,8 @@
    :target: https://docs.python.org/3.9/
 .. image:: https://img.shields.io/badge/python-3.10-blue.svg
    :target: https://docs.python.org/3.10/
-
+.. image:: https://img.shields.io/badge/python-3.10-blue.svg
+   :target: https://docs.python.org/3.11/
 
 ########
 Nano-CAT

@@ -68,7 +68,7 @@ setup(
         'Nano-Utils>=2.3.1',
         'numpy>=1.15.0',
         'scipy>=0.19.1',
-        'pandas>=0.24.0',
+        'pandas>=0.24.0,<=2.0.0',
         'AssertionLib>=2.3',
         'noodles>=0.3.3',
         'more-itertools>=1.0',

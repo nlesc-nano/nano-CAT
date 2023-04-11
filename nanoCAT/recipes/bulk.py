@@ -25,7 +25,6 @@ import warnings
 import functools
 from itertools import chain
 from typing import (
-    Any,
     Iterable,
     List,
     Iterator,
@@ -279,7 +278,7 @@ def _molecule_from_rdmol(
     """Construct a PLAMS molecule from the passed rdkit mol's ``MolBlock``."""
     for tup in matches:
         try:
-            i, *_, j = tup  # type: int, Any, None | int
+            i, *_, j = tup
         except ValueError:
             i = tup[0]
             j = None

@@ -41,7 +41,7 @@ jobs:
             PerlChemistry: "/home/runner/work/nano-CAT/nano-CAT/MATCH/PerlChemistry"
 
         steps:
-            -   uses: actions/checkout@v3
+            -   uses: actions/checkout@v4
 
             -   name: Install cp2k
                 if: matrix.os == 'ubuntu-latest'
@@ -113,7 +113,7 @@ jobs:
     Linting:
         runs-on: ubuntu-latest
         steps:
-            -   uses: actions/checkout@v3
+            -   uses: actions/checkout@v4
 
             -   name: Set up Python on ubuntu-latest
                 uses: actions/setup-python@v4
